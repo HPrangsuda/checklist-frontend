@@ -1,0 +1,121 @@
+<mxfile host="65bd71144e">
+    <diagram id="IT3RdCjUsLWYmJaTleZN" name="Page-1">
+        <mxGraphModel dx="1852" dy="1459" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" background="none" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="2" value="register" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="-140" y="100" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="machine add" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="220" y="100" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="calibration" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="980" y="100" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="maintenance" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="1210" y="100" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="7" value="checklist" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="770" y="100" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="repair request" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="960" y="680" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="9" value="Actor" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1" parent="1">
+                    <mxGeometry x="-280" y="-8" width="30" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="10" value="manager" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="-295" y="200" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="11" value="กรอกฟอร์ม&lt;br&gt;- general&lt;br&gt;-cal&lt;br&gt;-mt" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="-140" y="200" width="120" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="12" value="&lt;b&gt;doc/form&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="50" y="22" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="13" value="regis add" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="50" y="200" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="14" value="เพิ่มรายการ" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="-140" y="290" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="15" value="regis view" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="50" y="280" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="16" value="qms" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="-295" y="290" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="17" value="" style="edgeStyle=elbowEdgeStyle;elbow=horizontal;endArrow=classic;html=1;curved=0;rounded=0;endSize=8;startSize=8;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="14" target="3">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="-70" y="320" as="sourcePoint"/>
+                        <mxPoint x="-20" y="270" as="targetPoint"/>
+                        <Array as="points">
+                            <mxPoint x="150" y="230"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="18" value="Actor" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1" parent="1">
+                    <mxGeometry x="165" y="-8" width="30" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="19" value="&lt;b&gt;doc/form&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="330" y="22" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="20" value="เช็คข้อมูล" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="220" y="200" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="21" value="เลือกกลุ่ม/ประเภท" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="220" y="280" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="22" value="บันทึก" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="220" y="350" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="23" value="ต้องตรวจรายสัปดาห์ ?" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="430" y="325" width="170" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="24" value="" style="edgeStyle=elbowEdgeStyle;elbow=horizontal;endArrow=classic;html=1;curved=0;rounded=0;endSize=8;startSize=8;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="23" target="7">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="520" y="280" as="sourcePoint"/>
+                        <mxPoint x="570" y="230" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="25" value="" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="22" target="23">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="450" y="310" as="sourcePoint"/>
+                        <mxPoint x="500" y="260" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="26" value="เริ่มปีใหม่ สร้างลิสที่ต้อง cal" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="965" y="180" width="150" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="27" value="&amp;lt;= 30 วัน" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="980" y="349" width="120" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="28" value="แจ้งเตือน" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="980" y="439" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="29" value="&amp;nbsp;ส่ง cal" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="980" y="509" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="30" value="กำหนด/วางแผนวัน due date" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="960" y="260" width="160" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="31" value="อัปเดตข้อมูล" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="980" y="580" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="32" value="เริ่มปีใหม่ สร้างลิสที่ต้อง mt" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="1195" y="180" width="150" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="33" value="&amp;lt;= 30 วัน" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="1210" y="349" width="120" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="34" value="แจ้งเตือน" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="1210" y="439" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="35" value="กำหนด/วางแผนวัน due date" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="1190" y="260" width="160" height="30" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
