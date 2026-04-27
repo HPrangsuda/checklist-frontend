@@ -145,6 +145,7 @@ function RouteComponent() {
 
       {/* ── Row 3: CalibrationStats | MaintenanceStats ────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <MachineTbl />
         <CalibrationStats />
         <MaintenanceStats />
       </div>
