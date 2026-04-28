@@ -126,7 +126,6 @@
   "performance": "Performance",
   "status_ready_to_use": "Ready to Use",
   "status_repair": "Repair",
-  "status_not_in_use": "Not in Use",
   "status_completed": "Completed",
   "status_pending": "Pending",
   "status_pending_supervisor": "Pending Supervisor",
@@ -280,5 +279,13 @@
   "register_date": "Register Date",
   "reset_period_required": "Please select reset period",
   "machine_code_required": "Please enter machine code",
-  "responsible_required": "Please select responsible person"
+  "responsible_required": "Please select responsible person",
+  "status_in_use": "IN USE",
+  "status_not_in_use": "NOT IN USE",
+  "status_under_maintenance": "UNDER MAINTENANCE",
+  "choice_ready": "READY TO USE",
+  "choice_not_ready_repair": "NOT READY (WAITING FOR REPAIR)",
+  "choice_not_ready_under_repair": "NOT READY (UNDER REPAIR)",
+  "choice_not_ready_modification": "NOT READY (EQUIPMENT MODIFICATION)",
+  "choice_others": "OTHERS"
 }

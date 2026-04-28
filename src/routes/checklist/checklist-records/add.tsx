@@ -5,8 +5,9 @@ import { toast } from 'sonner'
 import { FormLayout } from '@/components/layout/form-layout'
 import type { FormStep } from '@/components/layout/form-sidebar'
 import { Html5Qrcode } from 'html5-qrcode'
-import {QrCode, X, Camera, Flashlight,CheckCircle2, AlertCircle, ChevronDown, Upload} from 'lucide-react'
+import { QrCode, X, Camera, Flashlight, CheckCircle2, AlertCircle, ChevronDown, Upload } from 'lucide-react'
 import { sessionStore } from '@/core/lib/store'
+import { useTranslation } from '@/core/contexts/language-context'
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -27,11 +28,11 @@ interface MachineChecklist {
     detail: string
     description: string
   } | null
-  answer: string          // user-entered answer (local state only, not from backend)
+  answer: string
   checkStatus: boolean
   resetTime: string
   isChoice: boolean
-  isDropdown: boolean     // derived from isChoice
+  isDropdown: boolean
 }
 
 interface Machine {
@@ -46,15 +47,15 @@ interface Machine {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CHOICES = [
+// ค่าที่ส่ง backend ยังคงเป็น EN เสมอ — label เท่านั้นที่เปลี่ยนตามภาษา
+const MACHINE_STATUS_VALUES = ['IN USE', 'NOT IN USE', 'UNDER MAINTENANCE'] as const
+const CHOICE_VALUES = [
   'READY TO USE',
   'NOT READY (WAITING FOR REPAIR)',
   'NOT READY (UNDER REPAIR)',
   'NOT READY (EQUIPMENT MODIFICATION)',
   'OTHERS',
-]
-
-const MACHINE_STATUSES = ['IN USE', 'NOT IN USE', 'UNDER MAINTENANCE']
+] as const
 
 const QR_READER_ID = 'qr-checklist-scanner'
 
@@ -185,6 +186,7 @@ function QrScanModal({ onScan, onClose }: { onScan: (code: string) => void; onCl
 
 function RouteComponent() {
   const navigate = useNavigate()
+  const { t } = useTranslation('checklist')
   const { machineCode: qrCode } = useSearch({ from: '/checklist/checklist-records/add' })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -201,13 +203,31 @@ function RouteComponent() {
   const [note, setNote] = useState('')
   const [file, setFile] = useState<File | null>(null)
 
-  // Auto-load from QR scan search param
+  // ─── i18n option arrays (re-computed on language change) ──────────────────
+  const machineStatusOptions = MACHINE_STATUS_VALUES.map(value => ({
+    value,
+    label: t(`status_${value.toLowerCase().replace(/ /g, '_')}`),
+    // status_in_use | status_not_in_use | status_under_maintenance
+  }))
+
+  const choiceOptions = CHOICE_VALUES.map((value, idx) => ({
+    value,
+    label: t([
+      'choice_ready',
+      'choice_not_ready_repair',
+      'choice_not_ready_under_repair',
+      'choice_not_ready_modification',
+      'choice_others',
+    ][idx]),
+  }))
+
+  // ─── Auto-load from QR scan search param ─────────────────────────────────
   useEffect(() => {
     if (qrCode) loadMachineData(qrCode)
     else setShowQr(true)
   }, [qrCode])
 
-  // ─── Load machine + checklist ──────────────────────────────────────────────
+  // ─── Load machine + checklist ─────────────────────────────────────────────
   const loadMachineData = async (code: string) => {
     try {
       const machineRes = await api.get<any>(`/api/machine/machine-code/${code}`)
@@ -233,7 +253,7 @@ function RouteComponent() {
     }
   }
 
-  // ─── Answer helpers ────────────────────────────────────────────────────────
+  // ─── Answer helpers ───────────────────────────────────────────────────────
   const getAnswer = (item: MachineChecklist) => item.answer ?? ''
 
   const updateAnswer = (id: number, value: string) => {
@@ -241,7 +261,7 @@ function RouteComponent() {
     if (errors[`item_${id}`]) setErrors(prev => { const n = { ...prev }; delete n[`item_${id}`]; return n })
   }
 
-  // ─── Validation ────────────────────────────────────────────────────────────
+  // ─── Validation ───────────────────────────────────────────────────────────
   const isFormValid = () =>
     !!(machine && selectedStatus && jobDetails.trim() && checklist.every(item => getAnswer(item).trim() !== ''))
 
@@ -253,70 +273,68 @@ function RouteComponent() {
     return 'empty'
   }
 
-  // ─── Submit ────────────────────────────────────────────────────────────────
+  // ─── Submit ───────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const newErrors: Record<string, string> = {}
     if (!machine) { toast.error('Please scan QR Code first'); return }
-    if (!selectedStatus) newErrors.selectedStatus = 'Please select machine status'
-    checklist.forEach(item => { if (!getAnswer(item).trim()) newErrors[`item_${item.id}`] = 'This field is required' })
-    if (!jobDetails.trim()) newErrors.jobDetails = 'Job detail is required'
-    if (Object.keys(newErrors).length > 0) { setErrors(newErrors); toast.error('Please fill in all required fields'); return }
+    if (!selectedStatus) newErrors.selectedStatus = t('please_select_machine_status')
+    checklist.forEach(item => { if (!getAnswer(item).trim()) newErrors[`item_${item.id}`] = t('field_required') })
+    if (!jobDetails.trim()) newErrors.jobDetails = t('job_detail_required')
+    if (Object.keys(newErrors).length > 0) { setErrors(newErrors); toast.error(t('please_fill_required_fields')); return }
 
     setIsSubmitting(true)
     try {
-        const session = sessionStore.state.session
+      const session = sessionStore.state.session
 
-        const request = {
-            machineCode: machine.machineCode,
-            machineName: machine.machineName,
-            machineStatus: selectedStatus,
-            machineChecklist: JSON.stringify(checklist.map(item => ({
-                id: item.id,
-                questionDetail: item.question?.detail ?? 'N/A',
-                answerChoice: getAnswer(item),
-                checkStatus: true,
-            }))),
-            machineNote: note,
-            userId: session?.employeeId ?? '',
-            userName: `${session?.firstName ?? ''} ${session?.lastName ?? ''}`.trim(),
-            supervisor: machine.supervisorId,
-            manager: machine.managerId,
-            jobDetail: jobDetails,
-            checklistStatus: 'PENDING SUPERVISOR',
-        }
+      const request = {
+        machineCode: machine.machineCode,
+        machineName: machine.machineName,
+        machineStatus: selectedStatus,        // ส่ง EN value เสมอ
+        machineChecklist: JSON.stringify(checklist.map(item => ({
+          id: item.id,
+          questionDetail: item.question?.detail ?? 'N/A',
+          answerChoice: getAnswer(item),       // ส่ง EN value เสมอ
+          checkStatus: true,
+        }))),
+        machineNote: note,
+        userId: session?.employeeId ?? '',
+        userName: `${session?.firstName ?? ''} ${session?.lastName ?? ''}`.trim(),
+        supervisor: machine.supervisorId,
+        manager: machine.managerId,
+        jobDetail: jobDetails,
+        checklistStatus: 'PENDING SUPERVISOR',
+      }
 
-        const formData = new FormData()
-        formData.append('request', new Blob([JSON.stringify(request)], { type: 'application/json' }))
-        if (file) formData.append('file', file)
+      const formData = new FormData()
+      formData.append('request', new Blob([JSON.stringify(request)], { type: 'application/json' }))
+      if (file) formData.append('file', file)
 
-        const response = await api.post('/api/checklist/create', formData)
+      const response = await api.post('/api/checklist/create', formData)
 
-        if (!response.success) {
-            toast.error(response.message ?? 'Failed to save. Please contact administrator')
-            return  
-        }
+      if (!response.success) {
+        toast.error(response.message ?? t('save_failed'))
+        return
+      }
 
-        toast.success('Checklist saved successfully')
-        setTimeout(() => navigate({ to: '/checklist/dashboard' }), 1000)
+      toast.success(t('checklist_saved'))
+      setTimeout(() => navigate({ to: '/checklist/dashboard' }), 1000)
     } catch (error: any) {
-        console.error('Submit error:', error)
-        const message = error?.response?.data?.message
-            ?? error?.message
-            ?? 'Failed to save. Please contact administrator'
-        toast.error(message)
+      console.error('Submit error:', error)
+      const message = error?.response?.data?.message ?? error?.message ?? t('save_failed')
+      toast.error(message)
     } finally {
-        setIsSubmitting(false)
+      setIsSubmitting(false)
     }
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <>
       <FormLayout
         backLink="/checklist/dashboard"
-        title="Checklist Record"
-        subtitle={machine ? `${machine.machineCode} — ${machine.machineName}` : 'Scan QR Code to begin'}
+        title={t('checklist_record')}
+        subtitle={machine ? `${machine.machineCode} — ${machine.machineName}` : t('scan_qr_to_begin')}
         onSubmit={handleSubmit}
         steps={formSteps}
         currentStep="form"
@@ -324,36 +342,43 @@ function RouteComponent() {
         getStepStatus={getStepStatus}
         isSubmitting={isSubmitting}
         isFormValid={isFormValid()}
-        submitText="Save"
+        submitText={t('save')}
         cancelLink="/checklist/dashboard"
       >
         <div className="px-2 pt-2 space-y-4">
 
-          {/* ── Machine Status ─────────────────────────────────── */}
+          {/* ── Machine Status ────────────────────────────────── */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">
-              Machine Status <span className="text-red-500">*</span>
+              {t('machine_status')} <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <select
                 value={selectedStatus}
-                onChange={e => { setSelectedStatus(e.target.value); setErrors(p => { const n = {...p}; delete n.selectedStatus; return n }) }}
+                onChange={e => {
+                  setSelectedStatus(e.target.value)
+                  setErrors(p => { const n = { ...p }; delete n.selectedStatus; return n })
+                }}
                 className={`w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition
                   ${errors.selectedStatus ? 'border-red-400' : 'border-border'}`}
               >
-                <option value="">Please select</option>
-                {MACHINE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="">{t('please_select')}</option>
+                {machineStatusOptions.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             </div>
             {errors.selectedStatus && (
-              <p className="text-red-500 text-xs flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {errors.selectedStatus}</p>
+              <p className="text-red-500 text-xs flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> {errors.selectedStatus}
+              </p>
             )}
           </div>
 
-          {/* ── Checklist ────────────────────────────────────── */}
+          {/* ── Checklist ─────────────────────────────────────── */}
           {checklist.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-6">No checklist items</p>
+            <p className="text-muted-foreground text-sm text-center py-6">{t('no_checklist_items')}</p>
           ) : (
             <div className="space-y-3">
               {checklist.map((item, idx) => {
@@ -375,8 +400,10 @@ function RouteComponent() {
                           className={`w-full appearance-none border rounded-lg px-3 py-2 pr-8 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500
                             ${hasError ? 'border-red-400' : 'border-border'}`}
                         >
-                          <option value="">Please select</option>
-                          {CHOICES.map(c => <option key={c} value={c}>{c}</option>)}
+                          <option value="">{t('please_select')}</option>
+                          {choiceOptions.map(c => (
+                            <option key={c.value} value={c.value}>{c.label}</option>
+                          ))}
                         </select>
                         <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                       </div>
@@ -385,14 +412,14 @@ function RouteComponent() {
                         type="text"
                         value={answer}
                         onChange={e => updateAnswer(item.id, e.target.value)}
-                        placeholder="Please specify"
+                        placeholder={t('please_specify')}
                         className={`w-full mt-2 border rounded-lg px-3 py-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500
                           ${hasError ? 'border-red-400' : 'border-border'}`}
                       />
                     )}
                     {hasError && (
                       <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" /> This field is required
+                        <AlertCircle className="w-3 h-3" /> {t('field_required')}
                       </p>
                     )}
                   </div>
@@ -404,37 +431,42 @@ function RouteComponent() {
           {/* ── Job Detail ────────────────────────────────────── */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">
-              Job Detail <span className="text-red-500">*</span>
+              {t('job_detail')} <span className="text-red-500">*</span>
             </label>
-            <p className="text-xs text-muted-foreground">Job name / Job No. If none, enter -</p>
+            <p className="text-xs text-muted-foreground">{t('job_detail_hint')}</p>
             <textarea
               value={jobDetails}
-              onChange={e => { setJobDetails(e.target.value); setErrors(p => { const n = {...p}; delete n.jobDetails; return n }) }}
+              onChange={e => {
+                setJobDetails(e.target.value)
+                setErrors(p => { const n = { ...p }; delete n.jobDetails; return n })
+              }}
               rows={3}
-              placeholder="Please specify"
+              placeholder={t('please_specify')}
               className={`w-full border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none
                 ${errors.jobDetails ? 'border-red-400' : 'border-border'}`}
             />
             {errors.jobDetails && (
-              <p className="text-red-500 text-xs flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {errors.jobDetails}</p>
+              <p className="text-red-500 text-xs flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> {errors.jobDetails}
+              </p>
             )}
           </div>
 
           {/* ── Note ─────────────────────────────────────────── */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-muted-foreground">Note</label>
+            <label className="text-sm font-medium text-muted-foreground">{t('note')}</label>
             <textarea
               value={note}
               onChange={e => setNote(e.target.value)}
               rows={2}
-              placeholder="Additional notes (optional)"
+              placeholder={t('note_placeholder')}
               className="w-full border border-border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
 
-          {/* ── Attachments ───────────────────────────────────────── */}
+          {/* ── Attachments ───────────────────────────────────── */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-muted-foreground">Attachments</label>
+            <label className="text-sm font-medium text-muted-foreground">{t('attachments')}</label>
             {file ? (
               <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border">
                 <div className="flex items-center gap-2 text-sm">
@@ -449,7 +481,7 @@ function RouteComponent() {
             ) : (
               <label className="flex flex-col items-center gap-2 p-6 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/5 transition">
                 <Upload className="w-8 h-8 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Click to upload image</span>
+                <span className="text-sm text-muted-foreground">{t('click_to_upload')}</span>
                 <input type="file" accept="image/*" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
               </label>
             )}
