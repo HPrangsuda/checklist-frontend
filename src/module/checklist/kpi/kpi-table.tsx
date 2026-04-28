@@ -63,8 +63,6 @@ export function KpiTbl() {
       cell: ({ row }) => (
         <span>
           {row.original.employeeName}
-          <br />
-          <span className="text-xs text-muted-foreground">#{row.original.memberId}</span>
         </span>
       ),
     },
