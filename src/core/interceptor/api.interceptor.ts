@@ -12,7 +12,7 @@ class ApiInterceptor {
 
   constructor() {
     this.instance = axios.create({
-      baseURL: '/api',
+      baseURL: '',
       timeout: 10000,
       withCredentials: true,
     })
