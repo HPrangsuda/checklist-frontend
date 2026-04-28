@@ -20,14 +20,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface KpiDTO {
   id: number
-  employeeId: string
+  memberId: number
   employeeName: string
   years: string
   months: string
   checkAll: number
   checked: number
-  managerId: string
-  supervisorId: string
+  managerId: number
+  supervisorId: number
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -60,7 +60,13 @@ export function KpiTbl() {
     {
       accessorKey: 'employeeName',
       header: t('name'),
-      cell: ({ row }) => <span>{row.original.employeeName}<br></br>{row.original.employeeId}</span>,
+      cell: ({ row }) => (
+        <span>
+          {row.original.employeeName}
+          <br />
+          <span className="text-xs text-muted-foreground">#{row.original.memberId}</span>
+        </span>
+      ),
     },
     {
       accessorKey: 'checkAll',
@@ -191,7 +197,6 @@ export function KpiTbl() {
         </div>
       </CardHeader>
       <CardContent className="p-4 space-y-4">
-        {/* Summary */}
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 rounded-lg border bg-muted/20">
             <p className="text-xs text-muted-foreground">{t('total_records')}</p>
