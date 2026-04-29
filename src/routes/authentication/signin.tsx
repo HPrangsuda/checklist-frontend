@@ -1,11 +1,12 @@
 import type React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, createFileRoute, redirect } from "@tanstack/react-router";
-import { Eye, EyeOff, Loader2, Send } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/core/lib/utils";
 import { toast } from "sonner";
 import type { LarkResponseDTO, ResponseDTO, SessionDTO } from "@/core/types/common";
@@ -13,6 +14,8 @@ import { api } from "@/core/interceptor/api.interceptor";
 import { sessionStore } from "@/core/lib/store";
 import { authService } from "@/core/service/auth.service";
 import { useTranslation } from "@/core/contexts/language-context";
+
+const REMEMBER_ME_KEY = "signin_remember_me";
 
 export const Route = createFileRoute('/authentication/signin')({
     beforeLoad: async ({ search }: { search: { redirect?: string } }) => {
@@ -25,14 +28,30 @@ export const Route = createFileRoute('/authentication/signin')({
     component: SigninPage,
 });
 
-function SigninPage({className,...props}: React.ComponentProps<"div">) {
+function SigninPage({ className, ...props }: React.ComponentProps<"div">) {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [rememberMe, setRememberMe] = useState(false);
     const [isLoginLoading, setIsLoginLoading] = useState(false);
     const [isLarkLoading, setIsLarkLoading] = useState(false);
     const router = useRouter();
     const { t } = useTranslation();
+
+    // โหลดข้อมูลที่บันทึกไว้เมื่อ component mount
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(REMEMBER_ME_KEY);
+            if (saved) {
+                const { username: savedUsername, password: savedPassword } = JSON.parse(saved);
+                setUsername(savedUsername || "");
+                setPassword(savedPassword || "");
+                setRememberMe(true);
+            }
+        } catch {
+            // ถ้า parse ไม่ได้ให้ข้ามไป
+        }
+    }, []);
 
     const togglePasswordVisibility = () => {
         setShowPassword(!showPassword);
@@ -42,19 +61,22 @@ function SigninPage({className,...props}: React.ComponentProps<"div">) {
         e.preventDefault();
         setIsLoginLoading(true);
         try {
-            const payload = {
-                username,
-                password,
-            };
+            const payload = { username, password };
             const response = await api.post<ResponseDTO<SessionDTO>>('/api/auth/sign-in', payload);
-            console.log('response:', response);
+
             if (response.success) {
+                // บันทึกหรือลบข้อมูล Remember Me
+                if (rememberMe) {
+                    localStorage.setItem(REMEMBER_ME_KEY, JSON.stringify({ username, password }));
+                } else {
+                    localStorage.removeItem(REMEMBER_ME_KEY);
+                }
+
                 sessionStore.setState({ session: response.data });
-                toast.success(`${t("message", response.code)}`|| 'Signin successful');
+                toast.success(`${t("message", response.code)}` || 'Signin successful');
 
                 const searchParams = new URLSearchParams(window.location.search);
                 const redirectTo = searchParams.get('redirect') || '/checklist/dashboard';
-
                 router.navigate({ to: redirectTo });
             } else {
                 toast.error(`${t("message", response.code)}` || 'Signin failed. Please check your credentials.');
@@ -124,7 +146,6 @@ function SigninPage({className,...props}: React.ComponentProps<"div">) {
                                                 placeholder={t("Enter Password")}
                                                 autoComplete="current-password"
                                                 onChange={(e) => setPassword(e.target.value)}
-                                                //required
                                                 disabled={isLoginLoading}
                                                 className="pr-10"
                                             />
@@ -134,7 +155,8 @@ function SigninPage({className,...props}: React.ComponentProps<"div">) {
                                                 size="icon"
                                                 className="absolute right-0 top-0 h-full px-3"
                                                 onClick={togglePasswordVisibility}
-                                                tabIndex={-1}>
+                                                tabIndex={-1}
+                                            >
                                                 {showPassword ? (
                                                     <EyeOff className="h-4 w-4" />
                                                 ) : (
@@ -146,7 +168,28 @@ function SigninPage({className,...props}: React.ComponentProps<"div">) {
                                             </Button>
                                         </div>
                                     </div>
-                                    <Button type="submit" className="w-full border dark:text-white dark:bg-input/30 dark:border-input dark:hover:bg-input/50" disabled={isLoginLoading}>
+
+                                    {/* Remember Me Checkbox */}
+                                    <div className="flex items-center gap-2">
+                                        <Checkbox
+                                            id="rememberMe"
+                                            checked={rememberMe}
+                                            onCheckedChange={(checked) => setRememberMe(checked === true)}
+                                            disabled={isLoginLoading}
+                                        />
+                                        <Label
+                                            htmlFor="rememberMe"
+                                            className="text-sm font-normal cursor-pointer select-none"
+                                        >
+                                            {t("Remember Me")}
+                                        </Label>
+                                    </div>
+
+                                    <Button
+                                        type="submit"
+                                        className="w-full border dark:text-white dark:bg-input/30 dark:border-input dark:hover:bg-input/50"
+                                        disabled={isLoginLoading}
+                                    >
                                         {isLoginLoading ? (
                                             <>
                                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -170,5 +213,5 @@ function SigninPage({className,...props}: React.ComponentProps<"div">) {
                 </div>
             </div>
         </div>
-    )
+    );
 }
