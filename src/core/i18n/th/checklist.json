@@ -287,5 +287,6 @@
   "choice_not_ready_repair": "ไม่พร้อม (รอซ่อม)",
   "choice_not_ready_under_repair": "ไม่พร้อม (กำลังซ่อม)",
   "choice_not_ready_modification": "ไม่พร้อม (ปรับปรุงอุปกรณ์)",
-  "choice_others": "อื่นๆ"
+  "choice_others": "อื่นๆ",
+  "please_select": "กรุณาเลือก"
 }

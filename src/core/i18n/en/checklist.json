@@ -287,5 +287,6 @@
   "choice_not_ready_repair": "NOT READY (WAITING FOR REPAIR)",
   "choice_not_ready_under_repair": "NOT READY (UNDER REPAIR)",
   "choice_not_ready_modification": "NOT READY (EQUIPMENT MODIFICATION)",
-  "choice_others": "OTHERS"
+  "choice_others": "OTHERS",
+  "please_select": "Please select"
 }
