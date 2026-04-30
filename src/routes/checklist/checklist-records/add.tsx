@@ -300,6 +300,7 @@ function RouteComponent() {
         machineNote: note,
         userId: session?.employeeId ?? '',
         userName: `${session?.firstName ?? ''} ${session?.lastName ?? ''}`.trim(),
+        memberId: session?.memberId ?? null,
         supervisor: machine.supervisorId,
         manager: machine.managerId,
         jobDetail: jobDetails,
