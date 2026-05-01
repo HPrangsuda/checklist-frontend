@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, CheckCircle2, FileText, ListCheck } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, FileText, ListCheck, ChevronDown } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
@@ -50,6 +50,29 @@ interface CurrentUser {
   userId: string
   userName: string
   memberId: number
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const REASON_NOT_CHECKED_OPTIONS = [
+  { value: '',                                   labelKey: 'please_select' },
+  { value: 'Leave',                              labelKey: 'reason_leave' },
+  { value: 'Shift Work',                         labelKey: 'reason_shift' },
+  { value: 'Working Offsite',                    labelKey: 'reason_offsite' },
+  { value: 'Under Maintenance',                  labelKey: 'reason_under_maintenance' },
+  { value: 'Tool Used Offsite',                  labelKey: 'reason_tool_offsite' },
+  { value: 'Responsible Person Did Not Perform', labelKey: 'reason_not_performed' },
+]
+
+// map ค่าเก่า (ไทย / placeholder) → English value
+const REASON_TO_EN: Record<string, string> = {
+  'NO ACTION TAKEN':             '',
+  'ลางาน':                      'Leave',
+  'เข้ากะ':                     'Shift Work',
+  'ทำงานนอกสถานที่':            'Working Offsite',
+  'อยู่ระหว่างซ่อมบำรุง':       'Under Maintenance',
+  'เครื่องมือใช้งานนอกสถานที่': 'Tool Used Offsite',
+  'ผู้รับผิดชอบไม่ดำเนินการ':   'Responsible Person Did Not Perform',
 }
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
@@ -100,21 +123,27 @@ function ChecklistEdit() {
   const { t }  = useTranslation('checklist')
   const router = useRouter()
 
-  const [record, setRecord]         = useState<ChecklistFormData | null>(null)
-  const [loading, setLoading]       = useState(true)
-  const [approving, setApproving]   = useState(false)
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [record, setRecord]                 = useState<ChecklistFormData | null>(null)
+  const [loading, setLoading]               = useState(true)
+  const [approving, setApproving]           = useState(false)
+  const [currentUser, setCurrentUser]       = useState<CurrentUser | null>(null)
+  const [selectedReason, setSelectedReason] = useState<string>('')
 
   useEffect(() => {
     if (id) fetchData()
     fetchCurrentUser()
   }, [id])
 
+  useEffect(() => {
+    const raw = record?.reasonNotChecked ?? ''
+    // ถ้ามีใน map ให้แปลง ถ้าไม่มีให้ใช้ค่าเดิม (กรณีเป็น EN อยู่แล้ว)
+    setSelectedReason(raw in REASON_TO_EN ? REASON_TO_EN[raw] : raw)
+  }, [record?.reasonNotChecked])
+
   const fetchCurrentUser = async () => {
     try {
       const res = await api.get<{ data: CurrentUser }>('/api/auth/me')
       setCurrentUser(res?.data ?? null)
-      
     } catch {
       // ignore
     }
@@ -143,14 +172,20 @@ function ChecklistEdit() {
 
   const handleApprove = async () => {
     if (!record?.id) return
+
+    if (showReasonSelect && !selectedReason) {
+      toast.error(t('please_select_reason'))
+      return
+    }
+
     try {
       setApproving(true)
-      await api.put('/api/checklist/update', { id: record.id })
+      await api.put('/api/checklist/update', {
+        id: record.id,
+        reasonNotChecked: selectedReason,
+      })
       toast.success(t('checklist_approved'))
-      const nextStatus = record.checklistStatus === 'PENDING SUPERVISOR'
-        ? (record.manager ? 'PENDING MANAGER' : 'COMPLETED')
-        : 'COMPLETED'
-      setRecord(prev => prev ? { ...prev, checklistStatus: nextStatus } : null)
+      router.navigate({ to: '/checklist/checklist-records' })
     } catch {
       toast.error(t('failed_to_approve_checklist'))
     } finally {
@@ -161,10 +196,12 @@ function ChecklistEdit() {
   const formatDate = (dateStr?: string) =>
     dateStr ? new Date(dateStr).toLocaleDateString('en-GB', { year: '2-digit', month: '2-digit', day: '2-digit' }) : ''
 
+  const showReasonSelect = !!(record?.reasonNotChecked)
+
   const canApprove = record && currentUser && (
-  (record.checklistStatus === 'PENDING SUPERVISOR' && String(currentUser.memberId) === record.supervisor) ||
-  (record.checklistStatus === 'PENDING MANAGER'    && String(currentUser.memberId) === record.manager)
-)
+    (record.checklistStatus === 'PENDING SUPERVISOR' && String(currentUser.memberId) === record.supervisor) ||
+    (record.checklistStatus === 'PENDING MANAGER'    && String(currentUser.memberId) === record.manager)
+  ) && (!showReasonSelect || !!selectedReason)
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 dark:bg-background p-6">
@@ -220,10 +257,10 @@ function ChecklistEdit() {
           </CardHeader>
           <CardContent className="p-6 pt-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
-              <InfoRow label={t('machine_status')}    value={<StatusBadge status={record.machineStatus} />} />
-              <InfoRow label={t('check_status')}      value={<StatusBadge status={record.checklistStatus} />} />
-              <InfoRow label={t('created_by')}        value={record.userName ?? '-'} />
-              <InfoRow label={t('created_at')}        value="-" />
+              <InfoRow label={t('machine_status')} value={<StatusBadge status={record.machineStatus} />} />
+              <InfoRow label={t('check_status')}   value={<StatusBadge status={record.checklistStatus} />} />
+              <InfoRow label={t('created_by')}     value={record.userName ?? '-'} />
+              <InfoRow label={t('created_at')}     value="-" />
               <InfoRow
                 label={t('supervisor_checked')}
                 value={record.supervisor ? `${record.supervisor}${record.dateSupervisorChecked ? ` - ${formatDate(record.dateSupervisorChecked)}` : ''}` : '-'}
@@ -232,8 +269,29 @@ function ChecklistEdit() {
                 label={t('manager_checked')}
                 value={record.manager ? `${record.manager}${record.dateManagerChecked ? ` - ${formatDate(record.dateManagerChecked)}` : ''}` : '-'}
               />
-              <InfoRow label={t('job_detail')}         value={record.jobDetail ?? '-'} />
-              <InfoRow label={t('reason_not_checked')} value={record.reasonNotChecked ?? '-'} />
+              <InfoRow label={t('job_detail')} value={record.jobDetail ?? '-'} />
+
+              {showReasonSelect ? (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">{t('reason_not_checked')}</p>
+                  <div className="relative">
+                    <select
+                      value={selectedReason}
+                      onChange={e => setSelectedReason(e.target.value)}
+                      className="w-full appearance-none border border-border rounded-lg px-3 py-2 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary transition"
+                    >
+                      {REASON_NOT_CHECKED_OPTIONS.map(r => (
+                        <option key={r.value} value={r.value} disabled={r.value === ''}>
+                          {t(r.labelKey)}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  </div>
+                </div>
+              ) : (
+                <InfoRow label={t('reason_not_checked')} value={record.reasonNotChecked ?? '-'} />
+              )}
             </div>
 
             {record.machineNote && (
@@ -278,7 +336,7 @@ function ChecklistEdit() {
           </CardHeader>
           <CardContent className="p-6 pt-0">
             {checklistItems.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-3 pt-4">
                 {checklistItems.map(item => <ChecklistQuestionItem key={item.id} item={item} />)}
               </div>
             ) : (
@@ -286,8 +344,12 @@ function ChecklistEdit() {
             )}
 
             <div className="mt-8 flex justify-end gap-3 border-t pt-6">
-              {canApprove && (
-                <Button onClick={handleApprove} disabled={approving} className="min-w-[140px]">
+              {record && currentUser && (
+                <Button
+                  onClick={handleApprove}
+                  disabled={!canApprove || approving}
+                  className="min-w-[140px]"
+                >
                   {approving ? t('approving') : t('approve')}
                 </Button>
               )}

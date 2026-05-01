@@ -159,6 +159,17 @@ function Checklist() {
       size: 32,
     },
     {
+      id: 'action',
+      header: t('action'),
+      cell: ({ row }) => (
+        <TblAction
+          view
+          onView={() => handleView(row.original.id)}
+        />
+      ),
+      size: 80,
+    },
+    {
       accessorKey: 'machineCode',
       header: t('machine_code'),
       cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div>,
@@ -190,57 +201,12 @@ function Checklist() {
           {getStatusLabel(row.original.checklistStatus)}
         </Badge>
       ) : null,
-    },
-    {
-      id: 'action',
-      header: t('action'),
-      cell: ({ row }) => (
-        <TblAction
-          view edit
-          onView={() => handleView(row.original.id)}
-          onEdit={() => handleEdit(row.original.id)}
-        />
-      ),
-      size: 80,
     },
   ]
 
   // ─── columns (pending table) ──────────────────────────────────────────────
 
   const pendingColumns: ColumnDef<ChecklistDTO>[] = [
-    {
-      accessorKey: 'machineCode',
-      header: t('machine_code'),
-      cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div>,
-    },
-    {
-      accessorKey: 'machineName',
-      header: t('machine_name'),
-      cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div>,
-    },
-    {
-      accessorKey: 'userName',
-      header: t('user_name'),
-      cell: ({ row }) => <div className="text-sm">{row.original.userName || '-'}</div>,
-    },
-    {
-      accessorKey: 'machineStatus',
-      header: t('machine_status'),
-      cell: ({ row }) => row.original.machineStatus ? (
-        <Badge className={getStatusColor(row.original.machineStatus)}>
-          {getStatusLabel(row.original.machineStatus)}
-        </Badge>
-      ) : null,
-    },
-    {
-      accessorKey: 'checklistStatus',
-      header: t('check_status'),
-      cell: ({ row }) => row.original.checklistStatus ? (
-        <Badge className={getStatusColor(row.original.checklistStatus)}>
-          {getStatusLabel(row.original.checklistStatus)}
-        </Badge>
-      ) : null,
-    },
     {
       id: 'action',
       header: t('action'),
@@ -251,7 +217,40 @@ function Checklist() {
         />
       ),
       size: 80,
+    },{
+      accessorKey: 'machineCode',
+      header: t('machine_code'),
+      cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div>,
     },
+    {
+      accessorKey: 'machineName',
+      header: t('machine_name'),
+      cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div>,
+    },
+    {
+      accessorKey: 'userName',
+      header: t('user_name'),
+      cell: ({ row }) => <div className="text-sm">{row.original.userName || '-'}</div>,
+    },
+    {
+      accessorKey: 'machineStatus',
+      header: t('machine_status'),
+      cell: ({ row }) => row.original.machineStatus ? (
+        <Badge className={getStatusColor(row.original.machineStatus)}>
+          {getStatusLabel(row.original.machineStatus)}
+        </Badge>
+      ) : null,
+    },
+    {
+      accessorKey: 'checklistStatus',
+      header: t('check_status'),
+      cell: ({ row }) => row.original.checklistStatus ? (
+        <Badge className={getStatusColor(row.original.checklistStatus)}>
+          {getStatusLabel(row.original.checklistStatus)}
+        </Badge>
+      ) : null,
+    },
+    
   ]
 
   // ─── tables ───────────────────────────────────────────────────────────────

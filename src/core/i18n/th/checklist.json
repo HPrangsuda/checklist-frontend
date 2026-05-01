@@ -288,5 +288,16 @@
   "choice_not_ready_under_repair": "ไม่พร้อม (กำลังซ่อม)",
   "choice_not_ready_modification": "ไม่พร้อม (ปรับปรุงอุปกรณ์)",
   "choice_others": "อื่นๆ",
-  "please_select": "กรุณาเลือก"
+  "please_select": "กรุณาเลือก",
+  "saving": "กำลังบันทึก...",
+  "save": "บันทึก",
+  "reason_saved": "บันทึกสาเหตุสำเร็จ",
+  "failed_to_save_reason": "บันทึกสาเหตุล้มเหลว",
+  "reason_leave": "ลางาน",
+  "reason_shift": "เข้ากะ",
+  "reason_offsite": "ทำงานนอกสถานที่",
+  "reason_under_maintenance": "อยู่ระหว่างซ่อมบำรุง",
+  "reason_tool_offsite": "เครื่องมือใช้งานนอกสถานที่",
+  "reason_not_performed": "ผู้รับผิดชอบไม่ดำเนินการ",
+  "pending_approval": "รอการอนุมัติ"
 }

@@ -288,5 +288,16 @@
   "choice_not_ready_under_repair": "NOT READY (UNDER REPAIR)",
   "choice_not_ready_modification": "NOT READY (EQUIPMENT MODIFICATION)",
   "choice_others": "OTHERS",
-  "please_select": "Please select"
+  "please_select": "Please select",
+  "saving": "Saving...",
+  "save": "Save",
+  "reason_saved": "Reason saved successfully",
+  "failed_to_save_reason": "Failed to save reason",
+  "reason_leave": "Leave",
+  "reason_shift": "Shift Work",
+  "reason_offsite": "Working Offsite",
+  "reason_under_maintenance": "Under Maintenance",
+  "reason_tool_offsite": "Tool Used Offsite",
+  "reason_not_performed": "Responsible Person Did Not Perform",
+  "pending_approval": "Pending Approval"
 }
