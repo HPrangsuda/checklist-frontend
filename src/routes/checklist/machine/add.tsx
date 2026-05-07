@@ -81,7 +81,7 @@ function RouteComponent({ data }: any) {
     { id: 'calibration', title: t('calibration'), description: t('calibration_information'), required: false },
   ]
 
-  const machineStatusOptions     = [{ name: 'READY TO USE' }, { name: 'NOT IN USE' }, { name: 'REPAIR' }]
+  const machineStatusOptions     = [{ name: 'OPERATIONAL' }, { name: 'NON-OPERATIONAL' }, { name: 'UNDER REPAIR' }]
   const maintenanceOptions       = [{ name: '6 MONTH' }, { name: '3 MONTH' }]
   const resetPeriodOptions       = [{ name: 'WEEKLY' }, { name: 'MONTHLY' }, { name: 'EVERY 3 MONTHS' }]
   const resultOptions            = [{ name: 'PASS' }, { name: 'FAIL' }]
@@ -458,7 +458,13 @@ function RouteComponent({ data }: any) {
     }
     setIsSubmitting(true)
     try {
-      await api.post('/api/machine/create', buildMachineDTO())
+      const response = await api.post('/api/machine/create', buildMachineDTO())
+      
+      const savedId = response?.data?.id ?? response?.data?.data?.id
+      if (savedId) {
+        await api.post(`/api/machine/${savedId}/sync-to-lark`)
+      }
+
       toast.success(t('machine_created'))
       setTimeout(() => {
         navigate(refId

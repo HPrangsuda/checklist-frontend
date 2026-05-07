@@ -111,11 +111,11 @@ function Checklist() {
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
-      case 'ready to use': case 'completed':
+      case 'operational': case 'completed':
         return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-      case 'repair': case 'pending':
+      case 'under repair': case 'pending':
         return 'bg-red-100 text-red-600 dark:text-red-100'
-      case 'not in use': case 'pending manager':
+      case 'non-operational': case 'pending manager':
         return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100'
       case 'pending supervisor':
         return 'bg-orange-100 text-orange-600 dark:text-orange-100'

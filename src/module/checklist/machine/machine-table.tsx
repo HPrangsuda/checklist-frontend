@@ -57,11 +57,11 @@ export function MachineTbl() {
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
-      case 'READY TO USE': case 'COMPLETED':
+      case 'OPERATIONAL': case 'COMPLETED':
         return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
       case 'REPAIR': case 'PENDING':
         return 'bg-red-100 text-red-600 dark:text-red-100'
-      case 'NOT IN USE': case 'PENDING MANAGER':
+      case 'NON-OPERATIONAL': case 'PENDING MANAGER':
         return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100'
       case 'PENDING SUPERVISOR':
         return 'bg-orange-100 text-orange-600 dark:text-orange-100'

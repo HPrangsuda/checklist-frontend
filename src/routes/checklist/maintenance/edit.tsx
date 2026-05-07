@@ -65,7 +65,7 @@ const CHOICES = [
   'Not ready (Equipment modification)',
   'Others',
 ]
-const MACHINE_STATUSES = ['In use', 'Not in use', 'Under maintenance']
+const MACHINE_STATUSES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER REPAIR']
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 function MaintenanceEdit() {

@@ -427,12 +427,12 @@ function CalibrationEdit() {
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="In Use">In Use</SelectItem>
-                    <SelectItem value="Decommissioned">Decommissioned</SelectItem>
-                    <SelectItem value="Limited Use">Limited Use</SelectItem>
-                    <SelectItem value="Certificate Mismatch">Certificate Mismatch</SelectItem>
-                    <SelectItem value="Damaged">Damaged</SelectItem>
-                    <SelectItem value="In Repair">In Repair</SelectItem>
+                    <SelectItem value="OPERATIONAL">Operational</SelectItem>
+                    <SelectItem value="DECOMMISSIONED">Decommissioned</SelectItem>
+                    <SelectItem value="LIMITED USE">Limited Use</SelectItem>
+                    <SelectItem value="CERTIFICATE MISMATCH">Certificate Mismatch</SelectItem>
+                    <SelectItem value="DAMAGED">Damaged</SelectItem>
+                    <SelectItem value="UNDER REPAIR">Under Repair</SelectItem>
                     <SelectItem value="N/A">N/A</SelectItem>
                   </SelectContent>
                 </Select>

@@ -138,7 +138,7 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: MachineDepa
   }
 
   const exportToCSV = () => {
-    const headers = ['Department', 'Total', 'Ready to Use', 'Repair', 'Not in Use', 'Ready Rate', 'Completed', 'Pending', 'Completion Rate', 'Approve', 'Approve Rate']
+    const headers = ['Department', 'Total', 'Operational', 'Under Repair', 'Non-Operational', 'Ready Rate', 'Completed', 'Pending', 'Completion Rate', 'Approve', 'Approve Rate']
     const rows = filteredData.map(d => [
       d.department, d.total, d.totalReadyToUse, d.totalRepair, d.totalNotInUse,
       `${d.readyRate.toFixed(1)}%`, d.totalCompleted, d.totalPending,

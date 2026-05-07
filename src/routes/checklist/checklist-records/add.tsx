@@ -36,6 +36,7 @@ interface MachineChecklist {
 }
 
 interface Machine {
+  id: number
   machineCode: string
   machineName: string
   frequency?: string
@@ -47,8 +48,7 @@ interface Machine {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// ค่าที่ส่ง backend ยังคงเป็น EN เสมอ — label เท่านั้นที่เปลี่ยนตามภาษา
-const MACHINE_STATUS_VALUES = ['IN USE', 'NOT IN USE', 'UNDER MAINTENANCE'] as const
+const MACHINE_STATUS_VALUES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER MAINTENANCE'] as const
 const CHOICE_VALUES = [
   'READY TO USE',
   'NOT READY (WAITING FOR REPAIR)',
@@ -317,6 +317,8 @@ function RouteComponent() {
         toast.error(response.message ?? t('save_failed'))
         return
       }
+
+      if (machine?.id) await api.post(`/api/machine/${machine.id}/sync-to-lark`)
 
       toast.success(t('checklist_saved'))
       setTimeout(() => navigate({ to: '/checklist/dashboard' }), 1000)

@@ -53,7 +53,7 @@ function RouteComponent() {
   const [note, setNote] = useState('')
   const [file, setFile] = useState<File | null>(null)
 
-  const MACHINE_STATUSES = ['In use', 'Not in use', 'Under maintenance']
+  const MACHINE_STATUSES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER REPAIR']
   const CHOICES = [
     'Ready to use',
     'Not ready (Waiting for repair)',

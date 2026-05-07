@@ -229,9 +229,9 @@ function MachineView() {
 
   const getStatusColor = (status?: string) => {
     switch ((status || '').toLowerCase()) {
-      case 'ready to use': case 'completed':            return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-      case 'repair':       case 'pending': case 'overdue': return 'bg-red-100 text-red-600 dark:text-red-100'
-      case 'not in use':   case 'pending manager': case 'scheduled': return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100'
+      case 'operational': case 'completed':            return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
+      case 'under repair':       case 'pending': case 'overdue': return 'bg-red-100 text-red-600 dark:text-red-100'
+      case 'non-operational':   case 'pending manager': case 'scheduled': return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100'
       case 'pending supervisor': case 'completed (late)': return 'bg-orange-100 text-orange-600 dark:text-orange-100'
       case 'in progress':                               return 'bg-blue-100 text-blue-600 dark:text-blue-100'
       default:                                          return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'

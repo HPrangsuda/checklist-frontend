@@ -68,9 +68,9 @@ const formSteps: FormStep[] = [
 ]
 
 const machineStatusOptions = [
-  { value: 'READY TO USE', label: 'READY TO USE' },
-  { value: 'NOT IN USE',   label: 'NOT IN USE'   },
-  { value: 'REPAIR',       label: 'REPAIR'       },
+  { value: 'OPERATIONAL', label: 'OPERATIONAL' },
+  { value: 'NON-OPERATIONAL',   label: 'NON-OPERATIONAL'   },
+  { value: 'UNDER REPAIR',       label: 'UNDER REPAIR'       },
 ]
 
 // ─── ReadOnlyField ────────────────────────────────────────────────────────────
@@ -597,6 +597,11 @@ function MachineEdit() {
     setIsSubmitting(true)
     try {
       await api.put('/api/machine/update', buildMachineDTO())
+      await api.post(`/api/machine/${id}/sync-to-lark`)
+
+      // Sync all machines to Lark to ensure checklist updates are reflected
+      //await api.post('/api/machine/sync-all-to-lark')
+
       toast.success('Machine updated successfully!')
       setTimeout(() => navigate({ to: '/checklist/machine' }), 1000)
     } catch (error: any) {

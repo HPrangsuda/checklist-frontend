@@ -81,9 +81,9 @@ function StatusBadge({ status }: { status?: string }) {
   const { t } = useTranslation('checklist')
 
   const statusColor: Record<string, string> = {
-    'READY TO USE':       'bg-emerald-100 text-emerald-600 dark:text-emerald-100',
-    'REPAIR':             'bg-red-100 text-red-600 dark:text-red-100',
-    'NOT IN USE':         'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
+    'OPERATIONAL':        'bg-emerald-100 text-emerald-600 dark:text-emerald-100',
+    'UNDER REPAIR':       'bg-red-100 text-red-600 dark:text-red-100',
+    'NON-OPERATIONAL':    'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
     'COMPLETED':          'bg-emerald-100 text-emerald-600 dark:text-emerald-100',
     'PENDING':            'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
     'PENDING MANAGER':    'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
@@ -101,8 +101,8 @@ function StatusBadge({ status }: { status?: string }) {
 
 function ChecklistQuestionItem({ item }: { item: ChecklistItem }) {
   const getAnswerStyle = (answer: string) => {
-    if (answer.includes('READY TO USE')) return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-    if (answer.includes('NOT IN USE'))   return 'bg-red-100 text-red-800 border-red-300'
+    if (answer.includes('OPERATIONAL')) return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
+    if (answer.includes('NON-OPERATIONAL'))   return 'bg-red-100 text-red-800 border-red-300'
     return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
   }
 
@@ -184,6 +184,13 @@ function ChecklistEdit() {
         id: record.id,
         reasonNotChecked: selectedReason,
       })
+
+      if (record.machineCode) {
+        const machineRes = await api.get<any>(`/api/machine/machine-code/${record.machineCode}`)
+        const machineId = machineRes?.data?.id ?? machineRes?.id
+        if (machineId) await api.post(`/api/machine/${machineId}/sync-to-lark`)
+      }
+
       toast.success(t('checklist_approved'))
       router.navigate({ to: '/checklist/checklist-records' })
     } catch {

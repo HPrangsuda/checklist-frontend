@@ -49,7 +49,7 @@ interface CalibrationRecord {
 const getStatusColor = (status?: string) => {
   const s = (status || '').toLowerCase();
   switch (s) {
-    case 'ready to use':
+    case 'operational':
     case 'completed':
     case 'pass':
     case 'ใช้งานได้':
@@ -62,7 +62,7 @@ const getStatusColor = (status?: string) => {
     case 'กำลังซ่อม':
     case 'รอดำเนินการ':
       return 'bg-red-100 text-red-600 dark:text-red-100';
-    case 'not in use':
+    case 'non-operational':
     case 'pending manager':
     case 'scheduled':
     case 'ไม่ใช้งาน':
