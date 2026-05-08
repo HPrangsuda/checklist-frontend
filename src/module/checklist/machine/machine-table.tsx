@@ -16,6 +16,7 @@ import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Drill } from 'lucide-react'
+import { getStatusColor } from '@/utils/status.untils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,11 +27,7 @@ interface MachineDTO {
   department: string
   machineStatus: string
   checkStatus: string
-  responsiblePersonId: string
-  brand?: string
-  model?: string
-  serialNumber?: string
-  lastReview?: string
+  responsiblePersonName: string
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -53,21 +50,6 @@ export function MachineTbl() {
     const key = status.toLowerCase().replace(/\s+/g, '_')
     const translated = t(`status_${key}`)
     return translated !== `status_${key}` ? translated : status
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'OPERATIONAL': case 'COMPLETED':
-        return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-      case 'REPAIR': case 'PENDING':
-        return 'bg-red-100 text-red-600 dark:text-red-100'
-      case 'NON-OPERATIONAL': case 'PENDING MANAGER':
-        return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100'
-      case 'PENDING SUPERVISOR':
-        return 'bg-orange-100 text-orange-600 dark:text-orange-100'
-      default:
-        return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
-    }
   }
 
   const columns: ColumnDef<MachineDTO>[] = [
@@ -126,10 +108,10 @@ export function MachineTbl() {
         : <span className="text-muted-foreground text-sm">-</span>,
     },
     {
-      accessorKey: 'responsiblePersonId',
+      accessorKey: 'responsiblePersonName',
       header: t('responsible'),
-      cell: ({ row }) => row.original.responsiblePersonId
-        ? <div className="text-sm">{row.original.responsiblePersonId}</div>
+      cell: ({ row }) => row.original.responsiblePersonName
+        ? <div className="text-sm">{row.original.responsiblePersonName}</div>
         : <span className="text-muted-foreground text-sm">-</span>,
     },
     {

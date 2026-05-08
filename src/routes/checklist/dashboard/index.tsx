@@ -120,7 +120,6 @@ function RouteComponent() {
           <ScheduleList />
           <Card>
             <div className="p-4 space-y-2">
-              <p className="text-sm font-semibold">{t('quick_actions')}</p>
               <button
                 onClick={() => navigate({ to: '/checklist/machine' })}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
@@ -142,19 +141,16 @@ function RouteComponent() {
           <KpiTbl />
         </div>
       </div>
-
-      {/* ── Row 3: CalibrationStats | MaintenanceStats ────────────────── */}
+      <div className="grid grid-cols-1 gap-6">
+        <MachineTbl />
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <CalibrationStats />
         <MaintenanceStats />
       </div>
-
-      {/* ── Row 4: Machine Table ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-6">
         <ChecklistStats />
-        <MachineTbl />
       </div>
-
     </div>
   )
 }
