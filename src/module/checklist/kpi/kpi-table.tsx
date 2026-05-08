@@ -4,6 +4,7 @@ import {
 } from '@tanstack/react-table'
 import { DataTableSkeleton } from '@/components/data-table/data-table-skeleton'
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar'
+import type { PageResponse } from '@/core/types/common'
 import { useTranslation } from '@/core/contexts/language-context'
 import { TblContainer } from '@/components/layout/tbl-container'
 import { DataTable } from '@/components/data-table/data-table'
@@ -15,6 +16,7 @@ import { toast } from 'sonner'
 import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { getStatusColor } from '@/utils/status.untils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,22 +51,18 @@ export function KpiTbl() {
   const [year,  setYear]  = useState(now.getFullYear().toString())
   const [month, setMonth] = useState((now.getMonth() + 1).toString().padStart(2, '0'))
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
-  const [data, setData] = useState<KpiDTO[]>([])
-  const [loading, setLoading] = useState(false)
-  const [allRecords, setAllRecords] = useState<KpiDTO[]>([])
+  const [data,       setData]       = useState<KpiDTO[]>([])
+  const [loading,    setLoading]    = useState(false)
   const [totalCount, setTotalCount] = useState(0)
-  const [keyword, setKeyword] = useState('')
+  const [keyword,    setKeyword]    = useState('')
+  const [searchValue, setSearchValue] = useState('')
   const debouncedSearch = useDebounce(keyword, 500)
 
   const columns: ColumnDef<KpiDTO>[] = [
     {
       accessorKey: 'employeeName',
       header: t('name'),
-      cell: ({ row }) => (
-        <span>
-          {row.original.employeeName}
-        </span>
-      ),
+      cell: ({ row }) => <span>{row.original.employeeName}</span>,
     },
     {
       accessorKey: 'checkAll',
@@ -82,16 +80,10 @@ export function KpiTbl() {
       cell: ({ row }) => {
         const { checkAll, checked } = row.original
         const pct = checkAll > 0 ? Math.round((checked / checkAll) * 100) : 0
+        const status = pct >= 100 ? 'completed' : pct >= 70 ? 'under maintenance' : 'canceled'
         return (
           <div className="flex justify-center">
-            <Badge
-              variant="outline"
-              className={
-                pct >= 100 ? 'border-green-400 text-green-600 bg-green-50'
-                : pct >= 70 ? 'border-orange-400 text-orange-600 bg-orange-50'
-                : 'border-red-400 text-red-600 bg-red-50'
-              }
-            >
+            <Badge className={getStatusColor(status)}>
               {pct}%
             </Badge>
           </div>
@@ -110,9 +102,8 @@ export function KpiTbl() {
     },
   ]
 
-  useEffect(() => {
-    onFetchData()
-  }, [debouncedSearch, pagination.pageIndex, pagination.pageSize, year, month])
+  useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
+  useEffect(() => { onFetchData() }, [searchValue, pagination.pageIndex, pagination.pageSize, year, month])
 
   const onFetchData = async () => {
     try {
@@ -120,25 +111,21 @@ export function KpiTbl() {
       const params = new URLSearchParams()
       params.set('years', year)
       params.set('months', month)
-      if (debouncedSearch.trim()) params.set('keyword', debouncedSearch.trim())
+      params.set('index', pagination.pageIndex.toString())
+      params.set('size',  pagination.pageSize.toString())
+      if (searchValue.trim()) params.set('keyword', searchValue.trim())
 
-      const res = await api.get<any>('/api/kpi/all', { params })
-
-      let items: KpiDTO[] = []
-      if (Array.isArray(res)) {
-        items = res
+      const response = await api.get<PageResponse<KpiDTO>>('/api/kpi/all', { params })
+      if (response?.success) {
+        setData(response.data ?? [])
+        setTotalCount(response.totalElements ?? 0)
       } else {
-        items = Object.entries(res)
-          .filter(([key]) => !isNaN(Number(key)))
-          .map(([, val]) => val as KpiDTO)
+        toast.error(response?.message ?? t('data_fetch_failed'))
+        setData([])
       }
-
-      const start = pagination.pageIndex * pagination.pageSize
-      setAllRecords(items)
-      setData(items.slice(start, start + pagination.pageSize))
-      setTotalCount(items.length)
     } catch {
       toast.error(t('data_fetch_failed'))
+      setData([])
     } finally {
       setLoading(false)
     }
@@ -154,24 +141,21 @@ export function KpiTbl() {
   }
 
   const table = useReactTable({
-    data,
-    columns,
-    manualPagination: true,
+    data, columns, manualPagination: true,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onPaginationChange: setPagination,
     pageCount: Math.ceil(totalCount / pagination.pageSize),
-    manualSorting: true,
-    manualFiltering: true,
+    manualSorting: true, manualFiltering: true,
     state: { pagination },
     getRowId: row => row.id.toString(),
   })
 
   return (
     <Card className="shadow-sm border-dashboard-border">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 flex-wrap gap-2">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 flex-wrap gap-2 border-b">
         <CardTitle className="font-bold">{t('kpi_records')}</CardTitle>
         <div className="flex items-center gap-2">
           <select
@@ -194,25 +178,7 @@ export function KpiTbl() {
           </select>
         </div>
       </CardHeader>
-      <CardContent className="p-4 space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="p-3 rounded-lg border bg-muted/20">
-            <p className="text-xs text-muted-foreground">{t('total_records')}</p>
-            <p className="text-2xl font-bold">{allRecords.length}</p>
-          </div>
-          <div className="p-3 rounded-lg border bg-orange-50 dark:bg-orange-950/30">
-            <p className="text-xs text-orange-600">{t('check_all')}</p>
-            <p className="text-2xl font-bold text-orange-600">
-              {allRecords.reduce((s, r) => s + (r.checkAll ?? 0), 0)}
-            </p>
-          </div>
-          <div className="p-3 rounded-lg border bg-green-50 dark:bg-green-950/30">
-            <p className="text-xs text-green-600">{t('checked')}</p>
-            <p className="text-2xl font-bold text-green-600">
-              {allRecords.reduce((s, r) => s + (r.checked ?? 0), 0)}
-            </p>
-          </div>
-        </div>
+      <CardContent>
         <TblContainer>
           <div className="p-0">
             <DataTableToolbar
@@ -228,14 +194,9 @@ export function KpiTbl() {
           <div>
             {loading ? (
               <DataTableSkeleton
-                columnCount={columns.length}
-                rowCount={10}
-                filterCount={0}
-                cellWidths={['auto']}
-                withViewOptions={false}
-                withPagination={true}
-                shrinkZero={false}
-                className="w-full"
+                columnCount={columns.length} rowCount={10} filterCount={0}
+                cellWidths={['auto']} withViewOptions={false} withPagination={true}
+                shrinkZero={false} className="w-full"
               />
             ) : (
               <DataTable table={table} emptyText={t('no_result')} />

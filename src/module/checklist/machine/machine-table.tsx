@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Drill } from 'lucide-react'
 import { getStatusColor } from '@/utils/status.untils'
 
@@ -206,51 +206,54 @@ export function MachineTbl() {
   })
 
   return (
-    <Card className="p-6">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b">
+    
+      <Card className="shadow-sm border-dashboard-border">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 flex-wrap gap-2 border-b">
         <CardTitle className="font-bold">
-          <Drill className="w-5 h-5 text-blue-600 inline mr-2" />
+          <Drill className="w-5 h-5 inline mr-2" />
           {t('machine_records')}
         </CardTitle>
       </CardHeader>
-      <TblContainer>
-        <div className="flex items-center justify-between gap-2">
-          <DataTableToolbar
-            table={table}
-            isSync={false}
-            isAdd={true}
-            isDelete={selectedIds.length > 0}
-            onSearch={handleSearch}
-            onDelete={handleSelectDelete}
-            onAdd={handleAdd}
-            isServerSide={true}
-            searchValue={keyword}
-            breakpoint={1300}
-            className="w-full gap-2"
-          />
-        </div>
-        <div>
-          {loading ? (
-            <DataTableSkeleton
-              columnCount={columns.length} rowCount={10} filterCount={0}
-              cellWidths={['auto']} withViewOptions={false} withPagination={true}
-              shrinkZero={false} className="w-full"
+      <CardContent>
+        <TblContainer>
+          <div className="flex items-center justify-between gap-2">
+            <DataTableToolbar
+              table={table}
+              isSync={false}
+              isAdd={true}
+              isDelete={selectedIds.length > 0}
+              onSearch={handleSearch}
+              onDelete={handleSelectDelete}
+              onAdd={handleAdd}
+              isServerSide={true}
+              searchValue={keyword}
+              breakpoint={1300}
+              className="w-full gap-2"
             />
-          ) : (
-            <DataTable table={table} emptyText={t('no_result')} />
-          )}
-        </div>
-        <DeleteDialog
-          isOpen={showDeleteDialog}
-          onClose={() => setShowDeleteDialog(false)}
-          title={t('delete_machines')}
-          confirmText="DELETE"
-          isAlert={false}
-          variant="destructive"
-          onConfirm={onDeleteData}
-          onSuccess={() => { onFetchData(); setSelectedIds([]) }}
-        />
-      </TblContainer>
+          </div>
+          <div>
+            {loading ? (
+              <DataTableSkeleton
+                columnCount={columns.length} rowCount={10} filterCount={0}
+                cellWidths={['auto']} withViewOptions={false} withPagination={true}
+                shrinkZero={false} className="w-full"
+              />
+            ) : (
+              <DataTable table={table} emptyText={t('no_result')} />
+            )}
+          </div>
+          <DeleteDialog
+            isOpen={showDeleteDialog}
+            onClose={() => setShowDeleteDialog(false)}
+            title={t('delete_machines')}
+            confirmText="DELETE"
+            isAlert={false}
+            variant="destructive"
+            onConfirm={onDeleteData}
+            onSuccess={() => { onFetchData(); setSelectedIds([]) }}
+          />
+        </TblContainer>
+      </CardContent>
     </Card>
   )
 }

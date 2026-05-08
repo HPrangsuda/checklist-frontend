@@ -67,12 +67,12 @@ const REASON_NOT_CHECKED_OPTIONS = [
 // map ค่าเก่า (ไทย / placeholder) → English value
 const REASON_TO_EN: Record<string, string> = {
   'NO ACTION TAKEN':             '',
-  'ลางาน':                      'Leave',
-  'เข้ากะ':                     'Shift Work',
-  'ทำงานนอกสถานที่':            'Working Offsite',
-  'อยู่ระหว่างซ่อมบำรุง':       'Under Maintenance',
-  'เครื่องมือใช้งานนอกสถานที่': 'Tool Used Offsite',
-  'ผู้รับผิดชอบไม่ดำเนินการ':   'Responsible Person Did Not Perform',
+  'ลางาน':                      'LEAVE',
+  'เข้ากะ':                     'SHIFT WORK',
+  'ทำงานนอกสถานที่':            'WORKING OFFSITE',
+  'อยู่ระหว่างซ่อมบำรุง':       'UNDER MAINTENANCE',
+  'เครื่องมือใช้งานนอกสถานที่': 'TOOL USED OFFSITE',
+  'ผู้รับผิดชอบไม่ดำเนินการ':   'RESPONSIBLE PERSON DID NOT PERFORM',
 }
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────

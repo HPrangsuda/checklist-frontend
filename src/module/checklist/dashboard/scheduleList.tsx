@@ -6,6 +6,7 @@ import { api } from "@/core/interceptor/api.interceptor";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "@/core/contexts/language-context";
+import { getStatusColor } from "@/utils/status.untils";
 
 const cn = (...classes: (string | undefined | null | false)[]): string =>
   classes.filter(Boolean).join(" ");
@@ -13,7 +14,7 @@ const cn = (...classes: (string | undefined | null | false)[]): string =>
 type TaskType = "maintenance" | "calibration";
 
 interface SoonDTO {
-  id: string;
+  id: number;
   machineCode: string;
   machineName: string;
   type: TaskType;
@@ -39,14 +40,14 @@ export function ScheduleList() {
     maintenance: {
       label: t('maintenance'),
       icon: Wrench,
-      className: "text-emerald-500",
-      to: "/checklist/maintenance",
+      status: 'operational',
+      to: "/checklist/maintenance/view",
     },
     calibration: {
       label: t('calibration'),
       icon: PencilRuler,
-      className: "text-red-500",
-      to: "/checklist/calibration",
+      status: 'under maintenance',
+      to: "/checklist/calibration/view",
     },
   };
 
@@ -100,39 +101,34 @@ export function ScheduleList() {
               return (
                 <div
                   key={`${item.machineCode}-${item.type}-${index}`}
-                  onClick={() => navigate({ to: typeInfo.to as any })}
+                  onClick={() => navigate({ to: typeInfo.to as any, search: { id: item.id } as any })}
                   className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/60 transition-all duration-200 cursor-pointer min-w-0"
                   style={{ animationDelay: `${index * 0.1}s` }}
                 >
-                  {/* ── row ── */}
                   <div className="flex items-start gap-3 min-w-0">
-
-                    {/* icon — fixed size, never shrinks */}
-                    <div className={cn("shrink-0 p-2 rounded-lg bg-background", typeInfo.className)}>
+                    <div className={cn("shrink-0 p-2 rounded-lg bg-background", getStatusColor(typeInfo.status))}>
                       <TypeIcon className="h-4 w-4" />
                     </div>
-
-                    {/* machine info — grows, truncates */}
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">{item.machineName}</p>
                       <p className="text-xs text-muted-foreground truncate">
                         {item.machineCode} : {item.assignee || t('unassigned')}
                       </p>
                     </div>
-
-                    {/* badge + days — fixed, never shrinks */}
                     <div className="shrink-0 flex flex-col items-end gap-1">
-                      <Badge variant="outline" className={cn("text-xs px-2 py-0.5 whitespace-nowrap", typeInfo.className)}>
+                      <Badge className={cn("text-xs px-2 py-0.5 whitespace-nowrap", getStatusColor(typeInfo.status))}>
                         {typeInfo.label}
                       </Badge>
                       <span className={cn(
                         "text-xs font-medium whitespace-nowrap",
-                        daysUntil <= 7 ? "text-destructive" :
+                        daysUntil <= 7  ? "text-red-600" :
                         daysUntil <= 14 ? "text-orange-600" :
                         "text-muted-foreground"
                       )}>
                         {daysUntil <= 0 ? (
-                          <Badge variant="destructive" className="text-xs px-2 py-0.5">{t('overdue')}</Badge>
+                          <Badge className={cn("text-xs px-2 py-0.5", getStatusColor('canceled'))}>
+                            {t('overdue')}
+                          </Badge>
                         ) : daysUntil === 1 ? (
                           t('due_tomorrow')
                         ) : (
@@ -140,7 +136,6 @@ export function ScheduleList() {
                         )}
                       </span>
                     </div>
-
                   </div>
                 </div>
               );

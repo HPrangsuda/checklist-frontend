@@ -19,7 +19,7 @@
   "due_tomorrow": "ครบกำหนดพรุ่งนี้",
   "due_in_days": "ครบกำหนดใน {days} วัน",
   "unassigned": "ไม่มีผู้รับผิดชอบ",
-  "kpi_records": "บันทึก KPI",
+  "kpi_records": "KPI การตรวจเช็ค",
   "employee_id": "รหัสพนักงาน",
   "name": "ชื่อ",
   "check_all": "ตรวจสอบทั้งหมด",
