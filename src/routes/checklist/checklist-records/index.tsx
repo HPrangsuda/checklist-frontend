@@ -15,6 +15,7 @@ import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ClipboardList } from 'lucide-react'
+import { getStatusColor } from '@/utils/status.untils'
 
 export const Route = createFileRoute('/checklist/checklist-records/')({
   component: Checklist,
@@ -106,23 +107,6 @@ function Checklist() {
 
   const handleView = (id: number) => router.navigate({ to: '/checklist/checklist-records/view', search: { id } })
   const handleEdit = (id: number) => router.navigate({ to: '/checklist/checklist-records/edit', search: { id } })
-
-  // ─── status helpers ───────────────────────────────────────────────────────
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'operational': case 'completed':
-        return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-      case 'under repair': case 'pending':
-        return 'bg-red-100 text-red-600 dark:text-red-100'
-      case 'non-operational': case 'pending manager':
-        return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100'
-      case 'pending supervisor':
-        return 'bg-orange-100 text-orange-600 dark:text-orange-100'
-      default:
-        return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
-    }
-  }
 
   const getStatusLabel = (status: string) => {
     const key = `status_${status.toLowerCase().replace(/\s+/g, '_')}`
@@ -284,17 +268,16 @@ function Checklist() {
     <div className="min-h-screen bg-background">
       <main className="container mx-auto px-4 py-8 space-y-6">
 
-        {/* Pending Approval Card — backend กรอง role ให้แล้ว แสดงเมื่อมีข้อมูล */}
         {(pendingLoading || pendingItems.length > 0) && (
-          <Card className="p-6 border-orange-200 dark:border-orange-800">
+          <Card className="p-6 border-red-200 dark:border-red-800">
             <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-4 px-0 pt-0">
-              <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900">
-                <ClipboardList className="h-5 w-5 text-orange-600 dark:text-orange-300" />
+              <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900">
+                <ClipboardList className="h-5 w-5 text-red-600 dark:text-red-300" />
               </div>
               <div className="flex items-center gap-2">
                 <CardTitle className="font-bold">{t('pending_approval')}</CardTitle>
                 {!pendingLoading && (
-                  <Badge className="bg-orange-100 text-orange-600 dark:text-orange-100">
+                  <Badge className="bg-red-100 text-red-600 dark:text-red-100">
                     {pendingItems.length}
                   </Badge>
                 )}

@@ -2,14 +2,14 @@ import { KpiTbl } from '@/module/checklist/kpi/kpi-table'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { MachineTbl } from '@/module/checklist/machine/machine-table'
 import { Card } from '@/components/ui/card'
-import { Settings, Clock, PencilRuler, Wrench, Plus, ClipboardList, ClipboardCheckIcon, Drill } from 'lucide-react'
-import { MaintenanceStats } from '@/module/checklist/dashboard/maintenanceStats'
-import { ScheduleList } from '@/module/checklist/dashboard/scheduleList'
-import { CalibrationStats } from '@/module/checklist/dashboard/calibrationStats'
+import { Settings, Clock, PencilRuler, Wrench, Plus, ClipboardList, ClipboardCheckIcon, Drill, QrCode } from 'lucide-react'
+import { MaintenanceStats } from '@/module/checklist/dashboard/maintenance-stats'
+import { ScheduleList } from '@/module/checklist/dashboard/schedule-list'
+import { CalibrationStats } from '@/module/checklist/dashboard/calibration-stats'
 import { useEffect, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { toast } from 'sonner'
-import { ChecklistStats } from '@/module/checklist/dashboard/checklistStats'
+import { ChecklistStats } from '@/module/checklist/dashboard/checklist-stats'
 import { useTranslation } from '@/core/contexts/language-context'
 
 export const Route = createFileRoute('/checklist/dashboard/')({
@@ -105,8 +105,6 @@ function RouteComponent() {
           </div>
         </Card>
       </div>
-      
-      {/* ── Row 2: Quick Actions + ScheduleList | KpiReport (2/3) ────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-4">
           <ScheduleList />
@@ -116,15 +114,15 @@ function RouteComponent() {
                 onClick={() => navigate({ to: '/checklist/machine' })}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-sm font-medium"
               >
-                <Drill className="w-4 h-4" />
-                {t('machine_list')}
+                <QrCode className="w-4 h-4" />
+                {t('pending')}
               </button>
               <button
                 onClick={() => navigate({ to: '/checklist/checklist-records' })}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-800 text-white text-sm font-medium transition"
               >
                 <ClipboardCheckIcon className="w-4 h-4" />
-                {t('checklist_records')}
+                {t('pending_approval')}
               </button>
             </div>
           </Card>

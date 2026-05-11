@@ -302,5 +302,8 @@
   "reason_under_maintenance": "อยู่ระหว่างซ่อมบำรุง",
   "reason_tool_offsite": "เครื่องมือใช้งานนอกสถานที่",
   "reason_not_performed": "ผู้รับผิดชอบไม่ดำเนินการ",
-  "pending_approval": "รอการอนุมัติ"
+  "pending_approval": "รอการอนุมัติ",
+  "view_mine": "ดูแลรับผิดชอบ",
+  "view_overview": "ภาพรวม",
+  "pending": "รอดำเนินการ"
 }

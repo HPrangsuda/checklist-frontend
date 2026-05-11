@@ -1,4 +1,11 @@
-import { getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
+import {
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  type ColumnDef,
+} from '@tanstack/react-table'
 import { DataTableSkeleton } from '@/components/data-table/data-table-skeleton'
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar'
 import type { PageResponse, ResponseDTO } from '@/core/types/common'
@@ -15,8 +22,10 @@ import { toast } from 'sonner'
 import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Drill } from 'lucide-react'
 import { getStatusColor } from '@/utils/status.untils'
+import { useAuth } from '@/core/contexts/auth-context'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,11 +39,15 @@ interface MachineDTO {
   responsiblePersonName: string
 }
 
+type ViewMode = 'overview' | 'mine'
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function MachineTbl() {
   const { t } = useTranslation('checklist')
   const router = useRouter()
+  const { role } = useAuth()
+  const isManagerOrSupervisor = role === 'MANAGER' || role === 'SUPERVISOR'
 
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -44,7 +57,10 @@ export function MachineTbl() {
   const [totalCount, setTotalCount] = useState(0)
   const [keyword, setKeyword] = useState('')
   const [searchValue, setSearchValue] = useState('')
+  const [viewMode, setViewMode] = useState<ViewMode>('mine')
   const debouncedSearch = useDebounce(keyword, 500)
+
+  // ─── Status label helper ───────────────────────────────────────────────────
 
   const getStatusLabel = (status: string) => {
     const key = status.toLowerCase().replace(/\s+/g, '_')
@@ -52,13 +68,17 @@ export function MachineTbl() {
     return translated !== `status_${key}` ? translated : status
   }
 
+  // ─── Columns ──────────────────────────────────────────────────────────────
+
   const columns: ColumnDef<MachineDTO>[] = [
     {
       id: 'select',
       header: () => (
         <Checkbox
           checked={data.length > 0 && data.every(row => selectedIds.includes(row.id))}
-          onCheckedChange={checked => setSelectedIds(checked ? data.map(r => r.id) : [])}
+          onCheckedChange={checked =>
+            setSelectedIds(checked ? data.map(r => r.id) : [])
+          }
           aria-label="Select all"
         />
       ),
@@ -67,9 +87,10 @@ export function MachineTbl() {
           <Checkbox
             checked={selectedIds.includes(row.original.id)}
             onCheckedChange={checked =>
-              setSelectedIds(prev => checked
-                ? [...prev, row.original.id]
-                : prev.filter(id => id !== row.original.id)
+              setSelectedIds(prev =>
+                checked
+                  ? [...prev, row.original.id]
+                  : prev.filter(id => id !== row.original.id)
               )
             }
             aria-label="Select row"
@@ -77,6 +98,22 @@ export function MachineTbl() {
         </div>
       ),
       size: 32,
+    },
+    ,
+    {
+      id: 'action',
+      header: t('action'),
+      cell: ({ row }) => (
+        <TblAction
+          view
+          edit
+          delete
+          onView={() => handleView(row.original.id)}
+          onEdit={() => handleEdit(row.original.id)}
+          onDelete={() => handleDelete(row.original.id)}
+        />
+      ),
+      size: 80,
     },
     {
       accessorKey: 'machineCode',
@@ -91,56 +128,77 @@ export function MachineTbl() {
     {
       accessorKey: 'department',
       header: t('department'),
-      cell: ({ row }) => <div className="text-sm">{row.original.department || '-'}</div>,
+      cell: ({ row }) => (
+        <div className="text-sm">{row.original.department || '-'}</div>
+      ),
     },
     {
       accessorKey: 'machineStatus',
       header: t('machine_status'),
-      cell: ({ row }) => row.original.machineStatus
-        ? <Badge className={getStatusColor(row.original.machineStatus)}>{getStatusLabel(row.original.machineStatus)}</Badge>
-        : <span className="text-muted-foreground text-sm">-</span>,
+      cell: ({ row }) =>
+        row.original.machineStatus ? (
+          <Badge className={getStatusColor(row.original.machineStatus)}>
+            {getStatusLabel(row.original.machineStatus)}
+          </Badge>
+        ) : (
+          <span className="text-muted-foreground text-sm">-</span>
+        ),
     },
     {
       accessorKey: 'checkStatus',
       header: t('check_status'),
-      cell: ({ row }) => row.original.checkStatus
-        ? <Badge className={getStatusColor(row.original.checkStatus)}>{getStatusLabel(row.original.checkStatus)}</Badge>
-        : <span className="text-muted-foreground text-sm">-</span>,
+      cell: ({ row }) =>
+        row.original.checkStatus ? (
+          <Badge className={getStatusColor(row.original.checkStatus)}>
+            {getStatusLabel(row.original.checkStatus)}
+          </Badge>
+        ) : (
+          <span className="text-muted-foreground text-sm">-</span>
+        ),
     },
     {
       accessorKey: 'responsiblePersonName',
       header: t('responsible'),
-      cell: ({ row }) => row.original.responsiblePersonName
-        ? <div className="text-sm">{row.original.responsiblePersonName}</div>
-        : <span className="text-muted-foreground text-sm">-</span>,
-    },
-    {
-      id: 'action',
-      header: t('action'),
-      cell: ({ row }) => (
-        <TblAction
-          view edit delete
-          onView={() => handleView(row.original.id)}
-          onEdit={() => handleEdit(row.original.id)}
-          onDelete={() => handleDelete(row.original.id)}
-        />
-      ),
-      size: 80,
-    },
+      cell: ({ row }) =>
+        row.original.responsiblePersonName ? (
+          <div className="text-sm">{row.original.responsiblePersonName}</div>
+        ) : (
+          <span className="text-muted-foreground text-sm">-</span>
+        ),
+    }
   ]
 
-  useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
-  useEffect(() => { onFetchData() }, [searchValue, pagination.pageIndex, pagination.pageSize])
+  // ─── Effects ──────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    setSearchValue(debouncedSearch)
+  }, [debouncedSearch])
+
+  useEffect(() => {
+    onFetchData()
+  }, [searchValue, pagination.pageIndex, pagination.pageSize, viewMode])
+
+  // ─── Fetch ────────────────────────────────────────────────────────────────
 
   const onFetchData = async () => {
     try {
       setLoading(true)
+
       const params = new URLSearchParams()
       params.set('index', pagination.pageIndex.toString())
       params.set('size', pagination.pageSize.toString())
       if (searchValue.trim()) params.set('keyword', searchValue.trim())
 
-      const response = await api.get<PageResponse<MachineDTO>>('/api/machine/get/page', { params })
+      // ส่ง mine=true เฉพาะ MANAGER/SUPERVISOR ที่เลือก tab Mine
+      if (isManagerOrSupervisor && viewMode === 'mine') {
+        params.set('mine', 'true')
+      }
+
+      const response = await api.get<PageResponse<MachineDTO>>(
+        '/api/machine/get/page',
+        { params }
+      )
+
       if (response?.success) {
         setData(response.data ?? [])
         setTotalCount(response.totalElements ?? 0)
@@ -156,6 +214,8 @@ export function MachineTbl() {
       setSelectedIds([])
     }
   }
+
+  // ─── Delete ───────────────────────────────────────────────────────────────
 
   const onDeleteData = async (): Promise<{ success: boolean }> => {
     if (selectedIds.length === 0) return { success: false }
@@ -177,43 +237,83 @@ export function MachineTbl() {
     }
   }
 
+  // ─── Handlers ─────────────────────────────────────────────────────────────
+
   const handleSearch = useCallback((value: string) => {
     setKeyword(value || '')
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
   }, [])
 
+  const handleViewModeChange = (value: string) => {
+    setViewMode(value as ViewMode)
+    setPagination(prev => ({ ...prev, pageIndex: 0 }))
+  }
+
   const handleSelectDelete = () => {
-    if (selectedIds.length === 0) { toast.warning(t('please_select_at_least_one')); return }
+    if (selectedIds.length === 0) {
+      toast.warning(t('please_select_at_least_one'))
+      return
+    }
     setShowDeleteDialog(true)
   }
 
-  const handleAdd    = () => router.navigate({ to: '/checklist/machine/add', search: { refId: undefined } })
-  const handleView   = (id: number) => router.navigate({ to: '/checklist/machine/view', search: { id } })
-  const handleEdit   = (id: number) => router.navigate({ to: '/checklist/machine/edit', search: { id } })
-  const handleDelete = (id: number) => { setSelectedIds([id]); setShowDeleteDialog(true) }
+  const handleAdd  = () => router.navigate({ to: '/checklist/machine/add', search: { refId: undefined } })
+  const handleView = (id: number) => router.navigate({ to: '/checklist/machine/view', search: { id } })
+  const handleEdit = (id: number) => router.navigate({ to: '/checklist/machine/edit', search: { id } })
+  const handleDelete = (id: number) => {
+    setSelectedIds([id])
+    setShowDeleteDialog(true)
+  }
+
+  // ─── Table ────────────────────────────────────────────────────────────────
 
   const table = useReactTable({
-    data, columns, manualPagination: true,
+    data,
+    columns,
+    manualPagination: true,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onPaginationChange: setPagination,
     pageCount: Math.ceil(totalCount / pagination.pageSize),
-    manualSorting: true, manualFiltering: true,
+    manualSorting: true,
+    manualFiltering: true,
     state: { pagination },
     getRowId: row => row.id.toString(),
   })
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
-    
-      <Card className="shadow-sm border-dashboard-border">
+    <Card className="shadow-sm border-dashboard-border">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 flex-wrap gap-2 border-b">
         <CardTitle className="font-bold">
           <Drill className="w-5 h-5 inline mr-2" />
           {t('machine_records')}
         </CardTitle>
+
+        {/* Tab only for MANAGER / SUPERVISOR */}
+        {isManagerOrSupervisor && (
+          <Tabs value={viewMode} onValueChange={handleViewModeChange}>
+            <TabsList>
+              <TabsTrigger
+                value="mine"
+                className="data-[state=active]:bg-red-700 data-[state=active]:text-white"
+              >
+                {t('view_mine')}
+              </TabsTrigger>
+              <TabsTrigger
+                value="overview"
+                className="data-[state=active]:bg-red-700 data-[state=active]:text-white"
+              >
+                {t('view_overview')}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </CardHeader>
+
       <CardContent>
         <TblContainer>
           <div className="flex items-center justify-between gap-2">
@@ -231,17 +331,24 @@ export function MachineTbl() {
               className="w-full gap-2"
             />
           </div>
+
           <div>
             {loading ? (
               <DataTableSkeleton
-                columnCount={columns.length} rowCount={10} filterCount={0}
-                cellWidths={['auto']} withViewOptions={false} withPagination={true}
-                shrinkZero={false} className="w-full"
+                columnCount={columns.length}
+                rowCount={10}
+                filterCount={0}
+                cellWidths={['auto']}
+                withViewOptions={false}
+                withPagination={true}
+                shrinkZero={false}
+                className="w-full"
               />
             ) : (
               <DataTable table={table} emptyText={t('no_result')} />
             )}
           </div>
+
           <DeleteDialog
             isOpen={showDeleteDialog}
             onClose={() => setShowDeleteDialog(false)}
@@ -250,7 +357,10 @@ export function MachineTbl() {
             isAlert={false}
             variant="destructive"
             onConfirm={onDeleteData}
-            onSuccess={() => { onFetchData(); setSelectedIds([]) }}
+            onSuccess={() => {
+              onFetchData()
+              setSelectedIds([])
+            }}
           />
         </TblContainer>
       </CardContent>

@@ -21,6 +21,7 @@ import {
   DialogDescription as ShadcnDialogDescription,
 } from '@/components/ui/dialog'
 import type { PageResponse } from '@/core/types/common'
+import { PendingCard } from '@/module/checklist/machine/machine-pending'
 
 export const Route = createFileRoute('/checklist/machine/')({
   component: DataTbl,
@@ -208,7 +209,9 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: MachineDepa
           </div>
         </CardHeader>
       </Card>
-
+      
+      <PendingCard />
+                  
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="flex items-center justify-between">
@@ -238,7 +241,7 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: MachineDepa
           </div>
         </Card>
       </div>
-
+        
       <Card className="p-4">
         <div className="flex flex-col lg:flex-row gap-4 mb-4">
           <div className="flex-1 relative">
@@ -348,7 +351,7 @@ function DataTbl() {
           onOpenQrDialog={() => setShowQrDialog(true)}
           exportingQr={exportingQr}
         />
-
+        
         {/* QR Export Dialog */}
         <ShadcnDialog open={showQrDialog} onOpenChange={setShowQrDialog}>
           <ShadcnDialogContent className="max-w-sm">
