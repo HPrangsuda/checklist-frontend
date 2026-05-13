@@ -207,7 +207,6 @@ function RouteComponent() {
   const machineStatusOptions = MACHINE_STATUS_VALUES.map(value => ({
     value,
     label: t(`status_${value.toLowerCase().replace(/ /g, '_')}`),
-    // status_in_use | status_not_in_use | status_under_maintenance
   }))
 
   const choiceOptions = CHOICE_VALUES.map((value, idx) => ({

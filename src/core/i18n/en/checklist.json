@@ -85,6 +85,7 @@
   "department": "Department",
   "brand_model": "Brand / Model",
   "responsible": "Responsible",
+  "responsible_by": "Responsible By",
   "last_review": "Last Review",
   "machine_records": "Machine Records",
   "delete_machines": "Delete Machines",

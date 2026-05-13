@@ -86,6 +86,7 @@
   "department": "แผนก",
   "brand_model": "ยี่ห้อ / รุ่น",
   "responsible": "ผู้รับผิดชอบ",
+  "responsible_by": "รับผิดชอบโดย",
   "last_review": "ตรวจสอบล่าสุด",
   "machine_records": "รายการเครื่องจักร",
   "delete_machines": "ลบเครื่องจักร",

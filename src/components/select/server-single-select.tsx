@@ -1,5 +1,4 @@
 import { XCircle } from 'lucide-react'
-import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FieldWrapper } from '../form/FieldWrapper'
 import { cn } from '@/core/lib/utils'
@@ -23,13 +22,14 @@ export interface Option {
   value: any
 }
 
-interface ServerSingleSelectProps {
+export interface ServerSingleSelectProps {
   id?: string
   label?: string
   required?: boolean
   error?: string
   title: string
   value?: any
+  initialLabel?: string          // ← เพิ่ม: แสดงชื่อทันทีโดยไม่ต้อง fetch
   onChange?: (value: any | null) => void
   fetchOptions: (
     keyword: string,
@@ -50,6 +50,7 @@ export function ServerSingleSelect({
   error,
   title,
   value,
+  initialLabel,
   onChange,
   fetchOptions,
   renderOption,
@@ -61,30 +62,49 @@ export function ServerSingleSelect({
   const [loading, setLoading] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [hasMore, setHasMore] = useState(false)
-  const [selectedOption, setSelectedOption] = useState<Option | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
   const [fetchError, setFetchError] = useState(false)
+
+  // ── selectedOption: ถ้ามี initialLabel ให้ใช้เลย ไม่ต้อง fetch ────────────
+  const [selectedOption, setSelectedOption] = useState<Option | null>(() => {
+    if (value !== undefined && value !== null && value !== '' && initialLabel) {
+      return { value, label: initialLabel }
+    }
+    return null
+  })
 
   const debouncedKeyword = useDebounce(keyword, 300)
   const containerRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef(0)
 
+  // ── sync value/initialLabel จากภายนอก ────────────────────────────────────
   useEffect(() => {
-    if (value !== undefined && value !== null) {
+    if (value !== undefined && value !== null && value !== '') {
+      // ถ้ามี initialLabel และยังไม่ได้เปิด dropdown → ใช้ initialLabel โดยตรง
+      if (initialLabel && !open) {
+        setSelectedOption(prev => {
+          // อัปเดตเฉพาะถ้า value เปลี่ยน
+          if (prev?.value === value) return prev
+          return { value, label: initialLabel }
+        })
+        return
+      }
+      // ถ้าไม่มี initialLabel → fetch จาก API เหมือนเดิม
       const fetchSelectedOption = async () => {
         try {
           const result = await fetchOptions('', 0, [value])
-          const initialSelected = result.data.find((item) => item.value === value)
-          setSelectedOption(initialSelected || null)
-        } catch (error) {
-          console.error('Error fetching selected option:', error)
+          const found = result.data.find((item) => item.value === value)
+          if (found) setSelectedOption(found)
+          else if (initialLabel) setSelectedOption({ value, label: initialLabel })
+        } catch {
+          if (initialLabel) setSelectedOption({ value, label: initialLabel })
         }
       }
       fetchSelectedOption()
     } else {
       setSelectedOption(null)
     }
-  }, [value])
+  }, [value, initialLabel])
 
   const sortedOptions = useMemo(() => {
     if (!options.length) return []
@@ -179,8 +199,8 @@ export function ServerSingleSelect({
   }
 
   const showInitialLoading = loading && !hasSearched && sortedOptions.length === 0
-  const showEmpty = !loading && hasSearched && sortedOptions.length === 0 && !fetchError
-  const showError = !loading && hasSearched && fetchError
+  const showEmpty   = !loading && hasSearched && sortedOptions.length === 0 && !fetchError
+  const showError   = !loading && hasSearched && fetchError
 
   return (
     <FieldWrapper id={id} label={label || title} required={required} error={error}>

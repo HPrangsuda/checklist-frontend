@@ -21,38 +21,56 @@ export const Route = createFileRoute('/checklist/machine/view')({
   })
 })
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types — ตรงกับ MachineResponseDTO ───────────────────────────────────────
 
-interface MachineDetailDTO {
-  id: number
-  machineCode: string
-  machineName: string
-  department: string
-  machineStatus: string
-  checkStatus: string
-  responsiblePersonName: string
-  manager: string
-  supervisor: string
-  brand?: string
-  serialNumber?: string
-  machineNumber?: string
-  machineModel?: string
-  machineTypeId?: string
-  machineGroupId?: string
-  maintenanceFrequency?: string
-  resetPeriod?: string
-  workInstruction?: string
-  image?: string
-  qrCode?: string
-  createdAt?: string
-  updatedAt?: string
+interface MachineResponseDTO {
+  id:                   number
+  machineCode:          string
+  machineName:          string
+  machineGroupId?:      string
+  machineGroupName?:    string
+  machineTypeId?:       string
+  machineTypeName?:     string
+  machineStatus:        string
+  checkStatus:          string
+  model?:               string
+  brand?:               string
+  serialNumber?:        string
+  businessUnit?:        string
+  department?:          string
+  departmentName?:      string
+  registerId?:          string
+  registerDate?:        string
+  cancelDate?:          string
+  reasonCancel?:        string
+  isCalibration?:       boolean
+  certificatePeriod?:   string
+  maintenancePeriod?:   string
+  image?:               string
+  machineNumber?:       string
+  qrCode?:              string
+  resetPeriod?:         string
+  note?:                string
+  responsiblePersonId?:   number
+  responsiblePersonName?: string
+  supervisorId?:          number
+  supervisorName?:        string
+  managerId?:             number
+  managerName?:           string
+  workInstruction?:     string
+  lastReview?:          string
+  reviewBy?:            string
+  createdBy?:           { id: number; firstName: string; lastName: string }
+  updatedBy?:           { id: number; firstName: string; lastName: string }
+  calibrationRecords?:  any[]
+  maintenanceRecords?:  any[]
 }
 
 interface AttachmentItem {
-  fileName: string
-  fileUrl: string
-  fileType: string
-  fileSize: number
+  fileName:   string
+  fileUrl:    string
+  fileType:   string
+  fileSize:   number
   uploadedBy: string | null
 }
 
@@ -205,7 +223,9 @@ function AttachmentList({ raw, label }: { raw?: string | null; label: string }) 
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
 
-function InfoRow({ label, value, className = '' }: { label: string; value?: string | number | null; className?: string }) {
+function InfoRow({ label, value, className = '' }: {
+  label: string; value?: string | number | null; className?: string
+}) {
   return (
     <div className={className}>
       <p className="text-sm font-medium text-muted-foreground">{label}</p>
@@ -217,11 +237,11 @@ function InfoRow({ label, value, className = '' }: { label: string; value?: stri
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function MachineView() {
-  const { id }   = useSearch({ from: '/checklist/machine/view' })
-  const { t }    = useTranslation('checklist')
-  const router   = useRouter()
+  const { id } = useSearch({ from: '/checklist/machine/view' })
+  const { t }  = useTranslation('checklist')
+  const router = useRouter()
 
-  const [machine,   setMachine]   = useState<MachineDetailDTO | null>(null)
+  const [machine,   setMachine]   = useState<MachineResponseDTO | null>(null)
   const [loading,   setLoading]   = useState(true)
   const [activeTab, setActiveTab] = useState('general')
 
@@ -229,12 +249,18 @@ function MachineView() {
 
   const getStatusColor = (status?: string) => {
     switch ((status || '').toLowerCase()) {
-      case 'operational': case 'completed':            return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-      case 'under repair':       case 'pending': case 'overdue': return 'bg-red-100 text-red-600 dark:text-red-100'
-      case 'non-operational':   case 'pending manager': case 'scheduled': return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100'
-      case 'pending supervisor': case 'completed (late)': return 'bg-orange-100 text-orange-600 dark:text-orange-100'
-      case 'in progress':                               return 'bg-blue-100 text-blue-600 dark:text-blue-100'
-      default:                                          return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
+      case 'operational': case 'completed':
+        return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
+      case 'under repair': case 'pending': case 'overdue':
+        return 'bg-red-100 text-red-600 dark:text-red-100'
+      case 'non-operational': case 'pending manager': case 'scheduled':
+        return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100'
+      case 'pending supervisor': case 'completed (late)':
+        return 'bg-orange-100 text-orange-600 dark:text-orange-100'
+      case 'in progress':
+        return 'bg-blue-100 text-blue-600 dark:text-blue-100'
+      default:
+        return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
     }
   }
 
@@ -249,7 +275,7 @@ function MachineView() {
     try {
       setLoading(true)
       const response = await api.get<any>(`/api/machine/${id}`)
-      if (response) setMachine(response.data || response)
+      if (response?.data) setMachine(response.data)
       else toast.error(t('failed_to_load_machine'))
     } catch {
       toast.error(t('failed_to_load_machine'))
@@ -289,7 +315,7 @@ function MachineView() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="bg-white border-b px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -302,59 +328,63 @@ function MachineView() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge className={getStatusColor(machine.machineStatus)}>{getStatusLabel(machine.machineStatus)}</Badge>
-            <Badge className={getStatusColor(machine.checkStatus)}>{getStatusLabel(machine.checkStatus)}</Badge>
-            <Button variant="outline" size="sm" onClick={() => router.navigate({ to: '/checklist/machine/edit', search: { id } })}>
+            <Badge className={getStatusColor(machine.machineStatus)}>
+              {getStatusLabel(machine.machineStatus)}
+            </Badge>
+            <Badge className={getStatusColor(machine.checkStatus)}>
+              {getStatusLabel(machine.checkStatus)}
+            </Badge>
+            <Button variant="outline" size="sm"
+              onClick={() => router.navigate({ to: '/checklist/machine/edit', search: { id } })}>
               <Edit3 className="h-4 w-4 mr-2" />{t('edit')}
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Content */}
+      {/* ── Content ───────────────────────────────────────────────────────── */}
       <div className="p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid grid-cols-4 w-full max-w-xl">
-            <TabsTrigger value="general"     className="flex items-center gap-2"><Info className="h-4 w-4" />{t('general')}</TabsTrigger>
-            <TabsTrigger value="checklist"   className="flex items-center gap-2"><ClipboardList className="h-4 w-4" />Checklist</TabsTrigger>
-            <TabsTrigger value="maintenance" className="flex items-center gap-2"><Wrench className="h-4 w-4" />{t('maintenance')}</TabsTrigger>
-            <TabsTrigger value="calibration" className="flex items-center gap-2"><PencilRuler className="h-4 w-4" />{t('calibration')}</TabsTrigger>
+            <TabsTrigger value="general"     className="flex items-center gap-2">
+              <Info className="h-4 w-4" />{t('general') ?? 'General'}
+            </TabsTrigger>
+            <TabsTrigger value="checklist"   className="flex items-center gap-2">
+              <ClipboardList className="h-4 w-4" />Checklist
+            </TabsTrigger>
+            <TabsTrigger value="maintenance" className="flex items-center gap-2">
+              <Wrench className="h-4 w-4" />{t('maintenance')}
+            </TabsTrigger>
+            <TabsTrigger value="calibration" className="flex items-center gap-2">
+              <PencilRuler className="h-4 w-4" />{t('calibration')}
+            </TabsTrigger>
           </TabsList>
 
-          {/* ── General ─────────────────────────────────────────────────────── */}
+          {/* ── General ───────────────────────────────────────────────────── */}
           <TabsContent value="general" className="mt-4 space-y-4">
             <Card>
               <CardHeader className="border-b">
                 <CardTitle className="font-semibold">{t('basic_information')}</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
-                <InfoRow label={t('machine_code')}          value={machine.machineCode} />
-                <InfoRow label={t('machine_name')}          value={machine.machineName} />
-                <InfoRow label={t('brand')}                 value={machine.brand} />
-                <InfoRow label={t('model')}                 value={machine.machineModel} />
-                <InfoRow label={t('serial_number')}         value={machine.serialNumber} />
-                <InfoRow label={t('department')}            value={machine.department} />
-                <InfoRow label={t('responsible')}           value={machine.responsiblePersonName} />
-                <InfoRow label={t('supervisor')}            value={machine.supervisor} />
-                <InfoRow label={t('manager')}               value={machine.manager} />
-                <InfoRow label={t('machine_type_id')}       value={machine.machineTypeId} />
-                <InfoRow label={t('machine_group_id')}      value={machine.machineGroupId} />
-                <InfoRow label={t('maintenance_frequency')} value={machine.maintenanceFrequency} />
-                <InfoRow label={t('reset_period')}          value={machine.resetPeriod} />
+                <InfoRow label={t('machine_code')}    value={machine.machineCode} />
+                <InfoRow label={t('machine_name')}    value={machine.machineName} />
+                <InfoRow label={t('brand')}           value={machine.brand} />
+                <InfoRow label={t('model')}           value={machine.model} />
+                <InfoRow label={t('serial_number')}   value={machine.serialNumber} />
+                <InfoRow label={t('department')}      value={machine.departmentName || machine.department} />
+                <InfoRow label={t('machine_group')}   value={machine.machineGroupName || machine.machineGroupId} />
+                <InfoRow label={t('machine_type')}    value={machine.machineTypeName  || machine.machineTypeId} />
+                <InfoRow label={t('responsible')}     value={machine.responsiblePersonName} />
+                <InfoRow label={t('supervisor')}      value={machine.supervisorName} />
+                <InfoRow label={t('manager')}         value={machine.managerName} />
+                <InfoRow label={t('reset_period')}    value={machine.resetPeriod} />
+                <InfoRow label={t('maintenance_period')} value={machine.maintenancePeriod} />
+                <InfoRow label={t('note')}            value={machine.note} />
               </CardContent>
             </Card>
 
-            {machine.image && parseFiles(machine.image).length > 0 && (
-              <Card>
-                <CardHeader className="border-b">
-                  <CardTitle className="font-semibold">{t('machine_image')}</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <AttachmentList raw={machine.image} label={t('machine_image')} />
-                </CardContent>
-              </Card>
-            )}
-
+            {/* QR Code */}
             {machine.qrCode && (
               <Card>
                 <CardHeader className="border-b">
@@ -370,31 +400,46 @@ function MachineView() {
                 </CardContent>
               </Card>
             )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  {/* Images */}
+  {parseFiles(machine.image).length > 0 && (
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle className="font-semibold">{t('machine_image')}</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-4">
+        <AttachmentList raw={machine.image} label={t('machine_image')} />
+      </CardContent>
+    </Card>
+  )}
 
-            {machine.workInstruction && parseFiles(machine.workInstruction).length > 0 && (
-              <Card>
-                <CardHeader className="border-b">
-                  <CardTitle className="font-semibold">{t('work_instructions')}</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <AttachmentList raw={machine.workInstruction} label={t('work_instructions')} />
-                </CardContent>
-              </Card>
-            )}
+  {/* Work Instructions */}
+  {parseFiles(machine.workInstruction).length > 0 && (
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle className="font-semibold">{t('work_instructions')}</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-4">
+        <AttachmentList raw={machine.workInstruction} label={t('work_instructions')} />
+      </CardContent>
+    </Card>
+  )}
+</div>
+            
           </TabsContent>
 
-          {/* ── Checklist ────────────────────────────────────────────────────── */}
+          {/* ── Checklist ─────────────────────────────────────────────────── */}
           <TabsContent value="checklist" className="mt-4">
             <ChecklistTab machineCode={machine.machineCode} />
           </TabsContent>
 
-          {/* ── Maintenance ──────────────────────────────────────────────────── */}
+          {/* ── Maintenance ───────────────────────────────────────────────── */}
           <TabsContent value="maintenance" className="mt-4 space-y-4">
             <MaintenanceTbl machineCode={machine.machineCode} />
             <MaintenanceChecklistTab machineCode={machine.machineCode} />
           </TabsContent>
 
-          {/* ── Calibration ──────────────────────────────────────────────────── */}
+          {/* ── Calibration ───────────────────────────────────────────────── */}
           <TabsContent value="calibration" className="mt-4">
             <CalibrationTbl machineCode={machine.machineCode} />
           </TabsContent>
