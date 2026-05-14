@@ -132,7 +132,6 @@ function MaintenanceEdit() {
   const [selectedStatus,          setSelectedStatus]          = useState('')
   const [maintenanceBy,           setMaintenanceBy]           = useState<'INTERNAL' | 'EXTERNAL'>('INTERNAL')
   const [responsibleMaintenance2, setResponsibleMaintenance2] = useState('')
-  const [isSubmittingChecklist,   setIsSubmittingChecklist]   = useState(false)
 
   const formSteps: FormStep[] = [
     { id: 'general', title: t('general'), description: t('maintenance_information'), required: true },
@@ -231,7 +230,6 @@ function MaintenanceEdit() {
     return res.data
   }
 
-  // onChange จาก FileUploadField — รับ File[] ใหม่ที่ยังไม่ได้ upload
   const handleFilesChange = (files: File[]) => {
     const realFiles = files.filter(f => f instanceof File)
     if (!realFiles.length) return
@@ -263,18 +261,13 @@ function MaintenanceEdit() {
     }, 100)
   }
 
-  // ลบไฟล์ — รับ fileId (fileName)
   const handleDeleteFile = async (fileId: any) => {
     const idStr = String(fileId)
-
-    // ถ้าเป็น existing file
     const existingFile = existingFiles.find(u => u.fileName === idStr || idStr.includes(u.fileName))
     if (existingFile) {
       setExistingFiles(prev => prev.filter(u => u.fileName !== existingFile.fileName))
       return
     }
-
-    // ถ้าเป็น newly uploaded file
     const newFile = uploadedFiles.find(u => u.fileName === idStr || idStr.includes(u.fileName))
     if (!newFile) return
     try {
@@ -284,12 +277,26 @@ function MaintenanceEdit() {
     } catch { toast.error(t('failed_to_delete_file')) }
   }
 
-  // ─── Submit ───────────────────────────────────────────────────────────────
+  // ─── Submit (main + checklist together) ──────────────────────────────────
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Validate checklist before saving
+    const errs: Record<string, string> = {}
+    if (checklist.length > 0 && !selectedStatus) errs.selectedStatus = t('please_select') ?? 'Required'
+    checklist.forEach(item => {
+      if (!getAnswer(item).trim()) errs[`item_${item.id}`] = t('field_required') ?? 'Required'
+    })
+    if (Object.keys(errs).length) {
+      setChecklistErrors(errs)
+      toast.error(t('fill_required_fields'))
+      return
+    }
+
     setSaving(true)
     try {
+      // ── 1. Save main maintenance record ──────────────────────────────────
       const allFiles = [...existingFiles, ...uploadedFiles].map(f => ({
         fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType,
         fileSize: f.fileSize, uploadedBy: f.uploadedBy ?? null,
@@ -313,62 +320,50 @@ function MaintenanceEdit() {
         toast.error(res?.error ?? res?.message ?? t('data_fetch_failed'))
         return
       }
+
+      // ── 2. Save checklist (if items exist) ───────────────────────────────
+      if (checklist.length > 0 && selectedStatus) {
+        const session = sessionStore.state.session
+        const request = {
+          maintenanceRecordId:    formData.id,
+          machineCode:            formData.machineCode,
+          machineName:            formData.machineName,
+          machineStatus:          selectedStatus,
+          machineChecklist:       JSON.stringify(checklist.map(item => ({
+            id: item.id, questionDetail: item.questionDetail ?? 'N/A',
+            answerChoice: getAnswer(item), checkStatus: true,
+          }))),
+          machineNote:            formData.note,
+          userId:                 session?.employeeId ?? '',
+          userName:               `${session?.firstName ?? ''} ${session?.lastName ?? ''}`.trim(),
+          supervisor: '', manager: '',
+          jobDetail:              `Maintenance Round ${formData.round}/${formData.years}`,
+          actualDate:             toLocalDateString(formData.actualDate) ?? new Date().toISOString().split('T')[0],
+          dueDate:                toLocalDateString(formData.dueDate),
+          maintenanceBy,
+          responsibleMaintenance: maintenanceBy === 'INTERNAL' ? responsibleMaintenance2 : '',
+        }
+        const clFd = new FormData()
+        clFd.append('request', new Blob([JSON.stringify(request)], { type: 'application/json' }))
+        const clRes = await api.post('/api/maintenance-checklist/save', clFd)
+        if (!clRes?.success) {
+          toast.error(clRes?.message ?? t('data_fetch_failed'))
+          return
+        }
+      }
+
       toast.success(t('maintenance_updated') ?? 'Updated')
     } catch { toast.error(t('data_fetch_failed')) }
     finally { setSaving(false) }
   }
 
-  // ─── Checklist ────────────────────────────────────────────────────────────
+  // ─── Checklist helpers ────────────────────────────────────────────────────
 
-  const getAnswer        = (item: ChecklistItem) => item.answer ?? ''
-  const isChecklistValid = () => !!(selectedStatus && checklist.every(item => getAnswer(item).trim()))
+  const getAnswer = (item: ChecklistItem) => item.answer ?? ''
 
   const updateAnswer = (itemId: number, value: string) => {
     setChecklist(prev => prev.map(item => item.id === itemId ? { ...item, answer: value } : item))
     setChecklistErrors(prev => { const n = { ...prev }; delete n[`item_${itemId}`]; return n })
-  }
-
-  const handleChecklistSubmit = async () => {
-    const errs: Record<string, string> = {}
-    if (!selectedStatus) errs.selectedStatus = t('please_select') ?? 'Required'
-    checklist.forEach(item => {
-      if (!getAnswer(item).trim()) errs[`item_${item.id}`] = t('field_required') ?? 'Required'
-    })
-    if (Object.keys(errs).length) {
-      setChecklistErrors(errs)
-      toast.error(t('fill_required_fields'))
-      return
-    }
-    setIsSubmittingChecklist(true)
-    try {
-      const session = sessionStore.state.session
-      const request = {
-        maintenanceRecordId:    formData.id,
-        machineCode:            formData.machineCode,
-        machineName:            formData.machineName,
-        machineStatus:          selectedStatus,
-        machineChecklist:       JSON.stringify(checklist.map(item => ({
-          id: item.id, questionDetail: item.questionDetail ?? 'N/A',
-          answerChoice: getAnswer(item), checkStatus: true,
-        }))),
-        machineNote:            formData.note,
-        userId:                 session?.employeeId ?? '',
-        userName:               `${session?.firstName ?? ''} ${session?.lastName ?? ''}`.trim(),
-        supervisor: '', manager: '',
-        jobDetail:              `Maintenance Round ${formData.round}/${formData.years}`,
-        actualDate:             toLocalDateString(formData.actualDate) ?? new Date().toISOString().split('T')[0],
-        dueDate:                toLocalDateString(formData.dueDate),
-        maintenanceBy,
-        responsibleMaintenance: maintenanceBy === 'INTERNAL' ? responsibleMaintenance2 : '',
-      }
-      const fd = new FormData()
-      fd.append('request', new Blob([JSON.stringify(request)], { type: 'application/json' }))
-      const response = await api.post('/api/maintenance-checklist/save', fd)
-      if (!response.success) { toast.error(response.message ?? t('data_fetch_failed')); return }
-      toast.success(t('maintenance_updated') ?? 'Updated')
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message ?? error?.message ?? t('data_fetch_failed'))
-    } finally { setIsSubmittingChecklist(false) }
   }
 
   // ─── Loading ──────────────────────────────────────────────────────────────
@@ -382,7 +377,6 @@ function MaintenanceEdit() {
 
   const cancelLink = `/checklist/maintenance/view?id=${id}` as any
 
-  // ── ทุก file รวมกันเพื่อแสดงใน FileUploadField ───────────────────────────
   const allDisplayFiles = [
     ...existingFiles.map(f => ({
       name: f.fileName,
@@ -512,35 +506,6 @@ function MaintenanceEdit() {
               )}
             </div>
 
-            {/* Maintenance By (checklist section) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>{t('maintenance')}</Label>
-                <div className="relative">
-                  <select value={maintenanceBy}
-                    onChange={e => setMaintenanceBy(e.target.value as 'INTERNAL' | 'EXTERNAL')}
-                    className="w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-border">
-                    <option value="INTERNAL">INTERNAL</option>
-                    <option value="EXTERNAL">EXTERNAL</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                </div>
-              </div>
-              {maintenanceBy === 'INTERNAL' && (
-                <div className="space-y-1.5">
-                  <ServerSingleSelect
-                    id="responsibleMaintenance2"
-                    title={t('responsible')}
-                    label={t('responsible')}
-                    placeholder={t('select_responsible')}
-                    value={responsibleMaintenance2}
-                    onChange={(v: any) => setResponsibleMaintenance2(Array.isArray(v) ? v[0] : v)}
-                    fetchOptions={fetchMembers}
-                  />
-                </div>
-              )}
-            </div>
-
             {/* Checklist Items */}
             {checklist.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-6">{t('no_checklist_items')}</p>
@@ -588,13 +553,6 @@ function MaintenanceEdit() {
               </div>
             )}
 
-            <div className="flex justify-end pt-2">
-              <Button type="button" onClick={handleChecklistSubmit}
-                disabled={isSubmittingChecklist || !isChecklistValid()}>
-                <ClipboardList className="h-4 w-4 mr-2" />
-                {isSubmittingChecklist ? t('loading') : t('submit')}
-              </Button>
-            </div>
           </CardContent>
         </Card>
 

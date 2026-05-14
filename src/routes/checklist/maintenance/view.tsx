@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, Edit3, FileText, Wrench } from 'lucide-react'
+import { ArrowLeft, Download, Edit3, FileText, Wrench, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
@@ -17,28 +17,39 @@ export const Route = createFileRoute('/checklist/maintenance/view')({
   }),
 })
 
-// ─── Types — ตรงกับ MaintenanceResponseDTO ───────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MaintenanceRecord {
-  id:                     number
-  machineCode:            string
-  machineName:            string
-  years:                  string
-  round:                  number
-  dueDate?:               string
-  planDate?:              string
-  startDate?:             string
-  actualDate?:            string
-  status?:                string
-  maintenanceBy?:         string
+  id:                      number
+  machineCode:             string
+  machineName:             string
+  years:                   string
+  round:                   number
+  dueDate?:                string
+  planDate?:               string
+  startDate?:              string
+  actualDate?:             string
+  status?:                 string
+  maintenanceBy?:          string
   responsibleMaintenance?: string
-  note?:                  string
-  attachment?:            string
+  note?:                   string
+  attachment?:             string
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+interface AttachmentItem {
+  fileName:   string
+  fileUrl:    string
+  fileType:   string
+  fileSize:   number
+  uploadedBy: string | null
+}
 
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
+const API_BASE   = import.meta.env.VITE_API_URL ?? ''
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const formatDate = (date?: string | null) => {
   if (!date) return '-'
@@ -63,6 +74,17 @@ const getStatusColor = (status?: string) => {
   }
 }
 
+const toFileUrl = (fileUrl: string) => {
+  const filename = fileUrl.split('/').pop() ?? fileUrl
+  return `${API_BASE}/api/files/download/${encodeURIComponent(filename)}`
+}
+
+const parseAttachments = (raw?: string | AttachmentItem[]): AttachmentItem[] => {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  try { return JSON.parse(raw) } catch { return [] }
+}
+
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
 
 function InfoRow({
@@ -82,6 +104,134 @@ function InfoRow({
   )
 }
 
+// ─── AuthImage ────────────────────────────────────────────────────────────────
+
+function AuthImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [failed,  setFailed]  = useState(false)
+
+  useEffect(() => {
+    let url = ''
+    api.getInstance().get(src, { responseType: 'blob' })
+      .then((res: any) => { url = URL.createObjectURL(res.data); setBlobUrl(url) })
+      .catch(() => setFailed(true))
+    return () => { if (url) URL.revokeObjectURL(url) }
+  }, [src])
+
+  if (failed)   return null
+  if (!blobUrl) return <div className="w-full h-full animate-pulse bg-muted" />
+  return <img src={blobUrl} alt={alt} className={className} />
+}
+
+// ─── ImageDialog ──────────────────────────────────────────────────────────────
+
+function ImageDialog({ blobUrl, fileName, open, onClose }: {
+  blobUrl: string; fileName: string; open: boolean; onClose: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    if (open) { window.addEventListener('keydown', onKey); document.body.style.overflow = 'hidden' }
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
+  }, [open, onClose])
+
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm"
+      onClick={onClose}>
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-black/60"
+        onClick={e => e.stopPropagation()}>
+        <p className="text-white text-sm truncate max-w-[60%]">{fileName}</p>
+        <div className="flex items-center gap-2">
+          <a href={blobUrl} download={fileName}
+            className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors"
+            onClick={e => e.stopPropagation()}>
+            <Download className="h-4 w-4" /> ดาวน์โหลด
+          </a>
+          <button onClick={onClose}
+            className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
+            <X className="h-4 w-4" /> ปิด
+          </button>
+        </div>
+      </div>
+      <img src={blobUrl} alt={fileName}
+        className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl mt-14"
+        onClick={e => e.stopPropagation()} />
+    </div>
+  )
+}
+
+// ─── AttachmentFile ───────────────────────────────────────────────────────────
+
+function AttachmentFile({ file }: { file: AttachmentItem }) {
+  const ext     = file.fileName.split('.').pop()?.toLowerCase() ?? ''
+  const isImage = IMAGE_EXTS.includes(ext)
+  const src     = toFileUrl(file.fileUrl)
+
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [blobUrl,    setBlobUrl]    = useState<string | null>(null)
+  const [loading,    setLoading]    = useState(false)
+
+  const handleClick = async () => {
+    if (isImage) {
+      if (blobUrl) { setDialogOpen(true); return }
+      setLoading(true)
+      try {
+        const res = await api.getInstance().get(src, { responseType: 'blob' })
+        const url = URL.createObjectURL(res.data)
+        setBlobUrl(url); setDialogOpen(true)
+      } catch { toast.error('โหลดไฟล์ไม่สำเร็จ') }
+      finally { setLoading(false) }
+    } else {
+      try {
+        const res = await api.getInstance().get(src, { responseType: 'blob' })
+        const url = URL.createObjectURL(res.data)
+        window.open(url, '_blank')
+        setTimeout(() => URL.revokeObjectURL(url), 10_000)
+      } catch { toast.error('โหลดไฟล์ไม่สำเร็จ') }
+    }
+  }
+
+  return (
+    <>
+      <div onClick={handleClick} title={file.fileName}
+        className="group relative flex flex-col items-center justify-center w-20 h-20 rounded-lg border border-border bg-muted hover:border-primary transition-all overflow-hidden shrink-0 cursor-pointer">
+        {isImage ? (
+          <>
+            <AuthImage src={src} alt={file.fileName} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+              {loading
+                ? <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <p className="text-[10px] text-white text-center px-1">🔍 ดูเต็มจอ</p>}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-1 p-1 w-full h-full">
+            <FileText className="h-7 w-7 text-muted-foreground group-hover:text-primary transition-colors" />
+            <span className="text-[10px] text-muted-foreground text-center leading-tight line-clamp-2 break-all px-1">
+              {file.fileName}
+            </span>
+          </div>
+        )}
+      </div>
+      {isImage && blobUrl && (
+        <ImageDialog blobUrl={blobUrl} fileName={file.fileName} open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      )}
+    </>
+  )
+}
+
+// ─── AttachmentList ───────────────────────────────────────────────────────────
+
+function AttachmentList({ attachment }: { attachment?: string | AttachmentItem[] }) {
+  const files = parseAttachments(attachment)
+  if (files.length === 0) return <p className="text-sm text-muted-foreground">-</p>
+  return (
+    <div className="flex flex-wrap gap-3">
+      {files.map((f, i) => <AttachmentFile key={i} file={f} />)}
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function MaintenanceView() {
@@ -89,20 +239,18 @@ function MaintenanceView() {
   const { t }   = useTranslation('checklist')
   const router  = useRouter()
 
-  const [record,  setRecord]  = useState<MaintenanceRecord | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [record,          setRecord]          = useState<MaintenanceRecord | null>(null)
+  const [loading,         setLoading]         = useState(true)
+  const [responsibleName, setResponsibleName] = useState<string>('')
 
   useEffect(() => { if (id) fetchDetail() }, [id])
 
-  const [responsibleName, setResponsibleName] = useState<string>('')
-  
   const fetchDetail = async () => {
     try {
       setLoading(true)
       const response = await api.get<any>(`/api/maintenance/${id}`)
       if (response?.data) {
         setRecord(response.data)
-
         if (response.data.responsibleMaintenance) {
           try {
             const memberRes = await api.get<any>(`/api/user/${response.data.responsibleMaintenance}`)
@@ -110,7 +258,7 @@ function MaintenanceView() {
               setResponsibleName(`${memberRes.data.firstName} ${memberRes.data.lastName}`)
             }
           } catch {
-            setResponsibleName(response.data.responsibleMaintenance) 
+            setResponsibleName(response.data.responsibleMaintenance)
           }
         }
       } else {
@@ -192,15 +340,15 @@ function MaintenanceView() {
               <InfoRow label={t('due_date')}    value={formatDate(record.dueDate)} />
               <InfoRow label={t('plan_date')}   value={formatDate(record.planDate)} />
               <InfoRow label={t('result_date')} value={formatDate(record.startDate)} />
-              <InfoRow label={t('result_date')} value={formatDate(record.actualDate)} />
+              <InfoRow label={t('external_calibration_date')} value={formatDate(record.actualDate)} />
               <InfoRow label={t('responsible_by')} value={record.maintenanceBy} />
-              <InfoRow label={t('responsible')} value={responsibleName} />
-              <InfoRow label={t('note')}        value={record.note} className="md:col-span-2" />
+              <InfoRow label={t('responsible')}    value={responsibleName} />
+              <InfoRow label={t('note')}           value={record.note} className="md:col-span-2" />
             </div>
           </CardContent>
         </Card>
 
-        {/* Attachment */}
+        {/* Attachments */}
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
@@ -209,19 +357,7 @@ function MaintenanceView() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
-            {record.attachment ? (
-              <a
-                href={`${API_BASE}/api/files/download/${record.attachment}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-primary hover:underline"
-              >
-                <FileText className="h-4 w-4" />
-                {record.attachment}
-              </a>
-            ) : (
-              <p className="text-sm text-muted-foreground">-</p>
-            )}
+            <AttachmentList attachment={record.attachment} />
           </CardContent>
         </Card>
 
