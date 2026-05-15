@@ -593,6 +593,7 @@ function MachineEdit() {
     try {
       await api.put('/api/machine/update', buildMachineDTO())
       await api.post(`/api/machine/${id}/sync-to-lark`)
+      await api.post(`/api/machine/sync-all-to-lark`)
       toast.success(t('machine_updated'))
       setTimeout(() => navigate({ to: '/checklist/machine' }), 1000)
     } catch (error: any) {
@@ -628,7 +629,7 @@ function MachineEdit() {
   const fetchResponsible = async (kw: string, idx: number) => {
     try {
       const d = await fetchMembers(kw, idx)
-      if (!kw) setCachedResponsible(d) // ← set cache เฉพาะตอนไม่มี keyword
+      if (!kw) setCachedResponsible(d) 
       return { data: d, hasMore: false }
     } catch {
       return { data: [], hasMore: false }

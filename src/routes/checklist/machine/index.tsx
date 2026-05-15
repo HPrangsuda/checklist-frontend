@@ -209,9 +209,9 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: MachineDepa
           </div>
         </CardHeader>
       </Card>
-      
+
       <PendingCard />
-                  
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="flex items-center justify-between">
@@ -241,7 +241,7 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: MachineDepa
           </div>
         </Card>
       </div>
-        
+
       <Card className="p-4">
         <div className="flex flex-col lg:flex-row gap-4 mb-4">
           <div className="flex-1 relative">
@@ -317,25 +317,48 @@ function DataTbl() {
   const [showQrDialog, setShowQrDialog] = useState(false)
   const [exportingQr, setExportingQr]   = useState(false)
   const [searchValue, setSearchValue]   = useState('')
+  // ✅ FIX: state เก็บ id ที่ถูกเลือกจาก MachineTbl
+  const [selectedIds, setSelectedIds]   = useState<number[]>([])
 
   const handleExportQr = async (mode: 'all' | 'selected') => {
-    try {
-      setShowQrDialog(false)
-      setExportingQr(true)
-      toast.info(t('preparing_qr_codes'))
+  try {
+    setShowQrDialog(false)
+    setExportingQr(true)
+    toast.info(t('preparing_qr_codes'))
 
-      let machines: MachineDTO[] = []
-      if (mode === 'all') {
-        const params = new URLSearchParams({ index: '0', size: '9999' })
-        if (searchValue.trim()) params.set('keyword', searchValue.trim())
-        const res = await api.get<PageResponse<MachineDTO>>('/api/machine/get/page', { params })
-        if (res?.success) machines = res.data
+    let machines: MachineDTO[] = []
+
+    if (mode === 'selected') {
+      if (selectedIds.length === 0) {
+        toast.warning(t('no_items_selected'))
+        setExportingQr(false)
+        return
       }
+      const params = new URLSearchParams({ index: '0', size: '9999' })
+      if (searchValue.trim()) params.set('keyword', searchValue.trim())
+      const res = await api.get<PageResponse<MachineDTO>>('/api/machine/get/page', { params })
+      if (res?.success) {
+        machines = res.data.filter(m => selectedIds.includes(m.id))
+      }
+    } else {
+      const params = new URLSearchParams({ index: '0', size: '9999' })
+      if (searchValue.trim()) params.set('keyword', searchValue.trim())
+      const res = await api.get<PageResponse<MachineDTO>>('/api/machine/get/page', { params })
+      if (res?.success) machines = res.data
+    }
 
-      const withQr = machines.filter(m => m.qrCode || m.qr_code)
+    // ── Debug: ดูว่า API คืน field อะไรบ้าง ──
+    console.log('machines sample:', machines.slice(0, 3))
+    console.log('fields:', machines[0] ? Object.keys(machines[0]) : 'empty')
+
+    const withQr = machines.filter(m => m.qrCode || m.qr_code)
+      console.log(`total: ${machines.length}, withQr: ${withQr.length}`)
+
       if (withQr.length === 0) { toast.warning(t('no_qr_found')); return }
 
-      await exportMachineQrPdf(withQr.map(m => ({ ...m, qrCode: m.qrCode ?? m.qr_code ?? '' })) as any)
+      await exportMachineQrPdf(
+        withQr.map(m => ({ ...m, qrCode: m.qrCode ?? m.qr_code ?? '' })) as any
+      )
       toast.success(t('export_qr_success').replace('{count}', String(withQr.length)))
     } catch {
       toast.error(t('export_failed'))
@@ -351,7 +374,7 @@ function DataTbl() {
           onOpenQrDialog={() => setShowQrDialog(true)}
           exportingQr={exportingQr}
         />
-        
+
         {/* QR Export Dialog */}
         <ShadcnDialog open={showQrDialog} onOpenChange={setShowQrDialog}>
           <ShadcnDialogContent className="max-w-sm">
@@ -362,8 +385,38 @@ function DataTbl() {
               <ShadcnDialogDescription>{t('select_export_format')}</ShadcnDialogDescription>
             </ShadcnDialogHeader>
             <div className="flex flex-col gap-3 py-2">
-              <Button variant="outline" className="justify-start h-14 px-4" onClick={() => handleExportQr('all')}>
-                <div className="flex flex-col items-start">
+
+              {/* ✅ FIX: ปุ่ม export selected — แสดงจำนวนที่เลือก, disable ถ้าไม่มี */}
+              <Button
+                variant="outline"
+                className="justify-start h-14 px-4"
+                onClick={() => handleExportQr('selected')}
+                disabled={selectedIds.length === 0}
+              >
+                <div className="flex flex-col items-start gap-0.5 w-full">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{t('export_selected')}</span>
+                    {selectedIds.length > 0 && (
+                      <span className="text-xs bg-primary text-primary-foreground rounded-full px-2 py-0.5 leading-none">
+                        {selectedIds.length}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {selectedIds.length === 0
+                      ? t('select_items_from_table_first')
+                      : t('export_selected_desc').replace('{count}', String(selectedIds.length))}
+                  </span>
+                </div>
+              </Button>
+
+              {/* ปุ่ม export all */}
+              <Button
+                variant="outline"
+                className="justify-start h-14 px-4"
+                onClick={() => handleExportQr('all')}
+              >
+                <div className="flex flex-col items-start gap-0.5">
                   <span className="font-semibold">{t('export_all')}</span>
                   <span className="text-xs text-muted-foreground">{t('export_all_desc')}</span>
                 </div>
@@ -372,7 +425,11 @@ function DataTbl() {
           </ShadcnDialogContent>
         </ShadcnDialog>
 
-        <MachineTbl />
+        {/* ✅ FIX: ส่ง onSelectionChange ให้ MachineTbl เพื่อรับ id ที่เลือก */}
+        <MachineTbl
+          onSelectionChange={setSelectedIds}
+          onSearchChange={setSearchValue}
+        />
       </main>
     </div>
   )

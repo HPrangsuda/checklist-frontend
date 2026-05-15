@@ -41,9 +41,15 @@ interface MachineDTO {
 
 type ViewMode = 'overview' | 'mine'
 
+// ✅ เพิ่ม Props interface
+interface MachineTblProps {
+  onSelectionChange?: (ids: number[]) => void
+  onSearchChange?: (keyword: string) => void
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function MachineTbl() {
+export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProps) {
   const { t } = useTranslation('checklist')
   const router = useRouter()
   const { role } = useAuth()
@@ -59,6 +65,16 @@ export function MachineTbl() {
   const [searchValue, setSearchValue] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('mine')
   const debouncedSearch = useDebounce(keyword, 500)
+
+  // ✅ Emit selectedIds ขึ้นไปยัง parent ทุกครั้งที่เปลี่ยน
+  useEffect(() => {
+    onSelectionChange?.(selectedIds)
+  }, [selectedIds])
+
+  // ✅ Emit keyword ขึ้นไปยัง parent ทุกครั้งที่เปลี่ยน
+  useEffect(() => {
+    onSearchChange?.(keyword)
+  }, [keyword])
 
   // ─── Status label helper ───────────────────────────────────────────────────
 
@@ -99,7 +115,6 @@ export function MachineTbl() {
       ),
       size: 32,
     },
-    ,
     {
       id: 'action',
       header: t('action'),
@@ -165,7 +180,7 @@ export function MachineTbl() {
         ) : (
           <span className="text-muted-foreground text-sm">-</span>
         ),
-    }
+    },
   ]
 
   // ─── Effects ──────────────────────────────────────────────────────────────
@@ -189,7 +204,6 @@ export function MachineTbl() {
       params.set('size', pagination.pageSize.toString())
       if (searchValue.trim()) params.set('keyword', searchValue.trim())
 
-      // ส่ง mine=true เฉพาะ MANAGER/SUPERVISOR ที่เลือก tab Mine
       if (isManagerOrSupervisor && viewMode === 'mine') {
         params.set('mine', 'true')
       }
@@ -257,9 +271,9 @@ export function MachineTbl() {
     setShowDeleteDialog(true)
   }
 
-  const handleAdd  = () => router.navigate({ to: '/checklist/machine/add', search: { refId: undefined } })
-  const handleView = (id: number) => router.navigate({ to: '/checklist/machine/view', search: { id } })
-  const handleEdit = (id: number) => router.navigate({ to: '/checklist/machine/edit', search: { id } })
+  const handleAdd    = () => router.navigate({ to: '/checklist/machine/add', search: { refId: undefined } })
+  const handleView   = (id: number) => router.navigate({ to: '/checklist/machine/view', search: { id } })
+  const handleEdit   = (id: number) => router.navigate({ to: '/checklist/machine/edit', search: { id } })
   const handleDelete = (id: number) => {
     setSelectedIds([id])
     setShowDeleteDialog(true)
@@ -293,7 +307,6 @@ export function MachineTbl() {
           {t('machine_records')}
         </CardTitle>
 
-        {/* Tab only for MANAGER / SUPERVISOR */}
         {isManagerOrSupervisor && (
           <Tabs value={viewMode} onValueChange={handleViewModeChange}>
             <TabsList>

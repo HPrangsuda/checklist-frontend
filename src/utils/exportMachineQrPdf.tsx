@@ -4,14 +4,8 @@ import { pdf, Document, Page, View, Text, Image, StyleSheet, Font } from '@react
 Font.register({
   family: 'Sarabun',
   fonts: [
-    {
-      src: '/src/assets/fonts/Sarabun-Regular.ttf',
-      fontWeight: 'normal',
-    },
-    {
-      src: '/src/assets/fonts/Sarabun-Bold.ttf',
-      fontWeight: 'bold',
-    },
+    { src: '/src/assets/fonts/Sarabun-Regular.ttf', fontWeight: 'normal' },
+    { src: '/src/assets/fonts/Sarabun-Bold.ttf', fontWeight: 'bold' },
   ],
 })
 
@@ -19,61 +13,19 @@ interface Machine {
   id: number
   machineCode: string
   machineName: string
-  qrCode: string 
+  qrCode: string
   department?: string
 }
 
 const styles = StyleSheet.create({
-  page: {
-    padding: 12,
-    backgroundColor: '#ffffff',
-    fontFamily: 'Sarabun',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  cell: {
-    width: '50%',
-    padding: 6,
-  },
-  card: {
-    border: '1px solid #e0e0e0',
-    borderRadius: 4,
-    padding: 10,
-    alignItems: 'center',
-    height: 230,
-    justifyContent: 'center',
-  },
-  qrImage: {
-    width: 160,
-    height: 160,
-  },
-  code: {
-    marginTop: 8,
-    fontSize: 10,
-    fontFamily: 'Sarabun',
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    textAlign: 'center',
-  },
-  name: {
-    marginTop: 4,
-    fontSize: 7,
-    fontFamily: 'Sarabun',
-    color: '#555555',
-    textAlign: 'center',
-  },
-  pageNumber: {
-    position: 'absolute',
-    bottom: 8,
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    fontSize: 7,
-    fontFamily: 'Sarabun',
-    color: '#bbbbbb',
-  },
+  page: { padding: 12, backgroundColor: '#ffffff', fontFamily: 'Sarabun' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  cell: { width: '50%', padding: 6 },
+  card: { border: '1px solid #e0e0e0', borderRadius: 4, padding: 10, alignItems: 'center', height: 230, justifyContent: 'center' },
+  qrImage: { width: 160, height: 160 },
+  code: { marginTop: 8, fontSize: 10, fontFamily: 'Sarabun', fontWeight: 'bold', color: '#1a1a1a', textAlign: 'center' },
+  name: { marginTop: 4, fontSize: 7, fontFamily: 'Sarabun', color: '#555555', textAlign: 'center' },
+  pageNumber: { position: 'absolute', bottom: 8, left: 0, right: 0, textAlign: 'center', fontSize: 7, fontFamily: 'Sarabun', color: '#bbbbbb' },
 })
 
 async function generateQrDataUrl(value: string): Promise<string> {
@@ -91,15 +43,17 @@ async function generateQrDataUrl(value: string): Promise<string> {
   })
 }
 
-function getQrCode(machine: Machine): string {
+// ✅ แก้ไข: คืน string ที่ใช้เป็น content ของ QR
+function getQrValue(machine: Machine): string {
   try {
     const parsed = JSON.parse(machine.qrCode)
-    return JSON.stringify(parsed)
+    return parsed.code ?? machine.machineCode
   } catch {
-    return machine.machineCode
+    return machine.qrCode || machine.machineCode
   }
 }
 
+// ✅ แก้ไข: label บน PDF ใช้ field "code" จาก JSON
 function getCodeLabel(machine: Machine): string {
   try {
     return JSON.parse(machine.qrCode).code ?? machine.machineCode
@@ -114,30 +68,29 @@ function truncate(str: string, max: number): string {
 
 function chunks<T>(arr: T[], size: number): T[][] {
   const result: T[][] = []
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size))
-  }
+  for (let i = 0; i < arr.length; i += size) result.push(arr.slice(i, i + size))
   return result
 }
 
 export async function exportMachineQrPdf(machines: Machine[]): Promise<void> {
-    const qrImages: string[] = []
+  const qrImages: string[] = []
 
-    for (let i = 0; i < machines.length; i += 6) {
-        const batch = machines.slice(i, i + 6)
-        const batchImages = await Promise.all(
-            batch.map(async (machine) => {
-            const value = machine.qrCode ?? machine.qrCode ?? ''
-            if (!value) return ''
-            try {
-                return await generateQrDataUrl(value)
-            } catch {
-                return ''
-            }
-            })
-        )
-        qrImages.push(...batchImages)
-    }
+  for (let i = 0; i < machines.length; i += 6) {
+    const batch = machines.slice(i, i + 6)
+    const batchImages = await Promise.all(
+      batch.map(async (machine) => {
+        // ✅ แก้ไขจุดนี้: ใช้ getQrValue แทน machine.qrCode ตรงๆ
+        const value = getQrValue(machine)
+        if (!value) return ''
+        try {
+          return await generateQrDataUrl(value)
+        } catch {
+          return ''
+        }
+      })
+    )
+    qrImages.push(...batchImages)
+  }
 
   const pages = chunks(machines, 6)
 
@@ -152,16 +105,11 @@ export async function exportMachineQrPdf(machines: Machine[]): Promise<void> {
                 <View key={machine.id} style={styles.cell}>
                   <View style={styles.card}>
                     {qrImages[globalIdx] && (
-                        <Image
-                            style={styles.qrImage}
-                            src={qrImages[globalIdx]}
-                        />
-                        )}
+                      <Image style={styles.qrImage} src={qrImages[globalIdx]} />
+                    )}
                     <Text style={styles.code}>{getCodeLabel(machine)}</Text>
                     {machine.machineName && (
-                      <Text style={styles.name}>
-                        {truncate(machine.machineName, 40)}
-                      </Text>
+                      <Text style={styles.name}>{truncate(machine.machineName, 40)}</Text>
                     )}
                   </View>
                 </View>
@@ -170,9 +118,7 @@ export async function exportMachineQrPdf(machines: Machine[]): Promise<void> {
           </View>
           <Text
             style={styles.pageNumber}
-            render={({ pageNumber, totalPages }) =>
-              `${pageNumber} / ${totalPages}`
-            }
+            render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
             fixed
           />
         </Page>

@@ -136,7 +136,6 @@ function ChecklistEdit() {
 
   useEffect(() => {
     const raw = record?.reasonNotChecked ?? ''
-    // ถ้ามีใน map ให้แปลง ถ้าไม่มีให้ใช้ค่าเดิม (กรณีเป็น EN อยู่แล้ว)
     setSelectedReason(raw in REASON_TO_EN ? REASON_TO_EN[raw] : raw)
   }, [record?.reasonNotChecked])
 
@@ -145,7 +144,6 @@ function ChecklistEdit() {
       const res = await api.get<{ data: CurrentUser }>('/api/auth/me')
       setCurrentUser(res?.data ?? null)
     } catch {
-      // ignore
     }
   }
 
