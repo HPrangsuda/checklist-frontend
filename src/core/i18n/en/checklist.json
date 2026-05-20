@@ -305,5 +305,10 @@
   "pending_approval": "Pending Approval",
   "view_mine": "My Machines",
   "view_overview": "Overview",
-  "pending": "Pending"
+  "pending": "Pending",
+  "insurance": "Insurance",
+  "insurance_note": "Please provide insurance note",
+  "has_insurance": "Please select if the machine has insurance",
+  "yes": "YES",
+  "no": "NO"
 }

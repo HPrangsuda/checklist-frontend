@@ -44,18 +44,24 @@ function RouteComponent({ data }: any) {
 
   const [uploadedImages,       setUploadedImages]       = useState<FileUploadResponse[]>([])
   const [uploadedInstructions, setUploadedInstructions] = useState<FileUploadResponse[]>([])
+  const [uploadedInsurance,    setUploadedInsurance]    = useState<FileUploadResponse[]>([])  // ✅ ไฟล์ประกัน
   const [isUploadingImages,    setIsUploadingImages]    = useState(false)
   const [isUploadingInstr,     setIsUploadingInstr]     = useState(false)
+  const [isUploadingInsurance, setIsUploadingInsurance] = useState(false)  // ✅
 
-  const imageQueueRef   = useRef<Set<string>>(new Set())
-  const instrQueueRef   = useRef<Set<string>>(new Set())
-  const imageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const instrTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const imageQueueRef     = useRef<Set<string>>(new Set())
+  const instrQueueRef     = useRef<Set<string>>(new Set())
+  const insuranceQueueRef = useRef<Set<string>>(new Set())  // ✅
+  const imageTimeoutRef     = useRef<NodeJS.Timeout | null>(null)
+  const instrTimeoutRef     = useRef<NodeJS.Timeout | null>(null)
+  const insuranceTimeoutRef = useRef<NodeJS.Timeout | null>(null)  // ✅
   const uploadedImagesRef       = useRef<FileUploadResponse[]>([])
   const uploadedInstructionsRef = useRef<FileUploadResponse[]>([])
+  const uploadedInsuranceRef    = useRef<FileUploadResponse[]>([])  // ✅
 
   useEffect(() => { uploadedImagesRef.current = uploadedImages },             [uploadedImages])
   useEffect(() => { uploadedInstructionsRef.current = uploadedInstructions }, [uploadedInstructions])
+  useEffect(() => { uploadedInsuranceRef.current = uploadedInsurance },       [uploadedInsurance])  // ✅
 
   const formSteps: FormStep[] = [
     { id: 'general',     title: t('general'),    description: t('basic_information'),       required: true  },
@@ -66,6 +72,11 @@ function RouteComponent({ data }: any) {
   const maintenanceOptions       = [{ name: '6 MONTH' }, { name: '3 MONTH' }]
   const resultOptions            = [{ name: 'PASS' }, { name: 'FAIL' }]
   const calibrationStatusOptions = [{ name: 'ON TIME' }, { name: 'OVERDUE' }]
+  // ✅ ตัวเลือกประกัน
+  const insuranceOptions = [
+    { value: 'YES', label: t('yes') },
+    { value: 'NO',  label: t('no')  },
+  ]
 
   const [formData, setFormData] = useState({
     name:                data?.name                || '',
@@ -99,6 +110,9 @@ function RouteComponent({ data }: any) {
     watt:                data?.watt                || '',
     horsePower:          data?.horsePower          || '',
     note:                data?.note                || '',
+    // ✅ fields ประกัน
+    hasInsurance:        data?.hasInsurance        || '',   // 'YES' | 'NO' | ''
+    insuranceNote:       data?.insuranceNote       || '',   // หมายเหตุประกัน (บังคับเมื่อ YES)
   })
 
   useEffect(() => { if (refId) fetchRegisterData(refId) }, [refId])
@@ -176,6 +190,15 @@ function RouteComponent({ data }: any) {
     }, 100)
   }
 
+  // ✅ handler อัปโหลดเอกสารประกัน
+  const handleInsuranceChange = (files: File[]) => {
+    if (insuranceTimeoutRef.current) clearTimeout(insuranceTimeoutRef.current)
+    insuranceTimeoutRef.current = setTimeout(() => {
+      if (files?.length && !isUploadingInsurance)
+        handleFileUpload(files, uploadedInsuranceRef, setUploadedInsurance, insuranceQueueRef, setIsUploadingInsurance)
+    }, 100)
+  }
+
   const handleDeleteImage = async (fileId: any) => {
     const f = uploadedImages.find(u => u.fileName === fileId || u.fileName.includes(fileId))
     if (!f) return
@@ -192,6 +215,17 @@ function RouteComponent({ data }: any) {
     try {
       await api.delete(`/api/files/delete/${f.fileName}`)
       setUploadedInstructions(prev => prev.filter(u => u.fileName !== f.fileName))
+      toast.success(t('file_deleted'))
+    } catch { toast.error(t('failed_to_delete_file')) }
+  }
+
+  // ✅ handler ลบไฟล์ประกัน
+  const handleDeleteInsurance = async (fileId: any) => {
+    const f = uploadedInsurance.find(u => u.fileName === fileId || u.fileName.includes(fileId))
+    if (!f) return
+    try {
+      await api.delete(`/api/files/delete/${f.fileName}`)
+      setUploadedInsurance(prev => prev.filter(u => u.fileName !== f.fileName))
       toast.success(t('file_deleted'))
     } catch { toast.error(t('failed_to_delete_file')) }
   }
@@ -236,6 +270,8 @@ function RouteComponent({ data }: any) {
         supervisorName:  d.supervisorName  || '',
         manager:         d.managerId       || '',
         managerName:     d.managerName     || '',
+        hasInsurance:    d.hasInsurance    || '',
+        insuranceNote:   d.insuranceNote   || '',
       }))
       toast.success(t('register_data_loaded'))
     } catch {
@@ -252,21 +288,35 @@ function RouteComponent({ data }: any) {
     if (!getDeptCode(formData.department))           e.department  = t('department_required')
     if (!String(formData.responsible ?? '').trim()) e.responsible = t('responsible_required')
     if (!String(formData.quantity    ?? '').trim()) e.quantity    = t('quantity_required')
+    if (!String(formData.serialNumber ?? '').trim()) e.serialNumber = t('serial_number_required')
+    if (!String(formData.hasInsurance ?? '').trim()) e.hasInsurance = t('has_insurance_required')
+    if (formData.hasInsurance === 'YES' && !String(formData.insuranceNote ?? '').trim()) {
+      e.insuranceNote = t('insurance_note_required')
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
-  const isFormValid = () => !!(
-    String(formData.name        ?? '').trim() &&
-    getDeptCode(formData.department)           &&
-    String(formData.responsible ?? '').trim() &&
-    String(formData.quantity    ?? '').trim()
-  )
+  const isFormValid = () => {
+    const base = !!(
+      String(formData.name        ?? '').trim() &&
+      getDeptCode(formData.department)           &&
+      String(formData.responsible ?? '').trim() &&
+      String(formData.quantity    ?? '').trim() &&
+      String(formData.serialNumber ?? '').trim() &&
+      String(formData.hasInsurance ?? '').trim()
+    )
+    
+    if (formData.hasInsurance === 'YES') {
+      return base && !!String(formData.insuranceNote ?? '').trim()
+    }
+    return base
+  }
 
   const getStepStatus = (stepId: string): 'complete' | 'error' | 'incomplete' | 'empty' => {
     if (stepId !== 'general') return 'empty'
     const hasErrors = Object.keys(errors).some(k =>
-      ['name', 'department', 'responsible', 'quantity'].includes(k)
+      ['name', 'department', 'responsible', 'quantity', 'serialNumber', 'hasInsurance', 'insuranceNote'].includes(k)
     )
     if (hasErrors) return 'error'
     return isFormValid() ? 'complete' : 'incomplete'
@@ -277,7 +327,7 @@ function RouteComponent({ data }: any) {
     if (!s) return null
     try {
       const date = new Date(s)
-      const offset = 7 * 60 // Asia/Bangkok UTC+7
+      const offset = 7 * 60
       const local = new Date(date.getTime() - (date.getTimezoneOffset() + offset) * -60000)
       return local.toISOString()
     } catch { return null }
@@ -294,7 +344,14 @@ function RouteComponent({ data }: any) {
       fileType: f.fileType, fileSize: f.fileSize,
       uploadedBy: f.uploadedBy ?? null,
     }))
-    const attachments = [...imageFiles, ...instrFiles]
+    
+    const insuranceFiles = uploadedInsurance.map(f => ({
+      fileName: f.fileName, fileUrl: f.fileUrl,
+      fileType: f.fileType, fileSize: f.fileSize,
+      uploadedBy: f.uploadedBy ?? null,
+      category: 'INSURANCE',
+    }))
+    const attachments = [...imageFiles, ...instrFiles, ...insuranceFiles]
 
     const calibration = formData.calibrationDueDate ? [{
       externalCalibrationDate: formatDateToISO(formData.externalCalibration),
@@ -339,6 +396,8 @@ function RouteComponent({ data }: any) {
       attachments:   attachments.length    ? attachments  : null,
       maintenance:   maintenance.length    ? maintenance  : null,
       calibration:   calibration,
+      hasInsurance:  formData.hasInsurance  || null,
+      insuranceNote: formData.hasInsurance === 'YES' ? (formData.insuranceNote || null) : null,
     }
   }
 
@@ -367,6 +426,14 @@ function RouteComponent({ data }: any) {
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     if (errors[field]) { const e = { ...errors }; delete e[field]; setErrors(e) }
+  }
+
+  const handleInsuranceToggle = (val: string) => {
+    handleInputChange('hasInsurance', val)
+    if (val === 'NO') {
+      handleInputChange('insuranceNote', '')
+      setUploadedInsurance([])
+    }
   }
 
   // ─── Fetch department ─────────────────────────────────────────────────────
@@ -480,6 +547,43 @@ function RouteComponent({ data }: any) {
 
           <TextField id="note" label={t('note')} value={formData.note}
             onChange={v => handleInputChange('note', v)} />
+
+          {/* ✅ ส่วนประกัน */}
+          <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+            <p className="text-sm font-semibold">{t('insurance')}</p>
+
+            <SingleSelectField
+              id="hasInsurance"
+              label={t('has_insurance')}
+              value={[formData.hasInsurance]}
+              onChange={v => handleInsuranceToggle(v[0] || '')}
+              options={insuranceOptions}
+            />
+
+            {formData.hasInsurance === 'YES' && (
+              <>
+                <TextField
+                  id="insuranceNote"
+                  label={t('insurance_note')}
+                  value={formData.insuranceNote}
+                  onChange={v => handleInputChange('insuranceNote', v)}
+                  error={errors.insuranceNote}
+                  required
+                />
+
+                <FileUploadField
+                  id="insurance-docs"
+                  label={t('insurance_documents')}
+                  maxFiles={10}
+                  value={uploadedInsurance.map(f => ({ name: f.fileName, size: f.fileSize, type: f.fileType, url: f.fileUrl })) as unknown as File[]}
+                  onChange={handleInsuranceChange}
+                  onDownloadFile={handleDownloadFile}
+                  onDeleteUploadedFile={handleDeleteInsurance}
+                  onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+                />
+              </>
+            )}
+          </div>
 
           <FileUploadField
             id="register-images" label={t('images')} maxFiles={10}
