@@ -351,7 +351,7 @@ function FileUploadRoot(props: FileUploadRootProps) {
   );
 
   const acceptTypes = React.useMemo(
-    () => accept?.split(",").map((t) => t.trim()) ?? null,
+    () => accept?.split(",").map((t) => t.trim().toLowerCase()) ?? null,
     [accept],
   );
 
@@ -444,7 +444,7 @@ function FileUploadRoot(props: FileUploadRootProps) {
         }
 
         if (acceptTypes) {
-          const fileType = file.type;
+          const fileType = file.type.toLowerCase();
           const fileExtension = `.${file.name.split(".").pop()?.toLowerCase()}`;
 
           if (
