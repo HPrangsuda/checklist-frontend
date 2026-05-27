@@ -34,6 +34,7 @@ interface AttachmentItem {
   fileType: string
   fileSize: number
   uploadedBy: string | null
+  category?: string | null
 }
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
@@ -56,37 +57,65 @@ function RouteComponent({ data }: any) {
   const [cachedManager,       setCachedManager]       = useState<any[]>([])
   const cachedDepartments = useRef<Array<{ value: string; label: string; businessUnit: string }>>([])
 
+  // ─── File states ───────────────────────────────────────────────────────────
   const [newImages,       setNewImages]       = useState<File[]>([])
   const [newInstructions, setNewInstructions] = useState<File[]>([])
+
   const [uploadedImages,       setUploadedImages]       = useState<FileUploadResponse[]>([])
   const [uploadedInstructions, setUploadedInstructions] = useState<FileUploadResponse[]>([])
+  const [uploadedWarranty,     setUploadedWarranty]     = useState<FileUploadResponse[]>([])
+
   const [isUploadingImages,    setIsUploadingImages]    = useState(false)
   const [isUploadingInstr,     setIsUploadingInstr]     = useState(false)
+  const [isUploadingWarranty,  setIsUploadingWarranty]  = useState(false)
+
   const [existingImages,       setExistingImages]       = useState<AttachmentItem[]>([])
   const [existingInstructions, setExistingInstructions] = useState<AttachmentItem[]>([])
+  const [existingWarranty,     setExistingWarranty]     = useState<AttachmentItem[]>([])
 
+  // ─── Register insurance (read-only display) ────────────────────────────────
+  const [refInsurance, setRefInsurance] = useState<{
+    hasInsurance: string
+    insuranceNote: string
+    files: AttachmentItem[]
+  } | null>(null)
+
+  // ─── Refs ──────────────────────────────────────────────────────────────────
   const imageQueueRef   = useRef<Set<string>>(new Set())
   const instrQueueRef   = useRef<Set<string>>(new Set())
-  const imageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const instrTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const warrantyQueueRef = useRef<Set<string>>(new Set())
+
+  const imageTimeoutRef   = useRef<NodeJS.Timeout | null>(null)
+  const instrTimeoutRef   = useRef<NodeJS.Timeout | null>(null)
+  const warrantyTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   const uploadedImagesRef       = useRef<FileUploadResponse[]>([])
   const uploadedInstructionsRef = useRef<FileUploadResponse[]>([])
+  const uploadedWarrantyRef     = useRef<FileUploadResponse[]>([])
 
-  useEffect(() => { uploadedImagesRef.current = uploadedImages },             [uploadedImages])
+  useEffect(() => { uploadedImagesRef.current       = uploadedImages },       [uploadedImages])
   useEffect(() => { uploadedInstructionsRef.current = uploadedInstructions }, [uploadedInstructions])
+  useEffect(() => { uploadedWarrantyRef.current     = uploadedWarranty },     [uploadedWarranty])
 
+  // ─── Form steps ────────────────────────────────────────────────────────────
   const formSteps: FormStep[] = [
-    { id: 'general',     title: t('general'),    description: t('basic_information'),       required: true  },
-    { id: 'maintenance', title: t('maintenance'), description: t('maintenance_information'), required: false },
+    { id: 'general',     title: t('general'),    description: t('basic_information'),        required: true  },
+    { id: 'maintenance', title: t('maintenance'), description: t('maintenance_information'),  required: false },
     { id: 'calibration', title: t('calibration'), description: t('calibration_information'), required: false },
   ]
 
+  // ─── Options ───────────────────────────────────────────────────────────────
   const machineStatusOptions     = [{ name: 'OPERATIONAL' }, { name: 'NON-OPERATIONAL' }, { name: 'UNDER REPAIR' }]
   const maintenanceOptions       = [{ name: '6 MONTH' }, { name: '3 MONTH' }]
   const resetPeriodOptions       = [{ name: 'WEEKLY' }, { name: 'MONTHLY' }, { name: 'EVERY 3 MONTHS' }]
   const resultOptions            = [{ name: 'PASS' }, { name: 'FAIL' }]
   const calibrationStatusOptions = [{ name: 'ON TIME' }, { name: 'OVERDUE' }]
+  const warrantyOptions = [
+    { value: 'YES', label: t('yes') },
+    { value: 'NO',  label: t('no')  },
+  ]
 
+  // ─── Form data ─────────────────────────────────────────────────────────────
   const [formData, setFormData] = useState({
     name:              data?.name              || '',
     machineCode:       data?.machineCode       || '',
@@ -123,8 +152,13 @@ function RouteComponent({ data }: any) {
     accuracy:            data?.accuracy            || '',
     calibrationRange:    data?.calibrationRange    || '',
     calibrationStatus:   data?.calibrationStatus   || '',
+    // ─── warranty ───────────────────────────────────────────────────────────
+    hasWarranty:        data?.hasWarranty        || '',   // 'YES' | 'NO' | ''
+    warrantyNote:       data?.warrantyNote       || '',
+    warrantyExpireDate: data?.warrantyExpireDate || '',
   })
 
+  // ─── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => { if (refId) fetchRegisterData(refId) }, [refId])
   useEffect(() => {
     fetchMachineGroup('')
@@ -137,6 +171,7 @@ function RouteComponent({ data }: any) {
     if (code) setFormData(prev => ({ ...prev, machineCode: code }))
   }, [formData.machineGroupId, formData.machineTypeId, formData.department])
 
+  // ─── Helpers ───────────────────────────────────────────────────────────────
   const toStr = (val: any): string => String(val ?? '').trim()
 
   const getDeptCode = (dept: any): string => {
@@ -155,7 +190,7 @@ function RouteComponent({ data }: any) {
     return formData.machineCode
   }
 
-  // ─── File upload ──────────────────────────────────────────────────────────
+  // ─── File upload ───────────────────────────────────────────────────────────
   const uploadFile = async (file: File): Promise<FileUploadResponse> => {
     const fd = new FormData()
     fd.append('file', file)
@@ -172,7 +207,7 @@ function RouteComponent({ data }: any) {
     queueRef: React.MutableRefObject<Set<string>>,
     setUploading: React.Dispatch<React.SetStateAction<boolean>>,
   ) => {
-    const current = uploadedRef.current
+    const current  = uploadedRef.current
     const newFiles = files.filter(f => {
       const key = `${f.name}-${f.size}-${f.lastModified}`
       if (queueRef.current.has(key)) return false
@@ -199,6 +234,7 @@ function RouteComponent({ data }: any) {
     }
   }
 
+  // ─── Image handlers ────────────────────────────────────────────────────────
   const handleImagesChange = (files: File[]) => {
     const realFiles = files.filter(f => f instanceof File)
     setNewImages(realFiles)
@@ -206,16 +242,6 @@ function RouteComponent({ data }: any) {
     imageTimeoutRef.current = setTimeout(() => {
       if (realFiles?.length && !isUploadingImages)
         handleFileUpload(realFiles, uploadedImagesRef, setUploadedImages, imageQueueRef, setIsUploadingImages)
-    }, 100)
-  }
-
-  const handleInstructionsChange = (files: File[]) => {
-    const realFiles = files.filter(f => f instanceof File)
-    setNewInstructions(realFiles)
-    if (instrTimeoutRef.current) clearTimeout(instrTimeoutRef.current)
-    instrTimeoutRef.current = setTimeout(() => {
-      if (realFiles?.length && !isUploadingInstr)
-        handleFileUpload(realFiles, uploadedInstructionsRef, setUploadedInstructions, instrQueueRef, setIsUploadingInstr)
     }, 100)
   }
 
@@ -231,6 +257,17 @@ function RouteComponent({ data }: any) {
     } catch { toast.error(t('failed_to_delete_file')) }
   }
 
+  // ─── Instruction handlers ──────────────────────────────────────────────────
+  const handleInstructionsChange = (files: File[]) => {
+    const realFiles = files.filter(f => f instanceof File)
+    setNewInstructions(realFiles)
+    if (instrTimeoutRef.current) clearTimeout(instrTimeoutRef.current)
+    instrTimeoutRef.current = setTimeout(() => {
+      if (realFiles?.length && !isUploadingInstr)
+        handleFileUpload(realFiles, uploadedInstructionsRef, setUploadedInstructions, instrQueueRef, setIsUploadingInstr)
+    }, 100)
+  }
+
   const handleDeleteInstruction = async (fileId: any) => {
     const existing = existingInstructions.find(u => u.fileName === fileId)
     if (existing) { setExistingInstructions(prev => prev.filter(u => u.fileName !== fileId)); return }
@@ -243,16 +280,57 @@ function RouteComponent({ data }: any) {
     } catch { toast.error(t('failed_to_delete_file')) }
   }
 
+  // ─── Warranty handlers ─────────────────────────────────────────────────────
+  const handleWarrantyChange = (files: File[]) => {
+    const realFiles = files.filter(f => f instanceof File)
+    if (warrantyTimeoutRef.current) clearTimeout(warrantyTimeoutRef.current)
+    warrantyTimeoutRef.current = setTimeout(() => {
+      if (realFiles?.length && !isUploadingWarranty)
+        handleFileUpload(realFiles, uploadedWarrantyRef, setUploadedWarranty, warrantyQueueRef, setIsUploadingWarranty)
+    }, 100)
+  }
+
+  const handleDeleteWarranty = async (fileId: any) => {
+    const existing = existingWarranty.find(u => u.fileName === fileId)
+    if (existing) { setExistingWarranty(prev => prev.filter(u => u.fileName !== fileId)); return }
+    const f = uploadedWarranty.find(u => u.fileName === fileId)
+    if (!f) return
+    try {
+      await api.delete(`/api/files/delete/${f.fileName}`)
+      setUploadedWarranty(prev => prev.filter(u => u.fileName !== f.fileName))
+      toast.success(t('file_deleted'))
+    } catch { toast.error(t('failed_to_delete_file')) }
+  }
+
+  const handleWarrantyToggle = (val: string) => {
+    handleInputChange('hasWarranty', val)
+    if (val === 'NO') {
+      handleInputChange('warrantyNote', '')
+      handleInputChange('warrantyExpireDate', '')
+      setUploadedWarranty([])
+      setExistingWarranty([])
+    }
+  }
+
+  // ─── Download ──────────────────────────────────────────────────────────────
   const handleDownloadFile = (file: { name?: string; fileName?: string }) => {
     const name = file?.fileName || file?.name
     if (name) window.open(`${API_BASE}/api/files/download/${name}`, '_blank')
     else toast.error(t('file_not_found'))
   }
 
-  const existingImagesUploaded       = existingImages.map(f => ({ id: f.fileName, name: f.fileName, size: f.fileSize, url: f.fileUrl, type: f.fileType }))
-  const existingInstructionsUploaded = existingInstructions.map(f => ({ id: f.fileName, name: f.fileName, size: f.fileSize, url: f.fileUrl, type: f.fileType }))
+  // ─── Existing file mapped for FileUploadField ──────────────────────────────
+  const existingImagesUploaded = existingImages.map(f => ({
+    id: f.fileName, name: f.fileName, size: f.fileSize, url: f.fileUrl, type: f.fileType,
+  }))
+  const existingInstructionsUploaded = existingInstructions.map(f => ({
+    id: f.fileName, name: f.fileName, size: f.fileSize, url: f.fileUrl, type: f.fileType,
+  }))
+  const existingWarrantyUploaded = existingWarranty.map(f => ({
+    id: f.fileName, name: f.fileName, size: f.fileSize, url: f.fileUrl, type: f.fileType,
+  }))
 
-  // ─── Fetch register ───────────────────────────────────────────────────────
+  // ─── Fetch register ────────────────────────────────────────────────────────
   const fetchRegisterData = async (id: number) => {
     try {
       setIsLoadingRefData(true)
@@ -260,7 +338,7 @@ function RouteComponent({ data }: any) {
       const d = response?.data
       if (!d) return
 
-      // ── parse maintenance ──────────────────────────────────────────────
+      // ── parse maintenance ────────────────────────────────────────────────
       let maintenancePeriod = ''
       let maintenance1 = '', maintenance2 = '', maintenance3 = '', maintenance4 = ''
       if (d.maintenance) {
@@ -275,7 +353,7 @@ function RouteComponent({ data }: any) {
         } catch {}
       }
 
-      // ── parse calibration ──────────────────────────────────────────────
+      // ── parse calibration ────────────────────────────────────────────────
       let calibrationDueDate = '', certificateDate = ''
       let result = '', criteria = '', measuringRange = '', accuracy = '', calibrationRange = '', calibrationStatus = ''
       if (d.calibration) {
@@ -295,13 +373,61 @@ function RouteComponent({ data }: any) {
         } catch {}
       }
 
-      // ── parse attachment ───────────────────────────────────────────────
+      // ── parse attachment ─────────────────────────────────────────────────
       if (d.attachment) {
         try {
           const files: AttachmentItem[] = typeof d.attachment === 'string'
             ? JSON.parse(d.attachment) : d.attachment
-          setExistingImages(files.filter(f => IMAGE_EXTS.includes(f.fileType?.toLowerCase() ?? '')))
-          setExistingInstructions(files.filter(f => !IMAGE_EXTS.includes(f.fileType?.toLowerCase() ?? '')))
+
+          setExistingImages(files.filter(f =>
+            IMAGE_EXTS.includes(f.fileType?.toLowerCase() ?? '') &&
+            f.category !== 'WARRANTY' && f.category !== 'INSURANCE'
+          ))
+          setExistingInstructions(files.filter(f =>
+            !IMAGE_EXTS.includes(f.fileType?.toLowerCase() ?? '') &&
+            f.category !== 'WARRANTY' && f.category !== 'INSURANCE'
+          ))
+          setExistingWarranty(files.filter(f => f.category === 'WARRANTY'))
+
+          // ── insurance files (read-only จาก register) ────────────────────
+          const insuranceFiles = files.filter(f => f.category === 'INSURANCE')
+          if (d.hasInsurance || insuranceFiles.length) {
+            setRefInsurance({
+              hasInsurance:  d.hasInsurance  || '',
+              insuranceNote: d.insuranceNote || '',
+              files:         insuranceFiles,
+            })
+          }
+        } catch {}
+      } else if (d.hasInsurance) {
+        // ── ไม่มี attachment แต่มี insurance fields ─────────────────────────
+        setRefInsurance({
+          hasInsurance:  d.hasInsurance  || '',
+          insuranceNote: d.insuranceNote || '',
+          files:         [],
+        })
+      }
+
+      // ── parse warranty from top-level fields ─────────────────────────────
+      if (d.warrantyFiles) {
+        try {
+          const files: AttachmentItem[] = typeof d.warrantyFiles === 'string'
+            ? JSON.parse(d.warrantyFiles) : d.warrantyFiles
+          if (files?.length) setExistingWarranty(files)
+        } catch {}
+      }
+
+      // ── parse insuranceFiles (ถ้า API เก็บแยก field) ──────────────────────
+      if (d.insuranceFiles) {
+        try {
+          const iFiles: AttachmentItem[] = typeof d.insuranceFiles === 'string'
+            ? JSON.parse(d.insuranceFiles) : d.insuranceFiles
+          if (iFiles?.length) {
+            setRefInsurance(prev => prev
+              ? { ...prev, files: iFiles }
+              : { hasInsurance: d.hasInsurance || '', insuranceNote: d.insuranceNote || '', files: iFiles }
+            )
+          }
         } catch {}
       }
 
@@ -334,6 +460,10 @@ function RouteComponent({ data }: any) {
         maintenance1, maintenance2, maintenance3, maintenance4,
         calibrationDueDate, certificateDate,
         result, criteria, measuringRange, accuracy, calibrationRange, calibrationStatus,
+        // ── warranty ────────────────────────────────────────────────────────
+        hasWarranty:        d.hasWarranty        || '',
+        warrantyNote:       d.warrantyNote       || '',
+        warrantyExpireDate: d.warrantyExpireDate ? d.warrantyExpireDate.split('T')[0] : '',
       }))
       toast.success(t('register_data_loaded'))
     } catch {
@@ -343,7 +473,7 @@ function RouteComponent({ data }: any) {
     }
   }
 
-  // ─── Validation ───────────────────────────────────────────────────────────
+  // ─── Validation ────────────────────────────────────────────────────────────
   const validateRequiredFields = () => {
     const e: Record<string, string> = {}
     if (!formData.name.trim())             e.name          = t('machine_name_required')
@@ -353,29 +483,41 @@ function RouteComponent({ data }: any) {
     if (!formData.machineStatus.trim())    e.machineStatus = t('machine_status_required')
     if (!formData.resetPeriod.trim())      e.resetPeriod   = t('reset_period_required')
     if (!buildMachineCode())               e.machineCode   = t('machine_code_required')
+    if (!String(formData.hasWarranty ?? '').trim()) e.hasWarranty = t('has_warranty_required')
+    if (formData.hasWarranty === 'YES' && !String(formData.warrantyNote ?? '').trim()) {
+      e.warrantyNote = t('warranty_note_required')
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
-  const isFormValid = () => !!(
-    formData.name.trim()             &&
-    formData.machineGroupId.trim()   &&
-    formData.machineTypeId.trim()    &&
-    getDeptCode(formData.department) &&
-    formData.machineStatus.trim()    &&
-    formData.resetPeriod.trim()
-  )
+  const isFormValid = () => {
+    const base = !!(
+      formData.name.trim()             &&
+      formData.machineGroupId.trim()   &&
+      formData.machineTypeId.trim()    &&
+      getDeptCode(formData.department) &&
+      formData.machineStatus.trim()    &&
+      formData.resetPeriod.trim()      &&
+      String(formData.hasWarranty ?? '').trim()
+    )
+    if (formData.hasWarranty === 'YES') {
+      return base && !!String(formData.warrantyNote ?? '').trim()
+    }
+    return base
+  }
 
   const getStepStatus = (stepId: string): 'complete' | 'error' | 'incomplete' | 'empty' => {
     if (stepId !== 'general') return 'empty'
     const hasErrors = Object.keys(errors).some(k =>
-      ['name', 'machineStatus', 'department', 'machineType', 'machineGroup', 'machineCode', 'resetPeriod'].includes(k)
+      ['name', 'machineStatus', 'department', 'machineType', 'machineGroup',
+       'machineCode', 'resetPeriod', 'hasWarranty', 'warrantyNote'].includes(k)
     )
     if (hasErrors) return 'error'
     return isFormValid() ? 'complete' : 'incomplete'
   }
 
-  // ─── Build DTO ────────────────────────────────────────────────────────────
+  // ─── Build DTO ─────────────────────────────────────────────────────────────
   const formatDateToISO = (s: string) => {
     if (!s) return null
     try { return new Date(s).toISOString() } catch { return null }
@@ -412,8 +554,22 @@ function RouteComponent({ data }: any) {
       })
     }
 
-    const allImgFiles   = [...existingImages,       ...uploadedImages      ].map(f => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, uploadedBy: f.uploadedBy ?? null }))
-    const allInstrFiles = [...existingInstructions, ...uploadedInstructions].map(f => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, uploadedBy: f.uploadedBy ?? null }))
+    const allImgFiles = [...existingImages, ...uploadedImages].map(f => ({
+      fileName: f.fileName, fileUrl: f.fileUrl,
+      fileType: f.fileType, fileSize: f.fileSize,
+      uploadedBy: f.uploadedBy ?? null,
+    }))
+    const allInstrFiles = [...existingInstructions, ...uploadedInstructions].map(f => ({
+      fileName: f.fileName, fileUrl: f.fileUrl,
+      fileType: f.fileType, fileSize: f.fileSize,
+      uploadedBy: f.uploadedBy ?? null,
+    }))
+    const allWarrantyFiles = [...existingWarranty, ...uploadedWarranty].map(f => ({
+      fileName: f.fileName, fileUrl: f.fileUrl,
+      fileType: f.fileType, fileSize: f.fileSize,
+      uploadedBy: (f as any).uploadedBy ?? null,
+      category: 'WARRANTY',
+    }))
 
     return {
       machineName:           formData.name,
@@ -445,10 +601,16 @@ function RouteComponent({ data }: any) {
       image:                 allImgFiles.length   ? JSON.stringify(allImgFiles)   : null,
       workInstruction:       allInstrFiles.length ? JSON.stringify(allInstrFiles) : null,
       note:                  refId ? `REF:REGISTER-${refId}` : null,
+      // ── warranty ────────────────────────────────────────────────────────
+      hasWarranty:           formData.hasWarranty    || null,
+      warrantyNote:          formData.hasWarranty === 'YES' ? (formData.warrantyNote || null) : null,
+      warrantyExpireDate:    formData.hasWarranty === 'YES' ? formatDateToISO(formData.warrantyExpireDate) : null,
+      warrantyFiles:         formData.hasWarranty === 'YES' && allWarrantyFiles.length
+                               ? JSON.stringify(allWarrantyFiles) : null,
     }
   }
 
-  // ─── Submit ───────────────────────────────────────────────────────────────
+  // ─── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validateRequiredFields()) {
@@ -459,7 +621,7 @@ function RouteComponent({ data }: any) {
     setIsSubmitting(true)
     try {
       const response = await api.post('/api/machine/create', buildMachineDTO())
-      
+
       const savedId = response?.data?.id ?? response?.data?.data?.id
       if (savedId) {
         await api.post(`/api/machine/${savedId}/sync-to-lark`)
@@ -486,7 +648,7 @@ function RouteComponent({ data }: any) {
     if (errors[field]) { const e = { ...errors }; delete e[field]; setErrors(e) }
   }
 
-  // ─── Fetch functions ──────────────────────────────────────────────────────
+  // ─── Fetch machine groups/types ────────────────────────────────────────────
   const fetchMachineGroup = async (keyword: string) => {
     try {
       const params: any = {}
@@ -559,6 +721,7 @@ function RouteComponent({ data }: any) {
     else       setFormData(prev => ({ ...prev, machineType: '', machineTypeId: '' }))
   }
 
+  // ─── Fetch department ──────────────────────────────────────────────────────
   const fetchDepartments = async (keyword: string, index: number) => {
     try {
       const params: any = { index, size: 20 }
@@ -577,6 +740,7 @@ function RouteComponent({ data }: any) {
     }
   }
 
+  // ─── Fetch members ─────────────────────────────────────────────────────────
   const fetchMembers = async (keyword: string, index: number) => {
     const params: any = { index, size: 100 }
     if (keyword.trim()) params.keyword = keyword.trim()
@@ -605,7 +769,7 @@ function RouteComponent({ data }: any) {
       if (found) setFormData(prev => ({ ...prev, [field]: value, [nameField]: found.fullName }))
     }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ─── Render ────────────────────────────────────────────────────────────────
   const renderStepContent = () => {
     if (isLoadingRefData) return (
       <div className="px-2 pt-2 space-y-4">
@@ -713,20 +877,140 @@ function RouteComponent({ data }: any) {
             )}
           </div>
 
+          {/* ─── Insurance Info from Register (read-only) ────────────────── */}
+          {refId && refInsurance && (
+            <div className="border rounded-lg p-4 space-y-3 bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {t('insurance')}
+                <span className="ml-2 text-xs font-normal text-amber-600 dark:text-amber-400">
+                  ({t('from_register')})
+                </span>
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">{t('has_insurance')}</p>
+                  <span className={[
+                    'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                    refInsurance.hasInsurance === 'YES'
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+                  ].join(' ')}>
+                    {refInsurance.hasInsurance === 'YES' ? t('yes') : refInsurance.hasInsurance === 'NO' ? t('no') : '-'}
+                  </span>
+                </div>
+
+                {refInsurance.insuranceNote && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">{t('insurance_note')}</p>
+                    <p className="text-sm">{refInsurance.insuranceNote}</p>
+                  </div>
+                )}
+              </div>
+
+              {refInsurance.files.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">{t('insurance_documents')}</p>
+                  <div className="flex flex-col gap-1.5">
+                    {refInsurance.files.map(f => (
+                      <button
+                        key={f.fileName}
+                        type="button"
+                        onClick={() => handleDownloadFile(f)}
+                        className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline w-fit"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                        <span className="truncate max-w-xs">{f.fileName}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Warranty Section ──────────────────────────────────────────── */}
+          <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+            <p className="text-sm font-semibold">{t('warranty')}</p>
+
+            <SingleSelectField
+              id="hasWarranty"
+              label={t('has_warranty')}
+              value={[formData.hasWarranty]}
+              onChange={v => handleWarrantyToggle(v[0] || '')}
+              options={warrantyOptions}
+              error={errors.hasWarranty}
+            />
+
+            {formData.hasWarranty === 'YES' && (
+              <>
+                <TextField
+                  id="warrantyNote"
+                  label={t('warranty_note')}
+                  value={formData.warrantyNote}
+                  onChange={v => handleInputChange('warrantyNote', v)}
+                  error={errors.warrantyNote}
+                  required
+                />
+
+                <DatePickerField
+                  id="warrantyExpireDate"
+                  label={t('warranty_expire_date')}
+                  value={formData.warrantyExpireDate}
+                  onChange={d => handleInputChange('warrantyExpireDate', d)}
+                />
+
+                <FileUploadField
+                  id="warranty-docs"
+                  label={t('warranty_documents')}
+                  maxFiles={10}
+                  value={[]}
+                  uploadedFiles={[
+                    ...existingWarrantyUploaded,
+                    ...uploadedWarranty.map(f => ({
+                      id: f.fileName, name: f.fileName,
+                      size: f.fileSize, url: f.fileUrl, type: f.fileType,
+                    })),
+                  ]}
+                  onChange={handleWarrantyChange}
+                  onDownloadFile={f => handleDownloadFile(f)}
+                  onDeleteUploadedFile={handleDeleteWarranty}
+                  onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+                />
+              </>
+            )}
+          </div>
+
+          {/* ─── Images ───────────────────────────────────────────────────── */}
           <FileUploadField
             id="machine-images" label={t('images')} maxFiles={10}
             value={newImages}
-            uploadedFiles={existingImagesUploaded}
+            uploadedFiles={[
+              ...existingImagesUploaded,
+              ...uploadedImages.map(f => ({
+                id: f.fileName, name: f.fileName,
+                size: f.fileSize, url: f.fileUrl, type: f.fileType,
+              })),
+            ]}
             onChange={handleImagesChange}
             onDownloadFile={f => handleDownloadFile(f)}
             onDeleteUploadedFile={handleDeleteImage}
             onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
           />
 
+          {/* ─── Work Instructions ─────────────────────────────────────────── */}
           <FileUploadField
             id="machine-instructions" label={t('work_instructions')} maxFiles={10}
             value={newInstructions}
-            uploadedFiles={existingInstructionsUploaded}
+            uploadedFiles={[
+              ...existingInstructionsUploaded,
+              ...uploadedInstructions.map(f => ({
+                id: f.fileName, name: f.fileName,
+                size: f.fileSize, url: f.fileUrl, type: f.fileType,
+              })),
+            ]}
             onChange={handleInstructionsChange}
             onDownloadFile={f => handleDownloadFile(f)}
             onDeleteUploadedFile={handleDeleteInstruction}

@@ -100,7 +100,7 @@ export function PendingCard() {
           <ClipboardList className="h-5 w-5 text-red-600 dark:text-red-300" />
         </div>
         <div className="flex items-center gap-2">
-          <CardTitle className="font-bold">{t('pending')}</CardTitle>
+          <CardTitle className="font-bold">{t('pending_check')}</CardTitle>
           {!loading && (
             <Badge className="bg-red-100 text-red-600 dark:text-red-100">
               {pendingItems.length}

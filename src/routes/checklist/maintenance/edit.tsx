@@ -63,14 +63,25 @@ interface FileUploadResponse {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CHOICES = [
-  'Ready to use',
-  'Not ready (Waiting for repair)',
-  'Not ready (Under repair)',
-  'Not ready (Equipment modification)',
-  'Others',
-]
-const MACHINE_STATUSES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER REPAIR']
+// Choice keys map to translation keys in the checklist namespace
+const CHOICE_KEYS = [
+  'choice_ready',
+  'choice_not_ready_repair',
+  'choice_not_ready_under_repair',
+  'choice_not_ready_modification',
+  'choice_others',
+] as const
+
+// Machine status keys map to translation keys
+const MACHINE_STATUS_KEYS = [
+  'status_operational',
+  'status_non_operational',
+  'status_under_maintenance',
+] as const
+
+// Raw API values for machine statuses (sent to backend)
+const MACHINE_STATUS_VALUES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER REPAIR'] as const
+
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -148,7 +159,6 @@ function MaintenanceEdit() {
       const data = res?.data ?? res
       setFormData(data)
 
-      // ดึงชื่อ responsible person
       if (data?.responsibleMaintenance) {
         setResponsibleId(String(data.responsibleMaintenance))
         try {
@@ -161,7 +171,6 @@ function MaintenanceEdit() {
         }
       }
 
-      // parse existing attachments
       if (data?.attachment) {
         try {
           const parsed = typeof data.attachment === 'string'
@@ -282,11 +291,10 @@ function MaintenanceEdit() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validate checklist before saving
     const errs: Record<string, string> = {}
-    if (checklist.length > 0 && !selectedStatus) errs.selectedStatus = t('please_select') ?? 'Required'
+    if (checklist.length > 0 && !selectedStatus) errs.selectedStatus = t('please_select')
     checklist.forEach(item => {
-      if (!getAnswer(item).trim()) errs[`item_${item.id}`] = t('field_required') ?? 'Required'
+      if (!getAnswer(item).trim()) errs[`item_${item.id}`] = t('field_required')
     })
     if (Object.keys(errs).length) {
       setChecklistErrors(errs)
@@ -352,7 +360,7 @@ function MaintenanceEdit() {
         }
       }
 
-      toast.success(t('maintenance_updated') ?? 'Updated')
+      toast.success(t('maintenance_updated'))
     } catch { toast.error(t('data_fetch_failed')) }
     finally { setSaving(false) }
   }
@@ -424,12 +432,12 @@ function MaintenanceEdit() {
               onChange={d => handleInputChange('planDate', d)} />
           </div>
           <div className="space-y-2">
-            <Label>{t('result_date')}</Label>
+            <Label>{t('start_date')}</Label>
             <DatePickerField id="startDate" value={formData.startDate}
               onChange={d => handleInputChange('startDate', d)} />
           </div>
           <div className="space-y-2">
-            <Label>{t('external_calibration_date')}</Label>
+            <Label>{t('actual_date')}</Label>
             <DatePickerField id="actualDate" value={formData.actualDate}
               onChange={d => handleInputChange('actualDate', d)} />
           </div>
@@ -441,7 +449,8 @@ function MaintenanceEdit() {
               <select value={formData.maintenanceBy}
                 onChange={e => handleInputChange('maintenanceBy', e.target.value)}
                 className="w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-border">
-                <option value="">-- {t('please_select') ?? 'Select'} --</option>
+                <option value="">-- {t('please_select')} --</option>
+                {/* INTERNAL / EXTERNAL are API enum values — kept as-is intentionally */}
                 <option value="INTERNAL">INTERNAL</option>
                 <option value="EXTERNAL">EXTERNAL</option>
               </select>
@@ -494,8 +503,12 @@ function MaintenanceEdit() {
                   className={`w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     checklistErrors.selectedStatus ? 'border-red-400' : 'border-border'
                   }`}>
-                  <option value="">-- {t('please_select') ?? 'Select'} --</option>
-                  {MACHINE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="">-- {t('please_select')} --</option>
+                  {MACHINE_STATUS_VALUES.map((value, idx) => (
+                    <option key={value} value={value}>
+                      {t(MACHINE_STATUS_KEYS[idx])}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               </div>
@@ -530,8 +543,12 @@ function MaintenanceEdit() {
                             className={`w-full appearance-none border rounded-lg px-3 py-2 pr-8 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                               hasError ? 'border-red-400' : 'border-border'
                             }`}>
-                            <option value="">-- {t('please_select') ?? 'Select'} --</option>
-                            {CHOICES.map(c => <option key={c} value={c}>{c}</option>)}
+                            <option value="">-- {t('please_select')} --</option>
+                            {CHOICE_KEYS.map(key => (
+                              <option key={key} value={t(key)}>
+                                {t(key)}
+                              </option>
+                            ))}
                           </select>
                           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                         </div>
@@ -544,7 +561,7 @@ function MaintenanceEdit() {
                       )}
                       {hasError && (
                         <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" />{t('field_required') ?? 'Required'}
+                          <AlertCircle className="w-3 h-3" />{t('field_required')}
                         </p>
                       )}
                     </div>

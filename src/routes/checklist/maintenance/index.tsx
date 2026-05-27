@@ -354,6 +354,18 @@ function MaintenanceTable() {
       ),
       size: 32,
     },
+    {
+      id: 'action',
+      header: t('action'),
+      cell: ({ row }) => (
+        <TblAction
+          view edit
+          onView={() => router.navigate({ to: '/checklist/maintenance/view', search: { id: row.original.id } })}
+          onEdit={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id: row.original.id } })}
+        />
+      ),
+      size: 80,
+    },
     { accessorKey: 'machineCode', header: t('machine_code'),  cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div> },
     { accessorKey: 'machineName', header: t('machine_name'),  cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
     { accessorKey: 'years',       header: t('years'),          cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
@@ -375,18 +387,7 @@ function MaintenanceTable() {
         ? <Badge className={getStatusColor(row.original.status)}>{getStatusLabel(row.original.status)}</Badge>
         : <>-</>,
     },
-    {
-      id: 'action',
-      header: t('action'),
-      cell: ({ row }) => (
-        <TblAction
-          view edit
-          onView={() => router.navigate({ to: '/checklist/maintenance/view', search: { id: row.original.id } })}
-          onEdit={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id: row.original.id } })}
-        />
-      ),
-      size: 80,
-    },
+    
   ]
 
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
