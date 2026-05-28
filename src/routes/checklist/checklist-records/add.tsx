@@ -48,7 +48,7 @@ interface Machine {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MACHINE_STATUS_VALUES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER MAINTENANCE'] as const
+const MACHINE_STATUS_VALUES = ['OPERATIONAL', 'NON_OPERATIONAL', 'UNDER MAINTENANCE'] as const
 const CHOICE_VALUES = [
   'READY TO USE',
   'NOT READY (WAITING FOR REPAIR)',
