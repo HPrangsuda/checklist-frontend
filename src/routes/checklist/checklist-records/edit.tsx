@@ -25,6 +25,14 @@ interface ChecklistItem {
   checkStatus: boolean
 }
 
+interface AuditMember {
+  id: number
+  firstName: string
+  lastName: string
+  employeeId?: string
+  email?: string
+}
+
 interface ChecklistFormData {
   id: number
   checkType?: string
@@ -35,15 +43,17 @@ interface ChecklistFormData {
   machineChecklist?: string | ChecklistItem[]
   machineNote?: string
   image?: string
-  userId?: string
   userName?: string
-  supervisor?: string
+  supervisor?: AuditMember | null
   dateSupervisorChecked?: string
-  manager?: string
+  manager?: AuditMember | null
   dateManagerChecked?: string
   checklistStatus?: string
   reasonNotChecked?: string
   jobDetail?: string
+  createdBy?: AuditMember | null
+  updatedBy?: AuditMember | null
+  createdAt?: string
 }
 
 interface CurrentUser {
@@ -55,13 +65,13 @@ interface CurrentUser {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const REASON_NOT_CHECKED_OPTIONS = [
-  { value: '',                                      labelKey: 'please_select' },
-  { value: 'Leave',                                 labelKey: 'reason_leave' },
-  { value: 'Shift Work',                            labelKey: 'reason_shift' },
-  { value: 'Working Offsite',                       labelKey: 'reason_offsite' },
-  { value: 'Under Maintenance',                     labelKey: 'reason_under_maintenance' },
-  { value: 'Tool Used Offsite',                     labelKey: 'reason_tool_offsite' },
-  { value: 'Responsible Person Did Not Perform',    labelKey: 'reason_not_performed' },
+  { value: '',                                   labelKey: 'please_select' },
+  { value: 'Leave',                              labelKey: 'reason_leave' },
+  { value: 'Shift Work',                         labelKey: 'reason_shift' },
+  { value: 'Working Offsite',                    labelKey: 'reason_offsite' },
+  { value: 'Under Maintenance',                  labelKey: 'reason_under_maintenance' },
+  { value: 'Tool Used Offsite',                  labelKey: 'reason_tool_offsite' },
+  { value: 'Responsible Person Did Not Perform', labelKey: 'reason_not_performed' },
 ]
 
 const REASON_TO_EN: Record<string, string> = {
@@ -73,6 +83,21 @@ const REASON_TO_EN: Record<string, string> = {
   'เครื่องมือใช้งานนอกสถานที่': 'TOOL USED OFFSITE',
   'ผู้รับผิดชอบไม่ดำเนินการ':   'RESPONSIBLE PERSON DID NOT PERFORM',
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const fullName = (member?: AuditMember | null) =>
+  member ? `${member.firstName} ${member.lastName}`.trim() : '-'
+
+const formatDate = (dateStr?: string | null) =>
+  dateStr
+    ? new Date(dateStr).toLocaleDateString('en-CA') // yyyy-mm-dd
+    : '-'
+
+const formatDateTime = (dateStr?: string | null) =>
+  dateStr
+    ? new Date(dateStr).toLocaleDateString('en-CA')
+    : '-'
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
 
@@ -112,6 +137,37 @@ function ChecklistQuestionItem({ item }: { item: ChecklistItem }) {
         {item.answerChoice}
       </span>
     </div>
+  )
+}
+
+// ─── MachineImage ─────────────────────────────────────────────────────────────
+
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
+function MachineImage({ fileName }: { fileName: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [failed,  setFailed]  = useState(false)
+
+  useEffect(() => {
+    if (!fileName) return
+    let url = ''
+    const src = `${API_BASE}/api/files/download/${encodeURIComponent(fileName)}`
+    api.getInstance().get(src, { responseType: 'blob' })
+      .then((res: any) => { url = URL.createObjectURL(res.data); setBlobUrl(url) })
+      .catch(() => setFailed(true))
+    return () => { if (url) URL.revokeObjectURL(url) }
+  }, [fileName])
+
+  if (failed)   return null
+  if (!blobUrl) return <div className="w-32 h-32 animate-pulse bg-muted rounded-lg" />
+
+  return (
+    <img
+      src={blobUrl}
+      alt={fileName}
+      className="w-32 h-32 object-cover rounded-lg border border-border shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+      onClick={() => window.open(blobUrl, '_blank')}
+    />
   )
 }
 
@@ -200,17 +256,14 @@ function ChecklistEdit() {
     }
   }
 
-  const formatDate = (dateStr?: string) =>
-    dateStr ? new Date(dateStr).toLocaleDateString('en-GB', { year: '2-digit', month: '2-digit', day: '2-digit' }) : ''
-
   // แสดง dropdown เฉพาะเมื่อ reasonNotChecked = 'NO ACTION TAKEN' และ machineNote = 'Automatic recording'
   const showReasonSelect =
     record?.reasonNotChecked === 'NO ACTION TAKEN' &&
     record?.machineNote === 'Automatic recording'
 
   const canApprove = record && currentUser && (
-    (record.checklistStatus === 'PENDING SUPERVISOR' && String(currentUser.memberId) === record.supervisor) ||
-    (record.checklistStatus === 'PENDING MANAGER'    && String(currentUser.memberId) === record.manager)
+    (record.checklistStatus === 'PENDING SUPERVISOR' && currentUser.memberId === record.supervisor?.id) ||
+    (record.checklistStatus === 'PENDING MANAGER'    && currentUser.memberId === record.manager?.id)
   ) && (!showReasonSelect || !!selectedReason)
 
   if (loading) return (
@@ -270,17 +323,17 @@ function ChecklistEdit() {
               <InfoRow label={t('machine_status')} value={<StatusBadge status={record.machineStatus} />} />
               <InfoRow label={t('check_status')}   value={<StatusBadge status={record.checklistStatus} />} />
               <InfoRow label={t('created_by')}     value={record.userName ?? '-'} />
-              <InfoRow label={t('created_at')}     value="-" />
+              <InfoRow label={t('created_at')}     value={formatDate(record.createdAt)} />
               <InfoRow
                 label={t('supervisor_checked')}
                 value={record.supervisor
-                  ? `${record.supervisor}${record.dateSupervisorChecked ? ` - ${formatDate(record.dateSupervisorChecked)}` : ''}`
+                  ? `${fullName(record.supervisor)}${record.dateSupervisorChecked ? ` — ${formatDateTime(record.dateSupervisorChecked)}` : ''}`
                   : '-'}
               />
               <InfoRow
                 label={t('manager_checked')}
                 value={record.manager
-                  ? `${record.manager}${record.dateManagerChecked ? ` - ${formatDate(record.dateManagerChecked)}` : ''}`
+                  ? `${fullName(record.manager)}${record.dateManagerChecked ? ` — ${formatDateTime(record.dateManagerChecked)}` : ''}`
                   : '-'}
               />
               <InfoRow label={t('job_detail')} value={record.jobDetail ?? '-'} />
@@ -327,13 +380,7 @@ function ChecklistEdit() {
           </CardHeader>
           <CardContent className="p-6">
             {record.image ? (
-              <div className="p-4 rounded-lg bg-accent/40 border border-accent flex items-center gap-3">
-                <FileText className="h-5 w-5 text-accent-foreground" />
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">{t('attachment')}</p>
-                  <p className="text-foreground font-medium">{record.image}</p>
-                </div>
-              </div>
+              <MachineImage fileName={record.image} />
             ) : (
               <p className="text-muted-foreground text-center py-4">{t('no_attachments')}</p>
             )}
