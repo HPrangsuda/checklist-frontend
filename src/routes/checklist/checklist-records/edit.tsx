@@ -25,6 +25,16 @@ interface ChecklistItem {
   checkStatus: boolean
 }
 
+interface MemberInfo {
+  id: number
+  firstName: string
+  lastName: string
+  employeeId?: string
+  email?: string
+  roleType?: string
+  status?: string
+}
+
 interface AuditMember {
   id: number
   firstName: string
@@ -44,9 +54,9 @@ interface ChecklistFormData {
   machineNote?: string
   image?: string
   userName?: string
-  supervisor?: AuditMember | null
+  supervisor?: MemberInfo | null
   dateSupervisorChecked?: string
-  manager?: AuditMember | null
+  manager?: MemberInfo | null
   dateManagerChecked?: string
   checklistStatus?: string
   reasonNotChecked?: string
@@ -86,18 +96,15 @@ const REASON_TO_EN: Record<string, string> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fullName = (member?: AuditMember | null) =>
-  member ? `${member.firstName} ${member.lastName}`.trim() : '-'
+const fullName = (m?: MemberInfo | AuditMember | null): string => {
+  if (!m || typeof m !== 'object') return '-'
+  return `${m.firstName ?? ''} ${m.lastName ?? ''}`.trim() || '-'
+}
 
-const formatDate = (dateStr?: string | null) =>
-  dateStr
-    ? new Date(dateStr).toLocaleDateString('en-CA') // yyyy-mm-dd
-    : '-'
+const formatDate = (dateStr?: string | null): string =>
+  dateStr ? new Date(dateStr).toLocaleDateString('en-CA') : '-'
 
-const formatDateTime = (dateStr?: string | null) =>
-  dateStr
-    ? new Date(dateStr).toLocaleDateString('en-CA')
-    : '-'
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
 
@@ -142,30 +149,37 @@ function ChecklistQuestionItem({ item }: { item: ChecklistItem }) {
 
 // ─── MachineImage ─────────────────────────────────────────────────────────────
 
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
-
 function MachineImage({ fileName }: { fileName: string }) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [failed,  setFailed]  = useState(false)
 
   useEffect(() => {
     if (!fileName) return
     let url = ''
     const src = `${API_BASE}/api/files/download/${encodeURIComponent(fileName)}`
+    setLoading(true)
     api.getInstance().get(src, { responseType: 'blob' })
       .then((res: any) => { url = URL.createObjectURL(res.data); setBlobUrl(url) })
       .catch(() => setFailed(true))
+      .finally(() => setLoading(false))
     return () => { if (url) URL.revokeObjectURL(url) }
   }, [fileName])
 
-  if (failed)   return null
-  if (!blobUrl) return <div className="w-32 h-32 animate-pulse bg-muted rounded-lg" />
+  if (failed) return (
+    <div className="flex items-center gap-3 p-4 rounded-lg bg-accent/40 border border-accent">
+      <FileText className="h-5 w-5 text-accent-foreground shrink-0" />
+      <p className="text-sm text-foreground font-medium break-all">{fileName}</p>
+    </div>
+  )
+  if (loading) return <div className="w-40 h-40 animate-pulse bg-muted rounded-lg" />
+  if (!blobUrl) return null
 
   return (
     <img
       src={blobUrl}
       alt={fileName}
-      className="w-32 h-32 object-cover rounded-lg border border-border shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+      className="w-40 h-40 object-cover rounded-lg border border-border shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
       onClick={() => window.open(blobUrl, '_blank')}
     />
   )
@@ -178,10 +192,10 @@ function ChecklistEdit() {
   const { t }  = useTranslation('checklist')
   const router = useRouter()
 
-  const [record, setRecord]                 = useState<ChecklistFormData | null>(null)
-  const [loading, setLoading]               = useState(true)
-  const [approving, setApproving]           = useState(false)
-  const [currentUser, setCurrentUser]       = useState<CurrentUser | null>(null)
+  const [record,         setRecord]         = useState<ChecklistFormData | null>(null)
+  const [loading,        setLoading]        = useState(true)
+  const [approving,      setApproving]      = useState(false)
+  const [currentUser,    setCurrentUser]    = useState<CurrentUser | null>(null)
   const [selectedReason, setSelectedReason] = useState<string>('')
 
   useEffect(() => {
@@ -210,7 +224,7 @@ function ChecklistEdit() {
       setLoading(true)
       const response = await api.get<any>(`/api/checklist/${id}`)
       if (response?.data) {
-        let parsed = response.data
+        const parsed = { ...response.data }
         if (typeof parsed.machineChecklist === 'string') {
           try { parsed.machineChecklist = JSON.parse(parsed.machineChecklist) }
           catch (e) { console.warn('Cannot parse machineChecklist:', e) }
@@ -228,25 +242,21 @@ function ChecklistEdit() {
 
   const handleApprove = async () => {
     if (!record?.id) return
-
     if (showReasonSelect && !selectedReason) {
       toast.error(t('please_select_reason'))
       return
     }
-
     try {
       setApproving(true)
       await api.put('/api/checklist/update', {
         id: record.id,
         reasonNotChecked: selectedReason,
       })
-
       if (record.machineCode) {
         const machineRes = await api.get<any>(`/api/machine/machine-code/${record.machineCode}`)
         const machineId  = machineRes?.data?.id ?? machineRes?.id
         if (machineId) await api.post(`/api/machine/${machineId}/sync-to-lark`)
       }
-
       toast.success(t('checklist_approved'))
       router.navigate({ to: '/checklist/checklist-records' })
     } catch {
@@ -256,15 +266,20 @@ function ChecklistEdit() {
     }
   }
 
-  // แสดง dropdown เฉพาะเมื่อ reasonNotChecked = 'NO ACTION TAKEN' และ machineNote = 'Automatic recording'
   const showReasonSelect =
     record?.reasonNotChecked === 'NO ACTION TAKEN' &&
     record?.machineNote === 'Automatic recording'
 
-  const canApprove = record && currentUser && (
-    (record.checklistStatus === 'PENDING SUPERVISOR' && currentUser.memberId === record.supervisor?.id) ||
-    (record.checklistStatus === 'PENDING MANAGER'    && currentUser.memberId === record.manager?.id)
-  ) && (!showReasonSelect || !!selectedReason)
+  const canApprove = !!(
+    record && currentUser && (
+      (record.checklistStatus === 'PENDING SUPERVISOR' &&
+        record.supervisor?.id === currentUser.memberId) ||
+      (record.checklistStatus === 'PENDING MANAGER' &&
+        record.manager?.id === currentUser.memberId)
+    ) && (!showReasonSelect || !!selectedReason)
+  )
+
+  // ─── Loading / Not found ───────────────────────────────────────────────────
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 dark:bg-background p-6">
@@ -288,12 +303,25 @@ function ChecklistEdit() {
 
   const checklistItems = Array.isArray(record.machineChecklist) ? record.machineChecklist : []
 
+  const supervisorValue = record.supervisor
+    ? `${fullName(record.supervisor)}${record.dateSupervisorChecked ? ` — ${formatDate(record.dateSupervisorChecked)}` : ''}`
+    : '-'
+
+  const managerValue = record.manager
+    ? `${fullName(record.manager)}${record.dateManagerChecked ? ` — ${formatDate(record.dateManagerChecked)}` : ''}`
+    : '-'
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="bg-card border-b border-border px-6 py-4 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.navigate({ to: '/checklist/checklist-records' })} className="hover:bg-accent">
+          <Button
+            variant="ghost" size="icon"
+            onClick={() => router.navigate({ to: '/checklist/checklist-records' })}
+            className="hover:bg-accent"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-3">
@@ -310,7 +338,7 @@ function ChecklistEdit() {
 
       <div className="max-w-7xl mx-auto p-6 space-y-8">
 
-        {/* Checklist Details */}
+        {/* ── Checklist Details ──────────────────────────────────────────────── */}
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
@@ -320,22 +348,16 @@ function ChecklistEdit() {
           </CardHeader>
           <CardContent className="p-6 pt-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+
               <InfoRow label={t('machine_status')} value={<StatusBadge status={record.machineStatus} />} />
               <InfoRow label={t('check_status')}   value={<StatusBadge status={record.checklistStatus} />} />
-              <InfoRow label={t('created_by')}     value={record.userName ?? '-'} />
-              <InfoRow label={t('created_at')}     value={formatDate(record.createdAt)} />
-              <InfoRow
-                label={t('supervisor_checked')}
-                value={record.supervisor
-                  ? `${fullName(record.supervisor)}${record.dateSupervisorChecked ? ` — ${formatDateTime(record.dateSupervisorChecked)}` : ''}`
-                  : '-'}
-              />
-              <InfoRow
-                label={t('manager_checked')}
-                value={record.manager
-                  ? `${fullName(record.manager)}${record.dateManagerChecked ? ` — ${formatDateTime(record.dateManagerChecked)}` : ''}`
-                  : '-'}
-              />
+
+              <InfoRow label={t('created_by')} value={record.userName ?? '-'} />
+              <InfoRow label={t('created_at')} value={formatDate(record.createdAt)} />
+
+              <InfoRow label={t('supervisor_checked')} value={supervisorValue} />
+              <InfoRow label={t('manager_checked')}    value={managerValue} />
+
               <InfoRow label={t('job_detail')} value={record.jobDetail ?? '-'} />
 
               {showReasonSelect ? (
@@ -359,6 +381,7 @@ function ChecklistEdit() {
               ) : (
                 <InfoRow label={t('reason_not_checked')} value={record.reasonNotChecked ?? '-'} />
               )}
+
             </div>
 
             {record.machineNote && (
@@ -370,7 +393,7 @@ function ChecklistEdit() {
           </CardContent>
         </Card>
 
-        {/* Attachments */}
+        {/* ── Attachments ────────────────────────────────────────────────────── */}
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
@@ -379,15 +402,14 @@ function ChecklistEdit() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            {record.image ? (
-              <MachineImage fileName={record.image} />
-            ) : (
-              <p className="text-muted-foreground text-center py-4">{t('no_attachments')}</p>
-            )}
+            {record.image
+              ? <MachineImage fileName={record.image} />
+              : <p className="text-muted-foreground text-center py-4">{t('no_attachments')}</p>
+            }
           </CardContent>
         </Card>
 
-        {/* Checklist Items */}
+        {/* ── Checklist Items ────────────────────────────────────────────────── */}
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
@@ -398,7 +420,9 @@ function ChecklistEdit() {
           <CardContent className="p-6 pt-0">
             {checklistItems.length > 0 ? (
               <div className="space-y-3 pt-4">
-                {checklistItems.map(item => <ChecklistQuestionItem key={item.id} item={item} />)}
+                {checklistItems.map(item => (
+                  <ChecklistQuestionItem key={item.id} item={item} />
+                ))}
               </div>
             ) : (
               <div className="text-center py-10 text-muted-foreground">{t('no_checklist_items')}</div>
@@ -425,7 +449,11 @@ function ChecklistEdit() {
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
 
-function InfoRow({ label, value, className = '' }: { label: string; value?: ReactNode; className?: string }) {
+function InfoRow({ label, value, className = '' }: {
+  label: string
+  value?: ReactNode
+  className?: string
+}) {
   return (
     <div className={className}>
       <p className="text-sm font-medium text-muted-foreground mb-1">{label}</p>
