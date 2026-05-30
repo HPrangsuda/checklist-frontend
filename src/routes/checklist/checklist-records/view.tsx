@@ -93,16 +93,10 @@ function StatusBadge({ status }: { status?: string }) {
 // ─── ChecklistQuestionItem ────────────────────────────────────────────────────
 
 function ChecklistQuestionItem({ item }: { item: ChecklistItem }) {
-  const getAnswerStyle = (answer: string) => {
-    if (answer.includes('OPERATIONAL'))     return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-    if (answer.includes('NON-OPERATIONAL')) return 'bg-red-100 text-red-800 border-red-300'
-    return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
-  }
-
   return (
     <div className="py-3 px-4 bg-card rounded-lg border border-border/60 hover:border-border transition-colors">
       <p className="text-sm text-foreground mb-2 leading-relaxed">{item.questionDetail}</p>
-      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getAnswerStyle(item.answerChoice)}`}>
+      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(item.answerChoice)}`}>
         {item.answerChoice}
       </span>
     </div>
