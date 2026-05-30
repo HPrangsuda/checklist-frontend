@@ -55,16 +55,15 @@ interface CurrentUser {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const REASON_NOT_CHECKED_OPTIONS = [
-  { value: '',                                   labelKey: 'please_select' },
-  { value: 'Leave',                              labelKey: 'reason_leave' },
-  { value: 'Shift Work',                         labelKey: 'reason_shift' },
-  { value: 'Working Offsite',                    labelKey: 'reason_offsite' },
-  { value: 'Under Maintenance',                  labelKey: 'reason_under_maintenance' },
-  { value: 'Tool Used Offsite',                  labelKey: 'reason_tool_offsite' },
-  { value: 'Responsible Person Did Not Perform', labelKey: 'reason_not_performed' },
+  { value: '',                                      labelKey: 'please_select' },
+  { value: 'Leave',                                 labelKey: 'reason_leave' },
+  { value: 'Shift Work',                            labelKey: 'reason_shift' },
+  { value: 'Working Offsite',                       labelKey: 'reason_offsite' },
+  { value: 'Under Maintenance',                     labelKey: 'reason_under_maintenance' },
+  { value: 'Tool Used Offsite',                     labelKey: 'reason_tool_offsite' },
+  { value: 'Responsible Person Did Not Perform',    labelKey: 'reason_not_performed' },
 ]
 
-// map ค่าเก่า (ไทย / placeholder) → English value
 const REASON_TO_EN: Record<string, string> = {
   'NO ACTION TAKEN':             '',
   'ลางาน':                      'LEAVE',
@@ -101,8 +100,8 @@ function StatusBadge({ status }: { status?: string }) {
 
 function ChecklistQuestionItem({ item }: { item: ChecklistItem }) {
   const getAnswerStyle = (answer: string) => {
-    if (answer.includes('OPERATIONAL')) return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-    if (answer.includes('NON-OPERATIONAL'))   return 'bg-red-100 text-red-800 border-red-300'
+    if (answer.includes('OPERATIONAL'))     return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
+    if (answer.includes('NON-OPERATIONAL')) return 'bg-red-100 text-red-800 border-red-300'
     return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
   }
 
@@ -136,15 +135,18 @@ function ChecklistEdit() {
 
   useEffect(() => {
     const raw = record?.reasonNotChecked ?? ''
-    setSelectedReason(raw in REASON_TO_EN ? REASON_TO_EN[raw] : raw)
+    if (raw === 'NO ACTION TAKEN') {
+      setSelectedReason('')
+    } else {
+      setSelectedReason(raw in REASON_TO_EN ? REASON_TO_EN[raw] : raw)
+    }
   }, [record?.reasonNotChecked])
 
   const fetchCurrentUser = async () => {
     try {
       const res = await api.get<{ data: CurrentUser }>('/api/auth/me')
       setCurrentUser(res?.data ?? null)
-    } catch {
-    }
+    } catch {}
   }
 
   const fetchData = async () => {
@@ -185,7 +187,7 @@ function ChecklistEdit() {
 
       if (record.machineCode) {
         const machineRes = await api.get<any>(`/api/machine/machine-code/${record.machineCode}`)
-        const machineId = machineRes?.data?.id ?? machineRes?.id
+        const machineId  = machineRes?.data?.id ?? machineRes?.id
         if (machineId) await api.post(`/api/machine/${machineId}/sync-to-lark`)
       }
 
@@ -201,7 +203,10 @@ function ChecklistEdit() {
   const formatDate = (dateStr?: string) =>
     dateStr ? new Date(dateStr).toLocaleDateString('en-GB', { year: '2-digit', month: '2-digit', day: '2-digit' }) : ''
 
-  const showReasonSelect = !!(record?.reasonNotChecked)
+  // แสดง dropdown เฉพาะเมื่อ reasonNotChecked = 'NO ACTION TAKEN' และ machineNote = 'Automatic recording'
+  const showReasonSelect =
+    record?.reasonNotChecked === 'NO ACTION TAKEN' &&
+    record?.machineNote === 'Automatic recording'
 
   const canApprove = record && currentUser && (
     (record.checklistStatus === 'PENDING SUPERVISOR' && String(currentUser.memberId) === record.supervisor) ||
@@ -268,11 +273,15 @@ function ChecklistEdit() {
               <InfoRow label={t('created_at')}     value="-" />
               <InfoRow
                 label={t('supervisor_checked')}
-                value={record.supervisor ? `${record.supervisor}${record.dateSupervisorChecked ? ` - ${formatDate(record.dateSupervisorChecked)}` : ''}` : '-'}
+                value={record.supervisor
+                  ? `${record.supervisor}${record.dateSupervisorChecked ? ` - ${formatDate(record.dateSupervisorChecked)}` : ''}`
+                  : '-'}
               />
               <InfoRow
                 label={t('manager_checked')}
-                value={record.manager ? `${record.manager}${record.dateManagerChecked ? ` - ${formatDate(record.dateManagerChecked)}` : ''}` : '-'}
+                value={record.manager
+                  ? `${record.manager}${record.dateManagerChecked ? ` - ${formatDate(record.dateManagerChecked)}` : ''}`
+                  : '-'}
               />
               <InfoRow label={t('job_detail')} value={record.jobDetail ?? '-'} />
 
