@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import { toast } from 'sonner'
+import { getStatusColor } from '@/utils/status.untils'
 
 export const Route = createFileRoute('/checklist/checklist-records/edit')({
   component: ChecklistEdit,
@@ -111,21 +112,12 @@ const API_BASE = import.meta.env.VITE_API_URL ?? ''
 function StatusBadge({ status }: { status?: string }) {
   const { t } = useTranslation('checklist')
 
-  const statusColor: Record<string, string> = {
-    'OPERATIONAL':        'bg-emerald-100 text-emerald-600 dark:text-emerald-100',
-    'UNDER REPAIR':       'bg-red-100 text-red-600 dark:text-red-100',
-    'NON-OPERATIONAL':    'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
-    'COMPLETED':          'bg-emerald-100 text-emerald-600 dark:text-emerald-100',
-    'PENDING':            'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
-    'PENDING MANAGER':    'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
-    'PENDING SUPERVISOR': 'bg-orange-100 text-orange-600 dark:text-orange-100',
-  }
+  if (!status) return <span>-</span>
 
-  const color = statusColor[status || ''] || 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
-  const key   = `status_${(status || '').toLowerCase().replace(/\s+/g, '_')}`
-  const label = t(key) !== key ? t(key) : (status || t('unknown'))
+  const key   = `status_${status.toLowerCase().replace(/\s+/g, '_')}`
+  const label = t(key) !== key ? t(key) : status
 
-  return <Badge className={`${color} gap-1 px-3 py-1`}>{label}</Badge>
+  return <Badge className={`${getStatusColor(status)} gap-1 px-3 py-1`}>{label}</Badge>
 }
 
 // ─── ChecklistQuestionItem ────────────────────────────────────────────────────

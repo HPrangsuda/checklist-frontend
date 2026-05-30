@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle2, FileText, ListCheck } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
+import { getStatusColor } from '@/utils/status.untils'
 import { toast } from 'sonner'
 
 export const Route = createFileRoute('/checklist/checklist-records/view')({
@@ -25,6 +26,22 @@ interface ChecklistItem {
   checkStatus: boolean
 }
 
+interface MemberInfo {
+  id: number
+  firstName: string
+  lastName: string
+  employeeId?: string
+  email?: string
+}
+
+interface AuditMember {
+  id: number
+  firstName: string
+  lastName: string
+  employeeId?: string
+  email?: string
+}
+
 interface ChecklistFormData {
   id: number
   checkType?: string
@@ -35,45 +52,50 @@ interface ChecklistFormData {
   machineChecklist?: string | ChecklistItem[]
   machineNote?: string
   image?: string
-  userId?: string
   userName?: string
-  supervisor?: string
+  supervisor?: MemberInfo | null
   dateSupervisorChecked?: string
-  manager?: string
+  manager?: MemberInfo | null
   dateManagerChecked?: string
   checklistStatus?: string
   reasonNotChecked?: string
   jobDetail?: string
+  createdBy?: AuditMember | null
+  updatedBy?: AuditMember | null
+  createdAt?: string
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const fullName = (m?: MemberInfo | null): string => {
+  if (!m || typeof m !== 'object') return '-'
+  return `${m.firstName ?? ''} ${m.lastName ?? ''}`.trim() || '-'
+}
+
+const formatDate = (dateStr?: string | null): string =>
+  dateStr ? new Date(dateStr).toLocaleDateString('en-CA') : '-'
+
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status?: string }) {
   const { t } = useTranslation('checklist')
 
-  const statusColor: Record<string, string> = {
-    'OPERATIONAL':        'bg-emerald-100 text-emerald-600 dark:text-emerald-100',
-    'UNDER REPAIR':       'bg-red-100 text-red-600 dark:text-red-100',
-    'NON-OPERATIONAL':    'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
-    'COMPLETED':          'bg-emerald-100 text-emerald-600 dark:text-emerald-100',
-    'PENDING':            'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
-    'PENDING MANAGER':    'bg-yellow-100 text-yellow-600 dark:text-yellow-100',
-    'PENDING SUPERVISOR': 'bg-orange-100 text-orange-600 dark:text-orange-100',
-  }
+  if (!status) return <span>-</span>
 
-  const color = statusColor[status || ''] || 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
-  const key   = `status_${(status || '').toLowerCase().replace(/\s+/g, '_')}`
-  const label = t(key) !== key ? t(key) : (status || t('unknown'))
+  const key   = `status_${status.toLowerCase().replace(/\s+/g, '_')}`
+  const label = t(key) !== key ? t(key) : status
 
-  return <Badge className={`${color} gap-1 px-3 py-1`}>{label}</Badge>
+  return <Badge className={`${getStatusColor(status)} gap-1 px-3 py-1`}>{label}</Badge>
 }
 
 // ─── ChecklistQuestionItem ────────────────────────────────────────────────────
 
 function ChecklistQuestionItem({ item }: { item: ChecklistItem }) {
   const getAnswerStyle = (answer: string) => {
-    if (answer.includes('OPERATIONAL'))        return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-    if (answer.includes('NON-OPERATIONAL'))          return 'bg-red-100 text-red-800 border-red-300'
+    if (answer.includes('OPERATIONAL'))     return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
+    if (answer.includes('NON-OPERATIONAL')) return 'bg-red-100 text-red-800 border-red-300'
     return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
   }
 
@@ -87,6 +109,44 @@ function ChecklistQuestionItem({ item }: { item: ChecklistItem }) {
   )
 }
 
+// ─── MachineImage ─────────────────────────────────────────────────────────────
+
+function MachineImage({ fileName }: { fileName: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [failed,  setFailed]  = useState(false)
+
+  useEffect(() => {
+    if (!fileName) return
+    let url = ''
+    const src = `${API_BASE}/api/files/download/${encodeURIComponent(fileName)}`
+    setLoading(true)
+    api.getInstance().get(src, { responseType: 'blob' })
+      .then((res: any) => { url = URL.createObjectURL(res.data); setBlobUrl(url) })
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false))
+    return () => { if (url) URL.revokeObjectURL(url) }
+  }, [fileName])
+
+  if (failed) return (
+    <div className="flex items-center gap-3 p-4 rounded-lg bg-accent/40 border border-accent">
+      <FileText className="h-5 w-5 text-accent-foreground shrink-0" />
+      <p className="text-sm text-foreground font-medium break-all">{fileName}</p>
+    </div>
+  )
+  if (loading) return <div className="w-40 h-40 animate-pulse bg-muted rounded-lg" />
+  if (!blobUrl) return null
+
+  return (
+    <img
+      src={blobUrl}
+      alt={fileName}
+      className="w-40 h-40 object-cover rounded-lg border border-border shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+      onClick={() => window.open(blobUrl, '_blank')}
+    />
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function ChecklistView() {
@@ -94,7 +154,7 @@ function ChecklistView() {
   const { t }  = useTranslation('checklist')
   const router = useRouter()
 
-  const [record, setRecord]   = useState<ChecklistFormData | null>(null)
+  const [record,  setRecord]  = useState<ChecklistFormData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { if (id) fetchData() }, [id])
@@ -104,7 +164,7 @@ function ChecklistView() {
       setLoading(true)
       const response = await api.get<any>(`/api/checklist/${id}`)
       if (response?.data) {
-        let parsed = response.data
+        const parsed = { ...response.data }
         if (typeof parsed.machineChecklist === 'string') {
           try { parsed.machineChecklist = JSON.parse(parsed.machineChecklist) }
           catch (e) { console.warn('Cannot parse machineChecklist:', e) }
@@ -119,9 +179,6 @@ function ChecklistView() {
       setLoading(false)
     }
   }
-
-  const formatDate = (dateStr?: string) =>
-    dateStr ? new Date(dateStr).toLocaleDateString('en-GB', { year: '2-digit', month: '2-digit', day: '2-digit' }) : ''
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 dark:bg-background p-6">
@@ -145,12 +202,25 @@ function ChecklistView() {
 
   const checklistItems = Array.isArray(record.machineChecklist) ? record.machineChecklist : []
 
+  const supervisorValue = record.supervisor
+    ? `${fullName(record.supervisor)}${record.dateSupervisorChecked ? ` — ${formatDate(record.dateSupervisorChecked)}` : ''}`
+    : '-'
+
+  const managerValue = record.manager
+    ? `${fullName(record.manager)}${record.dateManagerChecked ? ` — ${formatDate(record.dateManagerChecked)}` : ''}`
+    : '-'
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="bg-card border-b border-border px-6 py-4 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.navigate({ to: '/checklist/checklist-records' })} className="hover:bg-accent">
+          <Button
+            variant="ghost" size="icon"
+            onClick={() => router.navigate({ to: '/checklist/checklist-records' })}
+            className="hover:bg-accent"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-3">
@@ -167,7 +237,7 @@ function ChecklistView() {
 
       <div className="max-w-7xl mx-auto p-6 space-y-8">
 
-        {/* Checklist Details */}
+        {/* ── Checklist Details ──────────────────────────────────────────────── */}
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
@@ -180,15 +250,9 @@ function ChecklistView() {
               <InfoRow label={t('machine_status')}    value={<StatusBadge status={record.machineStatus} />} />
               <InfoRow label={t('check_status')}      value={<StatusBadge status={record.checklistStatus} />} />
               <InfoRow label={t('created_by')}        value={record.userName ?? '-'} />
-              <InfoRow label={t('created_at')}        value="-" />
-              <InfoRow
-                label={t('supervisor_checked')}
-                value={record.supervisor ? `${record.supervisor}${record.dateSupervisorChecked ? ` - ${formatDate(record.dateSupervisorChecked)}` : ''}` : '-'}
-              />
-              <InfoRow
-                label={t('manager_checked')}
-                value={record.manager ? `${record.manager}${record.dateManagerChecked ? ` - ${formatDate(record.dateManagerChecked)}` : ''}` : '-'}
-              />
+              <InfoRow label={t('created_at')}        value={formatDate(record.createdAt)} />
+              <InfoRow label={t('supervisor_checked')} value={supervisorValue} />
+              <InfoRow label={t('manager_checked')}    value={managerValue} />
               <InfoRow label={t('job_detail')}         value={record.jobDetail ?? '-'} />
               <InfoRow label={t('reason_not_checked')} value={record.reasonNotChecked ?? '-'} />
             </div>
@@ -202,7 +266,7 @@ function ChecklistView() {
           </CardContent>
         </Card>
 
-        {/* Attachments */}
+        {/* ── Attachments ────────────────────────────────────────────────────── */}
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
@@ -211,21 +275,14 @@ function ChecklistView() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            {record.image ? (
-              <div className="p-4 rounded-lg bg-accent/40 border border-accent flex items-center gap-3">
-                <FileText className="h-5 w-5 text-accent-foreground" />
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">{t('attachment')}</p>
-                  <p className="text-foreground font-medium">{record.image}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-muted-foreground text-center py-4">{t('no_attachments')}</p>
-            )}
+            {record.image
+              ? <MachineImage fileName={record.image} />
+              : <p className="text-muted-foreground text-center py-4">{t('no_attachments')}</p>
+            }
           </CardContent>
         </Card>
 
-        {/* Checklist Items */}
+        {/* ── Checklist Items ────────────────────────────────────────────────── */}
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
@@ -235,8 +292,10 @@ function ChecklistView() {
           </CardHeader>
           <CardContent className="p-6 pt-0">
             {checklistItems.length > 0 ? (
-              <div className="space-y-3">
-                {checklistItems.map(item => <ChecklistQuestionItem key={item.id} item={item} />)}
+              <div className="space-y-3 pt-4">
+                {checklistItems.map(item => (
+                  <ChecklistQuestionItem key={item.id} item={item} />
+                ))}
               </div>
             ) : (
               <div className="text-center py-10 text-muted-foreground">{t('no_checklist_items')}</div>
@@ -251,7 +310,11 @@ function ChecklistView() {
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
 
-function InfoRow({ label, value, className = '' }: { label: string; value?: ReactNode; className?: string }) {
+function InfoRow({ label, value, className = '' }: {
+  label: string
+  value?: ReactNode
+  className?: string
+}) {
   return (
     <div className={className}>
       <p className="text-sm font-medium text-muted-foreground mb-1">{label}</p>
