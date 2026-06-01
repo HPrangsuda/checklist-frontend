@@ -179,8 +179,7 @@ export function KpiTbl() {
         </div>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-foreground/80 mb-4">อยู่ระหว่างปรับปรุงข้อมูล</p>
-        {/* <TblContainer>
+        <TblContainer>
           <div className="p-0">
             <DataTableToolbar
               table={table}
@@ -203,7 +202,7 @@ export function KpiTbl() {
               <DataTable table={table} emptyText={t('no_result')} />
             )}
           </div>
-        </TblContainer> */}
+        </TblContainer>
       </CardContent>
     </Card>
   )
