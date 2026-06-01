@@ -207,7 +207,7 @@ function ChecklistView() {
   return (
     <div className="min-h-screen bg-background">
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      ── Header ───────────────────────────────────────────────────────────
       <div className="bg-card border-b border-border px-6 py-4 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center gap-4">
           <Button
@@ -297,7 +297,7 @@ function ChecklistView() {
           </CardContent>
         </Card>
 
-      </div>
+      </div> 
     </div>
   )
 }
