@@ -30,6 +30,7 @@ interface ChecklistDTO {
   machineStatus: string
   checklistStatus: string
   userName: string
+  createdAt: string
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -74,14 +75,14 @@ function Checklist() {
   const onFetchData = async () => {
     try {
       setLoading(true)
-    const params = new URLSearchParams()
-    params.set('index', pagination.pageIndex.toString())
-    params.set('size', pagination.pageSize.toString())
-    if (searchValue.trim()) params.set('keyword', searchValue.trim())
+      const params = new URLSearchParams()
+      params.set('index', pagination.pageIndex.toString())
+      params.set('size', pagination.pageSize.toString())
+      if (searchValue.trim()) params.set('keyword', searchValue.trim())
 
-    console.log('🔍 Fetching main data with role...')
-    const response = await api.get<PageResponse<ChecklistDTO>>('/api/checklist/get/role', { params })
-    console.log('✅ Main response:', response)
+      console.log('🔍 Fetching main data with role...')
+      const response = await api.get<PageResponse<ChecklistDTO>>('/api/checklist/get/role', { params })
+      console.log('✅ Main response:', response)
       if (response?.success) {
         setData(response.data ?? [])
         setTotalCount(response.totalElements ?? 0)
@@ -113,6 +114,15 @@ function Checklist() {
     const translated = t(key)
     return translated !== key ? translated : status
   }
+
+  // ─── shared machine cell ──────────────────────────────────────────────────
+
+  const MachineCell = ({ row }: { row: { original: ChecklistDTO } }) => (
+    <div className="flex flex-col min-w-0 w-full overflow-hidden">
+      <span className="text-sm truncate">{row.original.machineName}</span>
+      <span className="text-xs text-muted-foreground">{row.original.machineCode}</span>
+    </div>
+  )
 
   // ─── columns (main table) ─────────────────────────────────────────────────
 
@@ -154,14 +164,20 @@ function Checklist() {
       size: 80,
     },
     {
-      accessorKey: 'machineCode',
-      header: t('machine_code'),
-      cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div>,
-    },
-    {
-      accessorKey: 'machineName',
+      id: 'machine',
+      size: 280,       
+      maxSize: 280,
       header: t('machine_name'),
-      cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div>,
+      cell: ({ row }) => <MachineCell row={row} />,
+    },
+    {      
+      id: 'createdAt',
+      header: t('created_at'),
+      cell: ({ row }) => {    
+        const date = new Date(row.original.createdAt)
+        const formatted = date.toLocaleDateString('en-CA')
+        return <span className="text-sm">{formatted}</span>
+      },  
     },
     {
       accessorKey: 'userName',
@@ -201,15 +217,13 @@ function Checklist() {
         />
       ),
       size: 80,
-    },{
-      accessorKey: 'machineCode',
-      header: t('machine_code'),
-      cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div>,
     },
     {
-      accessorKey: 'machineName',
+      id: 'machine',
+      size: 280,
+      maxSize: 280,
       header: t('machine_name'),
-      cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div>,
+      cell: ({ row }) => <MachineCell row={row} />,
     },
     {
       accessorKey: 'userName',
@@ -234,7 +248,6 @@ function Checklist() {
         </Badge>
       ) : null,
     },
-    
   ]
 
   // ─── tables ───────────────────────────────────────────────────────────────

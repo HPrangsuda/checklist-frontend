@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, Download, FileText, ListCheck, PenBox, Plus, X } from 'lucide-react'
+import { ArrowLeft, Download, FileText, ListCheck, PenBox, Plus, ShieldCheck, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
@@ -54,6 +54,7 @@ interface AttachmentItem {
   fileType: string
   fileSize: number
   uploadedBy: string | null
+  category?: string | null
 }
 
 interface RegisterRequest {
@@ -74,9 +75,15 @@ interface RegisterRequest {
   supervisorName?: string
   managerName?: string
   note?: string
-  attachment?: string | AttachmentItem[]
+  attachment?: string | AttachmentItem[]       // รูปภาพ
+  workInstruction?: string | AttachmentItem[]  // work instruction แยก field
   maintenance?: MaintenanceItem[] | string
   calibration?: CalibrationItem[] | string
+  // ── warranty ────────────────────────────────────────────────────────────────
+  hasWarranty?: string
+  warrantyNote?: string
+  warrantyExpireDate?: string | null
+  warrantyFiles?: string | AttachmentItem[]
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -86,7 +93,7 @@ const API_BASE   = import.meta.env.VITE_API_URL ?? ''
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const formatDate = (dateStr: string | null) => {
+const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return '-'
   try {
     return new Date(dateStr).toLocaleDateString('th-TH', {
@@ -125,7 +132,7 @@ function AuthImage({ src, alt, className }: { src: string; alt: string; classNam
   return <img src={blobUrl} alt={alt} className={className} />
 }
 
-// ─── ImageDialog ─────────────────────────────────────────────────────────────
+// ─── ImageDialog ──────────────────────────────────────────────────────────────
 
 function ImageDialog({ blobUrl, fileName, open, onClose }: {
   blobUrl: string; fileName: string; open: boolean; onClose: () => void
@@ -311,6 +318,12 @@ function RegisterView() {
         if (typeof d.attachment === 'string') {
           try { d.attachment = JSON.parse(d.attachment) } catch { d.attachment = [] }
         }
+        if (typeof d.workInstruction === 'string') {
+          try { d.workInstruction = JSON.parse(d.workInstruction) } catch { d.workInstruction = [] }
+        }
+        if (typeof d.warrantyFiles === 'string') {
+          try { d.warrantyFiles = JSON.parse(d.warrantyFiles) } catch { d.warrantyFiles = [] }
+        }
         setRecord(d)
       } else {
         toast.error(t('failed_to_load_register'))
@@ -342,8 +355,11 @@ function RegisterView() {
     </div>
   )
 
-  const maintenanceItems = Array.isArray(record.maintenance) ? record.maintenance : []
-  const calibrationItems = Array.isArray(record.calibration) ? record.calibration : []
+  const maintenanceItems   = Array.isArray(record.maintenance)    ? record.maintenance   : []
+  const calibrationItems   = Array.isArray(record.calibration)    ? record.calibration   : []
+  const warrantyFileItems  = parseAttachments(record.warrantyFiles)
+  const imageAttachments   = parseAttachments(record.attachment)
+  const instrAttachments   = parseAttachments(record.workInstruction)
 
   return (
     <div className="min-h-screen bg-background">
@@ -407,13 +423,79 @@ function RegisterView() {
                   <p className="text-foreground whitespace-pre-wrap">{record.note}</p>
                 </div>
               )}
-              {parseAttachments(record.attachment).length > 0 && (
+
+              {/* ── รูปภาพ (attachment) ──────────────────────────────────── */}
+              {imageAttachments.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-3">{t('attachment')}</p>
-                  <AttachmentList attachment={record.attachment} />
+                  <p className="text-sm font-medium text-muted-foreground mb-3">{t('images')}</p>
+                  <div className="flex flex-wrap gap-3">
+                    {imageAttachments.map((f, i) => <AttachmentFile key={i} file={f} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* ── work instruction (workInstruction field) ─────────────── */}
+              {instrAttachments.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-3">{t('work_instructions')}</p>
+                  <div className="flex flex-wrap gap-3">
+                    {instrAttachments.map((f, i) => <AttachmentFile key={i} file={f} />)}
+                  </div>
                 </div>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Warranty Information */}
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-2 font-semibold">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              {t('warranty')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+              <InfoRow
+                label={t('has_warranty')}
+                value={
+                  <span className={[
+                    'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                    record.hasWarranty === 'YES'
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                      : record.hasWarranty === 'NO'
+                        ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                        : 'bg-gray-100 text-gray-600',
+                  ].join(' ')}>
+                    {record.hasWarranty === 'YES'
+                      ? t('yes')
+                      : record.hasWarranty === 'NO'
+                        ? t('no')
+                        : '-'}
+                  </span>
+                }
+              />
+              {record.hasWarranty === 'YES' && (
+                <>
+                  <InfoRow label={t('warranty_note')}        value={record.warrantyNote       || '-'} />
+                  <InfoRow label={t('warranty_expire_date')} value={formatDate(record.warrantyExpireDate)} />
+                </>
+              )}
+            </div>
+
+            {record.hasWarranty === 'YES' && warrantyFileItems.length > 0 && (
+              <div className="mt-6">
+                <p className="text-sm font-medium text-muted-foreground mb-3">{t('warranty_documents')}</p>
+                <div className="flex flex-wrap gap-3">
+                  {warrantyFileItems.map((f, i) => <AttachmentFile key={i} file={f} />)}
+                </div>
+              </div>
+            )}
+
+            {!record.hasWarranty && (
+              <p className="text-sm text-muted-foreground">{'-'}</p>
+            )}
           </CardContent>
         </Card>
 

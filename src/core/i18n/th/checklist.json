@@ -139,7 +139,9 @@
   "back_to_list": "กลับไปยังรายการ",
   "checklist_details": "รายละเอียดเช็คลิสต์",
   "created_by": "สร้างโดย",
-  "created_at": "สร้างเมื่อ",
+  "created_at": "วันที่สร้าง",
+  "updated_by": "อัปเดตโดย",
+  "updated_at": "วันที่อัปเดต",
   "supervisor_checked": "หัวหน้างานตรวจสอบ",
   "manager_checked": "ผู้จัดการตรวจสอบ",
   "job_detail": "รายละเอียดงาน",
@@ -312,5 +314,12 @@
   "insurance_note": "กรุณากรอกหมายเหตุการประกัน",
   "has_insurance": "กรุณาเลือกว่ามีประกันหรือไม่",
   "yes": "มี",
-  "no": "ไม่มี"
+  "no": "ไม่มี",
+  "warranty": "การรับประกัน",
+  "has_warranty": "มีการรับประกัน",
+  "warranty_note": "หมายเหตุการรับประกัน",
+  "warranty_expire_date": "วันหมดอายุการรับประกัน",
+  "warranty_documents": "เอกสารการรับประกัน",
+  "has_warranty_required": "กรุณาระบุว่ามีการรับประกันหรือไม่",
+  "warranty_note_required": "กรุณากรอกหมายเหตุการรับประกัน"
 }

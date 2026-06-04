@@ -138,6 +138,8 @@
   "checklist_details": "Checklist Details",
   "created_by": "Created By",
   "created_at": "Created At",
+  "updated_by": "Updated By",
+  "updated_at": "Updated At",
   "supervisor_checked": "Supervisor Checked",
   "manager_checked": "Manager Checked",
   "job_detail": "Job Detail",
@@ -311,5 +313,12 @@
   "insurance_note": "Please provide insurance note",
   "has_insurance": "Please select if the machine has insurance",
   "yes": "YES",
-  "no": "NO"
+  "no": "NO",
+  "warranty": "Warranty",
+  "has_warranty": "Has Warranty",
+  "warranty_note": "Warranty Note",
+  "warranty_expire_date": "Warranty Expire Date",
+  "warranty_documents": "Warranty Documents",
+  "has_warranty_required": "Please specify whether there is a warranty",
+  "warranty_note_required": "Please fill in the warranty note"
 }

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, Edit3, Info, PencilRuler, Wrench, Download, FileText, X, ClipboardList } from 'lucide-react'
+import { ArrowLeft, Edit3, Info, PencilRuler, Wrench, Download, FileText, X, ClipboardList, ShieldCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
@@ -21,7 +21,7 @@ export const Route = createFileRoute('/checklist/machine/view')({
   })
 })
 
-// ─── Types — ตรงกับ MachineResponseDTO ───────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MachineResponseDTO {
   id:                   number
@@ -60,6 +60,11 @@ interface MachineResponseDTO {
   workInstruction?:     string
   lastReview?:          string
   reviewBy?:            string
+  // ── warranty ────────────────────────────────────────────────────────────────
+  hasWarranty?:         string
+  warrantyNote?:        string
+  warrantyExpireDate?:  string | null
+  warrantyFiles?:       string
   createdBy?:           { id: number; firstName: string; lastName: string }
   updatedBy?:           { id: number; firstName: string; lastName: string }
   calibrationRecords?:  any[]
@@ -90,6 +95,15 @@ const parseFiles = (raw?: string | null): AttachmentItem[] => {
   if (!raw) return []
   if (Array.isArray(raw)) return raw
   try { return JSON.parse(raw) } catch { return [] }
+}
+
+const formatDate = (dateStr?: string | null) => {
+  if (!dateStr) return '-'
+  try {
+    return new Date(dateStr).toLocaleDateString('th-TH', {
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    })
+  } catch { return '-' }
 }
 
 // ─── AuthImage ────────────────────────────────────────────────────────────────
@@ -313,6 +327,8 @@ function MachineView() {
     </div>
   )
 
+  const warrantyFiles = parseFiles(machine.warrantyFiles)
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ── Header ────────────────────────────────────────────────────────── */}
@@ -362,25 +378,27 @@ function MachineView() {
 
           {/* ── General ───────────────────────────────────────────────────── */}
           <TabsContent value="general" className="mt-4 space-y-4">
+
+            {/* Basic Information */}
             <Card>
               <CardHeader className="border-b">
                 <CardTitle className="font-semibold">{t('basic_information')}</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
-                <InfoRow label={t('machine_code')}    value={machine.machineCode} />
-                <InfoRow label={t('machine_name')}    value={machine.machineName} />
-                <InfoRow label={t('brand')}           value={machine.brand} />
-                <InfoRow label={t('model')}           value={machine.model} />
-                <InfoRow label={t('serial_number')}   value={machine.serialNumber} />
-                <InfoRow label={t('department')}      value={machine.departmentName || machine.department} />
-                <InfoRow label={t('machine_group')}   value={machine.machineGroupName || machine.machineGroupId} />
-                <InfoRow label={t('machine_type')}    value={machine.machineTypeName  || machine.machineTypeId} />
-                <InfoRow label={t('responsible')}     value={machine.responsiblePersonName} />
-                <InfoRow label={t('supervisor')}      value={machine.supervisorName} />
-                <InfoRow label={t('manager')}         value={machine.managerName} />
-                <InfoRow label={t('reset_period')}    value={machine.resetPeriod} />
+                <InfoRow label={t('machine_code')}       value={machine.machineCode} />
+                <InfoRow label={t('machine_name')}       value={machine.machineName} />
+                <InfoRow label={t('brand')}              value={machine.brand} />
+                <InfoRow label={t('model')}              value={machine.model} />
+                <InfoRow label={t('serial_number')}      value={machine.serialNumber} />
+                <InfoRow label={t('department')}         value={machine.departmentName || machine.department} />
+                <InfoRow label={t('machine_group')}      value={machine.machineGroupName || machine.machineGroupId} />
+                <InfoRow label={t('machine_type')}       value={machine.machineTypeName  || machine.machineTypeId} />
+                <InfoRow label={t('responsible')}        value={machine.responsiblePersonName} />
+                <InfoRow label={t('supervisor')}         value={machine.supervisorName} />
+                <InfoRow label={t('manager')}            value={machine.managerName} />
+                <InfoRow label={t('reset_period')}       value={machine.resetPeriod} />
                 <InfoRow label={t('maintenance_period')} value={machine.maintenancePeriod} />
-                <InfoRow label={t('note')}            value={machine.note} />
+                <InfoRow label={t('note')}               value={machine.note} />
               </CardContent>
             </Card>
 
@@ -400,32 +418,85 @@ function MachineView() {
                 </CardContent>
               </Card>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  {/* Images */}
-  {parseFiles(machine.image).length > 0 && (
-    <Card>
-      <CardHeader className="border-b">
-        <CardTitle className="font-semibold">{t('machine_image')}</CardTitle>
-      </CardHeader>
-      <CardContent className="pt-4">
-        <AttachmentList raw={machine.image} label={t('machine_image')} />
-      </CardContent>
-    </Card>
-  )}
 
-  {/* Work Instructions */}
-  {parseFiles(machine.workInstruction).length > 0 && (
-    <Card>
-      <CardHeader className="border-b">
-        <CardTitle className="font-semibold">{t('work_instructions')}</CardTitle>
-      </CardHeader>
-      <CardContent className="pt-4">
-        <AttachmentList raw={machine.workInstruction} label={t('work_instructions')} />
-      </CardContent>
-    </Card>
-  )}
-</div>
-            
+            {/* Images & Work Instructions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {parseFiles(machine.image).length > 0 && (
+                <Card>
+                  <CardHeader className="border-b">
+                    <CardTitle className="font-semibold">{t('images')}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <AttachmentList raw={machine.image} label={t('images')} />
+                  </CardContent>
+                </Card>
+              )}
+
+              {parseFiles(machine.workInstruction).length > 0 && (
+                <Card>
+                  <CardHeader className="border-b">
+                    <CardTitle className="font-semibold">{t('work_instructions')}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <AttachmentList raw={machine.workInstruction} label={t('work_instructions')} />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* ── Warranty ──────────────────────────────────────────────── */}
+            <Card>
+              <CardHeader className="border-b">
+                <CardTitle className="flex items-center gap-2 font-semibold">
+                  <ShieldCheck className="h-5 w-5 text-primary" />
+                  {t('warranty')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">{t('has_warranty')}</p>
+                    <span className={[
+                      'inline-flex items-center mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium',
+                      machine.hasWarranty === 'YES'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                        : machine.hasWarranty === 'NO'
+                          ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                          : 'bg-gray-100 text-gray-600',
+                    ].join(' ')}>
+                      {machine.hasWarranty === 'YES'
+                        ? t('yes')
+                        : machine.hasWarranty === 'NO'
+                          ? t('no')
+                          : '-'}
+                    </span>
+                  </div>
+
+                  {machine.hasWarranty === 'YES' && (
+                    <>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">{t('warranty_note')}</p>
+                        <p className="text-base mt-1">{machine.warrantyNote || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">{t('warranty_expire_date')}</p>
+                        <p className="text-base mt-1">{formatDate(machine.warrantyExpireDate)}</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {machine.hasWarranty === 'YES' && warrantyFiles.length > 0 && (
+                  <div className="mt-6">
+                    <p className="text-sm font-medium text-muted-foreground mb-3">{t('warranty_documents')}</p>
+                    <div className="flex flex-wrap gap-3">
+                      {warrantyFiles.map((f, i) => <AttachmentFile key={i} file={f} />)}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
           </TabsContent>
 
           {/* ── Checklist ─────────────────────────────────────────────────── */}
