@@ -350,21 +350,16 @@ function RouteComponent({ data }: any) {
   }
 
   const buildRegisterDTO = () => {
-    // ── attachments: รูปภาพเท่านั้น ──────────────────────────────────────────
     const attachments = uploadedImages.map(f => ({
       fileName: f.fileName, fileUrl: f.fileUrl,
       fileType: f.fileType, fileSize: f.fileSize,
       uploadedBy: f.uploadedBy ?? null,
     }))
-
-    // ── workInstructions: เอกสาร instruction แยก field ───────────────────────
     const workInstructions = uploadedInstructions.map(f => ({
       fileName: f.fileName, fileUrl: f.fileUrl,
       fileType: f.fileType, fileSize: f.fileSize,
       uploadedBy: f.uploadedBy ?? null,
     }))
-
-    // ── warrantyFiles: เอกสาร warranty แยก field ─────────────────────────────
     const warrantyFiles = uploadedWarranty.map(f => ({
       fileName: f.fileName, fileUrl: f.fileUrl,
       fileType: f.fileType, fileSize: f.fileSize,
@@ -412,14 +407,12 @@ function RouteComponent({ data }: any) {
       supervisorId:     formData.supervisor   || null,
       managerId:        formData.manager      || null,
       note:             formData.note         || null,
-      // ── 3 buckets แยกชัดเจน ─────────────────────────────────────────────
       attachments:      attachments.length     ? attachments     : null,
       workInstructions: workInstructions.length ? workInstructions : null,
       warrantyFiles:    formData.hasWarranty === 'YES' && warrantyFiles.length
                           ? warrantyFiles : null,
       maintenance:      maintenance.length     ? maintenance     : null,
       calibration,
-      // ── warranty ──────────────────────────────────────────────────────────
       hasWarranty:        formData.hasWarranty || null,
       warrantyNote:       formData.hasWarranty === 'YES' ? (formData.warrantyNote       || null) : null,
       warrantyExpireDate: formData.hasWarranty === 'YES' ? formatDateToISO(formData.warrantyExpireDate) : null,
@@ -477,28 +470,91 @@ function RouteComponent({ data }: any) {
     const params: any = { index, size: 100 }
     if (keyword.trim()) params.keyword = keyword.trim()
     const r = await api.get<ListResponse<MemberListDTO>>('/api/user/get/list', { params })
-    return r.data.map(m => ({ label: `${m.firstName} ${m.lastName}`, value: String(m.id || ''), fullName: `${m.firstName} ${m.lastName}` }))
+    const all = r.data.map(m => ({
+      label:    `${m.firstName} ${m.lastName}`,
+      value:    String(m.id || ''),
+      fullName: `${m.firstName} ${m.lastName}`,
+    }))
+    if (keyword.trim()) {
+      const kw = keyword.trim().toLowerCase()
+      return all.filter(m => m.label.toLowerCase().includes(kw))
+    }
+    return all
   }
 
   const fetchResponsible = async (kw: string, idx: number) => {
-    try { const d = await fetchMembers(kw, idx); setCachedResponsible(d); return { data: d, hasMore: false } }
-    catch { toast.error(t('data_fetch_failed')); return { data: [], hasMore: false } }
+    try {
+      const d = await fetchMembers(kw, idx)
+      if (!kw) setCachedResponsible(d)
+      return { data: d, hasMore: false }
+    } catch { toast.error(t('data_fetch_failed')); return { data: [], hasMore: false } }
   }
   const fetchSupervisor = async (kw: string, idx: number) => {
-    try { const d = await fetchMembers(kw, idx); setCachedSupervisor(d); return { data: d, hasMore: false } }
-    catch { return { data: [], hasMore: false } }
+    try {
+      const d = await fetchMembers(kw, idx)
+      if (!kw) setCachedSupervisor(d)
+      return { data: d, hasMore: false }
+    } catch { return { data: [], hasMore: false } }
   }
   const fetchManager = async (kw: string, idx: number) => {
-    try { const d = await fetchMembers(kw, idx); setCachedManager(d); return { data: d, hasMore: false } }
-    catch { return { data: [], hasMore: false } }
+    try {
+      const d = await fetchMembers(kw, idx)
+      if (!kw) setCachedManager(d)
+      return { data: d, hasMore: false }
+    } catch { return { data: [], hasMore: false } }
+  }
+
+  // ─── Responsible change — auto-fill supervisor & manager จาก API ──────────
+  const handleResponsibleChange = async (selected: any) => {
+    const val = Array.isArray(selected) ? selected[0] : selected
+    if (!val) {
+      setFormData(prev => ({
+        ...prev,
+        responsible:     '',
+        responsibleName: '',
+        supervisor:      '',
+        supervisorName:  '',
+        manager:         '',
+        managerName:     '',
+      }))
+      return
+    }
+
+    const found = cachedResponsible.find(r => String(r.value) === String(val))
+    setFormData(prev => ({
+      ...prev,
+      responsible:     val,
+      responsibleName: found?.fullName ?? prev.responsibleName,
+      supervisor:      '',
+      supervisorName:  '',
+      manager:         '',
+      managerName:     '',
+    }))
+
+    // ── ดึง supervisor/manager จาก user API ──────────────────────────────
+    try {
+      const res    = await api.get<any>(`/api/user/${val}`)
+      const member = res.data
+      setFormData(prev => ({
+        ...prev,
+        supervisor:     member.supervisor ? String(member.supervisor) : '',
+        supervisorName: member.supervisorName ?? '',
+        manager:        member.manager    ? String(member.manager)    : '',
+        managerName:    member.managerName    ?? '',
+      }))
+    } catch {}
+
+    if (errors.responsible) {
+      const e = { ...errors }; delete e.responsible; setErrors(e)
+    }
   }
 
   const makeMemberChange = (field: string, nameField: string, cache: any[]) =>
-    (val: any) => {
-      const value = toStr(val)
-      if (!value) { setFormData(prev => ({ ...prev, [field]: '', [nameField]: '' })); return }
-      const found = cache.find(r => String(r.value) === value)
-      if (found) setFormData(prev => ({ ...prev, [field]: value, [nameField]: found.fullName }))
+    async (selected: any) => {
+      const val = Array.isArray(selected) ? selected[0] : selected
+      if (!val) { setFormData(prev => ({ ...prev, [field]: '', [nameField]: '' })); return }
+      const found = cache.find(r => String(r.value) === String(val))
+      if (found) setFormData(prev => ({ ...prev, [field]: val, [nameField]: found.fullName }))
     }
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -542,21 +598,30 @@ function RouteComponent({ data }: any) {
               }}
               fetchOptions={fetchDepartments} error={errors.department} required />
 
-            <ServerSingleSelect key={`resp-${formData.responsible || 'e'}`}
+            {/* ── responsible: เลือกแล้ว auto-fill supervisor/manager ─────── */}
+            <ServerSingleSelect
+              key={`resp-${formData.responsible || 'e'}`}
               id="responsible" title="responsible" label={t('responsible')}
               placeholder={t('select_responsible')} value={formData.responsible}
-              onChange={makeMemberChange('responsible', 'responsibleName', cachedResponsible)}
+              initialLabel={formData.responsibleName}
+              onChange={handleResponsibleChange}
               fetchOptions={fetchResponsible} error={errors.responsible} required />
 
-            <ServerSingleSelect key={`sup-${formData.supervisor || 'e'}`}
+            {/* ── supervisor: ถูก auto-fill แต่แก้ได้ ───────────────────── */}
+            <ServerSingleSelect
+              key={`sup-${formData.supervisor || 'e'}`}
               id="supervisor" title="supervisor" label={t('supervisor')}
               placeholder={t('select_supervisor')} value={formData.supervisor}
+              initialLabel={formData.supervisorName}
               onChange={makeMemberChange('supervisor', 'supervisorName', cachedSupervisor)}
               fetchOptions={fetchSupervisor} />
 
-            <ServerSingleSelect key={`mgr-${formData.manager || 'e'}`}
+            {/* ── manager: ถูก auto-fill แต่แก้ได้ ─────────────────────── */}
+            <ServerSingleSelect
+              key={`mgr-${formData.manager || 'e'}`}
               id="manager" title="manager" label={t('manager')}
               placeholder={t('select_manager')} value={formData.manager}
+              initialLabel={formData.managerName}
               onChange={makeMemberChange('manager', 'managerName', cachedManager)}
               fetchOptions={fetchManager} />
           </div>
@@ -585,7 +650,6 @@ function RouteComponent({ data }: any) {
                   value={formData.warrantyExpireDate}
                   onChange={d => handleInputChange('warrantyExpireDate', d)} />
 
-                {/* ── warranty files: แยก bucket ─────────────────────────── */}
                 <FileUploadField id="warranty-docs" label={t('warranty_documents')} maxFiles={10}
                   value={uploadedWarranty.map(f => ({
                     name: f.fileName, size: f.fileSize,
@@ -599,7 +663,7 @@ function RouteComponent({ data }: any) {
             )}
           </div>
 
-          {/* ─── Images (attachment bucket) ───────────────────────────────── */}
+          {/* ─── Images ───────────────────────────────────────────────────── */}
           <FileUploadField id="register-images" label={t('images')} maxFiles={10}
             value={uploadedImages.map(f => ({
               name: f.fileName, size: f.fileSize,
@@ -610,7 +674,7 @@ function RouteComponent({ data }: any) {
             onDeleteUploadedFile={handleDeleteImage}
             onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
 
-          {/* ─── Work Instructions (workInstruction bucket) ────────────────── */}
+          {/* ─── Work Instructions ─────────────────────────────────────────── */}
           <FileUploadField id="register-instructions" label={t('work_instructions')} maxFiles={10}
             value={uploadedInstructions.map(f => ({
               name: f.fileName, size: f.fileSize,
