@@ -332,5 +332,9 @@
   "warranty_expire_date": "วันหมดอายุการรับประกัน",
   "warranty_documents": "เอกสารการรับประกัน",
   "has_warranty_required": "กรุณาระบุว่ามีการรับประกันหรือไม่",
-  "warranty_note_required": "กรุณากรอกหมายเหตุการรับประกัน"
+  "warranty_note_required": "กรุณากรอกหมายเหตุการรับประกัน",
+  "filter":           "กรองข้อมูล",
+  "filter_by":        "กรองโดย",
+  "clear_all":        "ล้างทั้งหมด",
+  "active_filters":   "ตัวกรองที่ใช้งาน"
 }

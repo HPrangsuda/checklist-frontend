@@ -331,5 +331,9 @@
   "warranty_expire_date": "Warranty Expire Date",
   "warranty_documents": "Warranty Documents",
   "has_warranty_required": "Please specify whether there is a warranty",
-  "warranty_note_required": "Please fill in the warranty note"
+  "warranty_note_required": "Please fill in the warranty note",
+  "filter":           "Filter",
+  "filter_by":        "Filter by",
+  "clear_all":        "Clear all",
+  "active_filters":   "active filters"
 }

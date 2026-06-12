@@ -23,23 +23,32 @@ import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Drill, Filter, X, ChevronDown } from 'lucide-react'
+import { Drill, Filter, X, SlidersHorizontal, Check, ChevronsUpDown } from 'lucide-react'
 import { getStatusColor } from '@/utils/status.untils'
 import { useAuth } from '@/core/contexts/auth-context'
 import { Button } from '@/components/ui/button'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import { Separator } from '@/components/ui/separator'
+import { cn } from '@/core/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +57,7 @@ interface MachineDTO {
   machineCode: string
   machineName: string
   department: string
+  departmentName: string
   machineStatus: string
   checkStatus: string
   responsiblePersonName: string
@@ -60,8 +70,20 @@ interface MachineFilters {
   responsiblePersonName: string
 }
 
+interface DepartmentOption {
+  code: string
+  name: string
+}
+
 interface FilterOptions {
-  departments: string[]
+  departments: DepartmentOption[]
+  machineStatuses: string[]
+  checkStatuses: string[]
+  responsiblePersons: string[]
+}
+
+interface FilterOptionsResponse {
+  departments: { code: string; name: string }[]
   machineStatuses: string[]
   checkStatuses: string[]
   responsiblePersons: string[]
@@ -74,30 +96,132 @@ interface MachineTblProps {
   onSearchChange?: (keyword: string) => void
 }
 
-// ─── FilterBadge ──────────────────────────────────────────────────────────────
+// ─── LazySearchSelect ─────────────────────────────────────────────────────────
+// Dropdown ที่มี search + lazy load ทีละ PAGE_SIZE items
+// ใช้ onScroll บน CommandList แทน IntersectionObserver เพราะ scroll container
+// อยู่ภายใน Popover ซึ่ง IntersectionObserver จะ observe viewport แทน
 
-function FilterBadge({ label, onRemove }: { label: string; onRemove: () => void }) {
+const PAGE_SIZE = 10
+
+interface LazySearchSelectProps<T> {
+  value: string
+  placeholder: string
+  allLabel: string
+  items: T[]
+  getKey: (item: T) => string
+  getLabel: (item: T) => string
+  onSelect: (value: string) => void
+}
+
+function LazySearchSelect<T>({
+  value,
+  placeholder,
+  allLabel,
+  items,
+  getKey,
+  getLabel,
+  onSelect,
+}: LazySearchSelectProps<T>) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const listRef = useRef<HTMLDivElement>(null)
+  const debouncedSearch = useDebounce(search, 200)
+
+  // กรองด้วย search
+  const filtered = items.filter(item =>
+    getLabel(item).toLowerCase().includes(debouncedSearch.toLowerCase())
+  )
+
+  // lazy slice
+  const visible = filtered.slice(0, page * PAGE_SIZE)
+  const hasMore = visible.length < filtered.length
+
+  // reset page เมื่อ search เปลี่ยน
+  useEffect(() => { setPage(1) }, [debouncedSearch])
+
+  // scroll handler — เมื่อ scroll ถึงก้นของ list โหลดหน้าถัดไป
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (!hasMore) return
+    const el = e.currentTarget
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 20
+    if (nearBottom) setPage(p => p + 1)
+  }, [hasMore])
+
+  // label ของ item ที่เลือก
+  const selectedLabel = value
+    ? (items.find(i => getKey(i) === value) ? getLabel(items.find(i => getKey(i) === value)!) : value)
+    : ''
+
   return (
-    <Badge
-      variant="secondary"
-      className="flex items-center gap-1 px-2 py-0.5 text-xs font-normal rounded-full"
-    >
-      {label}
-      <button
-        type="button"
-        onClick={onRemove}
-        className="ml-0.5 hover:text-destructive transition-colors"
-        aria-label={`Remove filter: ${label}`}
-      >
-        <X className="w-3 h-3" />
-      </button>
-    </Badge>
+    <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) { setSearch(''); setPage(1) } }}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          className="h-9 w-full justify-between text-sm font-normal"
+        >
+          <span className={cn('truncate', !value && 'text-muted-foreground')}>
+            {value ? selectedLabel : placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={placeholder}
+            value={search}
+            onValueChange={setSearch}
+          />
+          {/* ✅ ref + onScroll บน CommandList โดยตรง */}
+          <CommandList
+            ref={listRef}
+            className="max-h-52 overflow-y-auto"
+            onScroll={handleScroll}
+          >
+            <CommandEmpty>-</CommandEmpty>
+            <CommandGroup>
+              {/* All option */}
+              <CommandItem
+                value="__ALL__"
+                onSelect={() => { onSelect(''); setOpen(false); setSearch('') }}
+              >
+                <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
+                {allLabel}
+              </CommandItem>
+
+              {/* Lazy items */}
+              {visible.map(item => {
+                const key = getKey(item)
+                const label = getLabel(item)
+                return (
+                  <CommandItem
+                    key={key}
+                    value={key}
+                    onSelect={() => { onSelect(key); setOpen(false); setSearch('') }}
+                  >
+                    <Check className={cn('mr-2 h-4 w-4', value === key ? 'opacity-100' : 'opacity-0')} />
+                    {label}
+                  </CommandItem>
+                )
+              })}
+
+              {/* Loading indicator */}
+              {hasMore && (
+                <div className="py-2 text-center text-xs text-muted-foreground select-none">
+                  ↓ scroll to load more ({filtered.length - visible.length} remaining)
+                </div>
+              )}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 
 // ─── MachineFilterPanel ───────────────────────────────────────────────────────
-
-const EMPTY = '__ALL__'
 
 function MachineFilterPanel({
   filters,
@@ -117,130 +241,136 @@ function MachineFilterPanel({
   const [open, setOpen] = useState(false)
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-1.5 h-8 relative"
-        >
-          <Filter className="w-3.5 h-3.5" />
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 px-3 whitespace-nowrap flex items-center">
+          <SlidersHorizontal className="mr-2 h-4 w-4" />
           {t('filter')}
           {activeCount > 0 && (
-            <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-700 text-[10px] font-bold text-white">
+            <span className="ml-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-700 text-[10px] font-bold text-white">
               {activeCount}
             </span>
           )}
-          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
         </Button>
-      </PopoverTrigger>
+      </SheetTrigger>
 
-      <PopoverContent align="start" className="w-72 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold">{t('filter_by')}</p>
+      <SheetContent side="right" className="w-80 flex flex-col gap-0 p-0">
+
+        {/* Header */}
+        <SheetHeader className="px-6 py-4 border-b">
+          <div className="flex items-center justify-between">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <Filter className="w-4 h-4" />
+              {t('filter_by')}
+            </SheetTitle>
+            {activeCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                onClick={onClear}
+              >
+                <X className="w-3 h-3 mr-1" />
+                {t('clear_all')}
+              </Button>
+            )}
+          </div>
           {activeCount > 0 && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {activeCount} {t('active_filters')}
+            </p>
+          )}
+        </SheetHeader>
+
+        {/* Filter fields */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* Department */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {t('department')}
+            </label>
+            <LazySearchSelect<DepartmentOption>
+              value={filters.department}
+              placeholder={t('all')}
+              allLabel={t('all')}
+              items={options.departments}
+              getKey={d => d.code}
+              getLabel={d => d.name}
+              onSelect={v => onChange('department', v)}
+            />
+          </div>
+
+          <Separator />
+
+          {/* Machine Status */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {t('machine_status')}
+            </label>
+            <LazySearchSelect<string>
+              value={filters.machineStatus}
+              placeholder={t('all')}
+              allLabel={t('all')}
+              items={options.machineStatuses}
+              getKey={s => s}
+              getLabel={s => s}
+              onSelect={v => onChange('machineStatus', v)}
+            />
+          </div>
+
+          <Separator />
+
+          {/* Check Status */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {t('check_status')}
+            </label>
+            <LazySearchSelect<string>
+              value={filters.checkStatus}
+              placeholder={t('all')}
+              allLabel={t('all')}
+              items={options.checkStatuses}
+              getKey={s => s}
+              getLabel={s => s}
+              onSelect={v => onChange('checkStatus', v)}
+            />
+          </div>
+
+          <Separator />
+
+          {/* Responsible Person */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {t('responsible')}
+            </label>
+            <LazySearchSelect<string>
+              value={filters.responsiblePersonName}
+              placeholder={t('all')}
+              allLabel={t('all')}
+              items={options.responsiblePersons}
+              getKey={p => p}
+              getLabel={p => p}
+              onSelect={v => onChange('responsiblePersonName', v)}
+            />
+          </div>
+        </div>
+
+        {/* Footer — clear all */}
+        {activeCount > 0 && (
+          <div className="border-t px-6 py-4">
             <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
-              onClick={() => {
-                onClear()
-                setOpen(false)
-              }}
+              variant="outline"
+              className="w-full h-9 text-sm text-destructive border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
+              onClick={() => { onClear(); setOpen(false) }}
             >
-              <X className="w-3 h-3 mr-1" />
+              <X className="w-3.5 h-3.5 mr-1.5" />
               {t('clear_all')}
             </Button>
-          )}
-        </div>
-
-        <Separator />
-
-        {/* Department */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            {t('department')}
-          </label>
-          <Select
-            value={filters.department || EMPTY}
-            onValueChange={v => onChange('department', v === EMPTY ? '' : v)}
-          >
-            <SelectTrigger className="h-8 text-sm">
-              <SelectValue placeholder={t('all')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={EMPTY}>{t('all')}</SelectItem>
-              {options.departments.map(d => (
-                <SelectItem key={d} value={d}>{d}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Machine Status */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            {t('machine_status')}
-          </label>
-          <Select
-            value={filters.machineStatus || EMPTY}
-            onValueChange={v => onChange('machineStatus', v === EMPTY ? '' : v)}
-          >
-            <SelectTrigger className="h-8 text-sm">
-              <SelectValue placeholder={t('all')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={EMPTY}>{t('all')}</SelectItem>
-              {options.machineStatuses.map(s => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Check Status */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            {t('check_status')}
-          </label>
-          <Select
-            value={filters.checkStatus || EMPTY}
-            onValueChange={v => onChange('checkStatus', v === EMPTY ? '' : v)}
-          >
-            <SelectTrigger className="h-8 text-sm">
-              <SelectValue placeholder={t('all')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={EMPTY}>{t('all')}</SelectItem>
-              {options.checkStatuses.map(s => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Responsible Person */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            {t('responsible')}
-          </label>
-          <Select
-            value={filters.responsiblePersonName || EMPTY}
-            onValueChange={v => onChange('responsiblePersonName', v === EMPTY ? '' : v)}
-          >
-            <SelectTrigger className="h-8 text-sm">
-              <SelectValue placeholder={t('all')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={EMPTY}>{t('all')}</SelectItem>
-              {options.responsiblePersons.map(p => (
-                <SelectItem key={p} value={p}>{p}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </PopoverContent>
-    </Popover>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -277,7 +407,6 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     responsiblePersons: [],
   })
 
-  // ✅ ใช้ ref เก็บค่า pagination และ viewMode ล่าสุด เพื่อให้ onFetchData อ่านได้เสมอ
   const paginationRef = useRef(pagination)
   const viewModeRef = useRef(viewMode)
   const searchValueRef = useRef(searchValue)
@@ -295,28 +424,21 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
 
   // ─── Sync debounced search → fetch ───────────────────────────────────────
 
-  useEffect(() => {
-    setSearchValue(debouncedSearch)
-  }, [debouncedSearch])
+  useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
 
   // ─── Fetch on search / pagination / viewMode change ──────────────────────
 
-  useEffect(() => {
-    onFetchData(filters)
-  }, [searchValue, pagination.pageIndex, pagination.pageSize, viewMode])
+  useEffect(() => { onFetchData(filters) }, [searchValue, pagination.pageIndex, pagination.pageSize, viewMode])
 
-  // ─── Fetch filter options once ────────────────────────────────────────────
+  // ─── Fetch filter options ครั้งเดียวตอน mount ────────────────────────────
 
-  useEffect(() => {
-    fetchFilterOptions()
-  }, [])
+  useEffect(() => { fetchFilterOptions() }, [])
 
-  // ─── Core fetch (รับ filters เป็น param เพื่อหนี stale closure) ──────────
+  // ─── Core fetch ───────────────────────────────────────────────────────────
 
   const onFetchData = async (currentFilters: MachineFilters) => {
     try {
       setLoading(true)
-
       const pg = paginationRef.current
       const vm = viewModeRef.current
       const sv = searchValueRef.current
@@ -326,20 +448,15 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
       params.set('size', pg.pageSize.toString())
       if (sv.trim()) params.set('keyword', sv.trim())
       if (isManagerOrSupervisor && vm === 'mine') params.set('mine', 'true')
-
-      // ✅ ใช้ currentFilters ที่รับมา ไม่ใช่ filters จาก closure
-      if (currentFilters.department)            params.set('department', currentFilters.department)
-      if (currentFilters.machineStatus)         params.set('machineStatus', currentFilters.machineStatus)
-      if (currentFilters.checkStatus)           params.set('checkStatus', currentFilters.checkStatus)
+      if (currentFilters.department)            params.set('department',            currentFilters.department)
+      if (currentFilters.machineStatus)         params.set('machineStatus',         currentFilters.machineStatus)
+      if (currentFilters.checkStatus)           params.set('checkStatus',           currentFilters.checkStatus)
       if (currentFilters.responsiblePersonName) params.set('responsiblePersonName', currentFilters.responsiblePersonName)
 
       const response = await api.get<PageResponse<MachineDTO>>('/api/machine/get/page', { params })
-
       if (response?.success) {
-        const rows = response.data ?? []
-        setData(rows)
+        setData(response.data ?? [])
         setTotalCount(response.totalElements ?? 0)
-        deriveOptionsFromData(rows)
       } else {
         toast.error(response?.message ?? t('data_fetch_failed'))
         setData([])
@@ -353,30 +470,26 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     }
   }
 
-  // ─── Filter options ───────────────────────────────────────────────────────
+  // ─── Filter options — ดึงทั้งหมดจาก backend ครั้งเดียว ──────────────────
 
   const fetchFilterOptions = async () => {
     try {
-      const response = await api.get<ResponseDTO<FilterOptions>>('/api/machine/filter-options')
+      const response = await api.get<ResponseDTO<FilterOptionsResponse>>('/api/machine/filter-options')
       if (response?.success && response.data) {
-        setFilterOptions(response.data)
+        const d = response.data
+        setFilterOptions({
+          departments:        d.departments        ?? [],
+          machineStatuses:    d.machineStatuses    ?? [],
+          checkStatuses:      d.checkStatuses      ?? [],
+          responsiblePersons: d.responsiblePersons ?? [],
+        })
       }
     } catch {
-      // fallback: deriveOptionsFromData จะสะสม options เอง
+      console.warn('[MachineTbl] /api/machine/filter-options unavailable')
     }
   }
 
-  const deriveOptionsFromData = (rows: MachineDTO[]) => {
-    const unique = <T,>(arr: T[]) => [...new Set(arr.filter(Boolean))] as T[]
-    setFilterOptions(prev => ({
-      departments:        unique([...prev.departments,        ...rows.map(r => r.department)]),
-      machineStatuses:    unique([...prev.machineStatuses,    ...rows.map(r => r.machineStatus)]),
-      checkStatuses:      unique([...prev.checkStatuses,      ...rows.map(r => r.checkStatus)]),
-      responsiblePersons: unique([...prev.responsiblePersons, ...rows.map(r => r.responsiblePersonName)]),
-    }))
-  }
-
-  // ─── Status label ─────────────────────────────────────────────────────────
+  // ─── Status label (i18n) ──────────────────────────────────────────────────
 
   const getStatusLabel = (status: string) => {
     const key = status.toLowerCase().replace(/\s+/g, '_')
@@ -402,7 +515,9 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
             checked={selectedIds.includes(row.original.id)}
             onCheckedChange={checked =>
               setSelectedIds(prev =>
-                checked ? [...prev, row.original.id] : prev.filter(id => id !== row.original.id)
+                checked
+                  ? [...prev, row.original.id]
+                  : prev.filter(id => id !== row.original.id)
               )
             }
             aria-label="Select row"
@@ -437,7 +552,11 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     {
       accessorKey: 'department',
       header: t('department'),
-      cell: ({ row }) => <div className="text-sm">{row.original.department || '-'}</div>,
+      cell: ({ row }) => (
+        <div className="text-sm">
+          {row.original.departmentName || row.original.department || '-'}
+        </div>
+      ),
     },
     {
       accessorKey: 'machineStatus',
@@ -499,7 +618,6 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
 
   // ─── Filter handlers ──────────────────────────────────────────────────────
 
-  // ✅ สร้าง newFilters ก่อน แล้วส่งเข้า onFetchData ทันที ไม่รอ setState
   const handleFilterChange = useCallback((key: keyof MachineFilters, value: string) => {
     const newFilters = { ...filters, [key]: value }
     setFilters(newFilters)
@@ -513,11 +631,6 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
     onFetchData(empty)
   }, [searchValue, pagination, viewMode])
-
-  const handleRemoveFilter = useCallback(
-    (key: keyof MachineFilters) => handleFilterChange(key, ''),
-    [handleFilterChange]
-  )
 
   // ─── Other handlers ───────────────────────────────────────────────────────
 
@@ -544,7 +657,7 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
   const handleEdit   = (id: number) => router.navigate({ to: '/checklist/machine/edit', search: { id } })
   const handleDelete = (id: number) => { setSelectedIds([id]); setShowDeleteDialog(true) }
 
-  // ─── Table ────────────────────────────────────────────────────────────────
+  // ─── Table instance ───────────────────────────────────────────────────────
 
   const table = useReactTable({
     data,
@@ -561,15 +674,6 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     state: { pagination },
     getRowId: row => row.id.toString(),
   })
-
-  // ─── Filter label map ─────────────────────────────────────────────────────
-
-  const filterLabelMap: Record<keyof MachineFilters, string> = {
-    department:            t('department'),
-    machineStatus:         t('machine_status'),
-    checkStatus:           t('check_status'),
-    responsiblePersonName: t('responsible'),
-  }
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -603,22 +707,18 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
 
       <CardContent>
         <TblContainer>
-
-          {/* ─── Toolbar + Filter button ──────────────────────────────────── */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <DataTableToolbar
-              table={table}
-              isSync={false}
-              isAdd={true}
-              isDelete={selectedIds.length > 0}
-              onSearch={handleSearch}
-              onDelete={handleSelectDelete}
-              onAdd={handleAdd}
-              isServerSide={true}
-              searchValue={keyword}
-              breakpoint={1300}
-              className="flex-1 gap-2"
-            />
+          <DataTableToolbar
+            table={table}
+            isSync={false}
+            isAdd={true}
+            isDelete={selectedIds.length > 0}
+            onSearch={handleSearch}
+            onDelete={handleSelectDelete}
+            onAdd={handleAdd}
+            isServerSide={true}
+            searchValue={keyword}
+            breakpoint={1300}
+          >
             <MachineFilterPanel
               filters={filters}
               options={filterOptions}
@@ -627,32 +727,8 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
               activeCount={activeFilterCount}
               t={t}
             />
-          </div>
+          </DataTableToolbar>
 
-          {/* ─── Active filter badges ─────────────────────────────────────── */}
-          {activeFilterCount > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-xs text-muted-foreground">{t('active_filters')}:</span>
-              {(Object.entries(filters) as [keyof MachineFilters, string][])
-                .filter(([, v]) => Boolean(v))
-                .map(([key, value]) => (
-                  <FilterBadge
-                    key={key}
-                    label={`${filterLabelMap[key]}: ${value}`}
-                    onRemove={() => handleRemoveFilter(key)}
-                  />
-                ))}
-              <button
-                type="button"
-                onClick={handleClearFilters}
-                className="text-xs text-muted-foreground hover:text-destructive underline underline-offset-2 transition-colors"
-              >
-                {t('clear_all')}
-              </button>
-            </div>
-          )}
-
-          {/* ─── Table ───────────────────────────────────────────────────── */}
           <div>
             {loading ? (
               <DataTableSkeleton
