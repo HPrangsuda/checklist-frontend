@@ -27,6 +27,17 @@ interface FileUploadResponse {
   uploadedBy?: string | null
 }
 
+function ReadOnlyField({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium">{label}</label>
+      <div className="w-full border border-border rounded-lg px-3 py-2.5 bg-muted/40 text-sm text-muted-foreground min-h-[40px]">
+        {value || '-'}
+      </div>
+    </div>
+  )
+}
+
 function RouteComponent({ data }: any) {
   const navigate  = useNavigate()
   const { refId } = useSearch({ from: '/checklist/register/add' })
@@ -42,7 +53,6 @@ function RouteComponent({ data }: any) {
   const [cachedManager,     setCachedManager]     = useState<any[]>([])
   const cachedDepartments = useRef<Array<{ value: string; label: string; businessUnit: string }>>([])
 
-  // ── file states: แยก 3 bucket ────────────────────────────────────────────
   const [uploadedImages,       setUploadedImages]       = useState<FileUploadResponse[]>([])
   const [uploadedInstructions, setUploadedInstructions] = useState<FileUploadResponse[]>([])
   const [uploadedWarranty,     setUploadedWarranty]     = useState<FileUploadResponse[]>([])
@@ -113,7 +123,6 @@ function RouteComponent({ data }: any) {
     watt:                data?.watt                || '',
     horsePower:          data?.horsePower          || '',
     note:                data?.note                || '',
-    // ── warranty ────────────────────────────────────────────────────────────
     hasWarranty:        data?.hasWarranty        || '',
     warrantyNote:       data?.warrantyNote       || '',
     warrantyExpireDate: data?.warrantyExpireDate || '',
@@ -178,7 +187,6 @@ function RouteComponent({ data }: any) {
     }
   }
 
-  // ─── Image handlers ────────────────────────────────────────────────────────
   const handleImagesChange = (files: File[]) => {
     if (imageTimeoutRef.current) clearTimeout(imageTimeoutRef.current)
     imageTimeoutRef.current = setTimeout(() => {
@@ -197,7 +205,6 @@ function RouteComponent({ data }: any) {
     } catch { toast.error(t('failed_to_delete_file')) }
   }
 
-  // ─── Instruction handlers ──────────────────────────────────────────────────
   const handleInstructionsChange = (files: File[]) => {
     if (instrTimeoutRef.current) clearTimeout(instrTimeoutRef.current)
     instrTimeoutRef.current = setTimeout(() => {
@@ -216,7 +223,6 @@ function RouteComponent({ data }: any) {
     } catch { toast.error(t('failed_to_delete_file')) }
   }
 
-  // ─── Warranty handlers ─────────────────────────────────────────────────────
   const handleWarrantyChange = (files: File[]) => {
     if (warrantyTimeoutRef.current) clearTimeout(warrantyTimeoutRef.current)
     warrantyTimeoutRef.current = setTimeout(() => {
@@ -265,6 +271,30 @@ function RouteComponent({ data }: any) {
           businessUnit = found?.businessUnit || ''
         } catch {}
       }
+
+      // ── resolve supervisor/manager name จาก ID ────────────────────────────
+      const supId = d.supervisorId ? String(d.supervisorId) : ''
+      const mgrId = d.managerId    ? String(d.managerId)    : ''
+      let supName = '', mgrName = ''
+      if (supId || mgrId) {
+        try {
+          let members = cachedSupervisor
+          if (!members.length) {
+            const r = await fetchSupervisor('', 0)
+            members = r.data
+          }
+          if (supId) supName = members.find(m => String(m.value) === supId)?.fullName ?? ''
+          if (mgrId) {
+            let mgrMembers = cachedManager
+            if (!mgrMembers.length) {
+              const r = await fetchManager('', 0)
+              mgrMembers = r.data
+            }
+            mgrName = mgrMembers.find(m => String(m.value) === mgrId)?.fullName ?? ''
+          }
+        } catch {}
+      }
+
       setFormData(prev => ({
         ...prev,
         name:         d.machineName  || '',
@@ -280,10 +310,10 @@ function RouteComponent({ data }: any) {
         businessUnit,
         responsible:     d.responsibleId   || '',
         responsibleName: d.responsibleName || '',
-        supervisor:      d.supervisorId    || '',
-        supervisorName:  d.supervisorName  || '',
-        manager:         d.managerId       || '',
-        managerName:     d.managerName     || '',
+        supervisor:      supId,
+        supervisorName:  supName,
+        manager:         mgrId,
+        managerName:     mgrName,
         hasWarranty:        d.hasWarranty        || '',
         warrantyNote:       d.warrantyNote       || '',
         warrantyExpireDate: d.warrantyExpireDate
@@ -297,7 +327,6 @@ function RouteComponent({ data }: any) {
     }
   }
 
-  // ─── Validation ────────────────────────────────────────────────────────────
   const validateRequiredFields = () => {
     const e: Record<string, string> = {}
     if (!String(formData.name         ?? '').trim()) e.name         = t('machine_name_required')
@@ -338,7 +367,6 @@ function RouteComponent({ data }: any) {
     return isFormValid() ? 'complete' : 'incomplete'
   }
 
-  // ─── Build DTO ─────────────────────────────────────────────────────────────
   const formatDateToISO = (s: string) => {
     if (!s) return null
     try {
@@ -366,7 +394,6 @@ function RouteComponent({ data }: any) {
       uploadedBy: f.uploadedBy ?? null,
       category: 'WARRANTY',
     }))
-
     const calibration = formData.calibrationDueDate ? [{
       externalCalibrationDate: formatDateToISO(formData.externalCalibration),
       dueDate:           formatDateToISO(formData.calibrationDueDate),
@@ -378,7 +405,6 @@ function RouteComponent({ data }: any) {
       calibrationRange:  formData.calibrationRange  || null,
       calibrationStatus: formData.calibrationStatus || null,
     }] : null
-
     const rounds = formData.maintenancePeriod === '3 MONTH' ? 4
                  : formData.maintenancePeriod === '6 MONTH' ? 2 : 0
     const maintenance: any[] = []
@@ -392,7 +418,6 @@ function RouteComponent({ data }: any) {
         planDate: null, resultDate: null, maintenanceBy: null, note: null, attachment: null,
       })
     }
-
     return {
       machineName:      formData.name,
       brand:            formData.brand        || null,
@@ -409,8 +434,7 @@ function RouteComponent({ data }: any) {
       note:             formData.note         || null,
       attachments:      attachments.length     ? attachments     : null,
       workInstructions: workInstructions.length ? workInstructions : null,
-      warrantyFiles:    formData.hasWarranty === 'YES' && warrantyFiles.length
-                          ? warrantyFiles : null,
+      warrantyFiles:    formData.hasWarranty === 'YES' && warrantyFiles.length ? warrantyFiles : null,
       maintenance:      maintenance.length     ? maintenance     : null,
       calibration,
       hasWarranty:        formData.hasWarranty || null,
@@ -419,7 +443,6 @@ function RouteComponent({ data }: any) {
     }
   }
 
-  // ─── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validateRequiredFields()) {
@@ -446,7 +469,6 @@ function RouteComponent({ data }: any) {
     if (errors[field]) { const e = { ...errors }; delete e[field]; setErrors(e) }
   }
 
-  // ─── Fetch department ──────────────────────────────────────────────────────
   const fetchDepartments = async (keyword: string, index: number) => {
     try {
       const params: any = { index, size: 20 }
@@ -465,7 +487,6 @@ function RouteComponent({ data }: any) {
     }
   }
 
-  // ─── Fetch members ─────────────────────────────────────────────────────────
   const fetchMembers = async (keyword: string, index: number) => {
     const params: any = { index, size: 100 }
     if (keyword.trim()) params.keyword = keyword.trim()
@@ -504,7 +525,7 @@ function RouteComponent({ data }: any) {
     } catch { return { data: [], hasMore: false } }
   }
 
-  // ─── Responsible change — auto-fill supervisor & manager จาก API ──────────
+  // ─── Responsible change — API ส่งมาแค่ ID → resolve ชื่อจาก cache ────────
   const handleResponsibleChange = async (selected: any) => {
     const val = Array.isArray(selected) ? selected[0] : selected
     if (!val) {
@@ -531,16 +552,34 @@ function RouteComponent({ data }: any) {
       managerName:     '',
     }))
 
-    // ── ดึง supervisor/manager จาก user API ──────────────────────────────
     try {
       const res    = await api.get<any>(`/api/user/${val}`)
       const member = res.data
+
+      // API ส่งมาแค่ ID (supervisor: 8, manager: 27) → หาชื่อจาก cache
+      const supId = member.supervisor ? String(member.supervisor) : ''
+      const mgrId = member.manager    ? String(member.manager)    : ''
+
+      let supMembers = cachedSupervisor
+      if (!supMembers.length) {
+        const r = await fetchSupervisor('', 0)
+        supMembers = r.data
+      }
+      let mgrMembers = cachedManager
+      if (!mgrMembers.length) {
+        const r = await fetchManager('', 0)
+        mgrMembers = r.data
+      }
+
+      const supName = supMembers.find(m => String(m.value) === supId)?.fullName ?? ''
+      const mgrName = mgrMembers.find(m => String(m.value) === mgrId)?.fullName ?? ''
+
       setFormData(prev => ({
         ...prev,
-        supervisor:     member.supervisor ? String(member.supervisor) : '',
-        supervisorName: member.supervisorName ?? '',
-        manager:        member.manager    ? String(member.manager)    : '',
-        managerName:    member.managerName    ?? '',
+        supervisor:     supId,
+        supervisorName: supName,
+        manager:        mgrId,
+        managerName:    mgrName,
       }))
     } catch {}
 
@@ -557,7 +596,6 @@ function RouteComponent({ data }: any) {
       if (found) setFormData(prev => ({ ...prev, [field]: val, [nameField]: found.fullName }))
     }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
   const renderStepContent = () => {
     if (isLoadingRefData) return (
       <div className="px-2 pt-2 space-y-4">
@@ -598,7 +636,6 @@ function RouteComponent({ data }: any) {
               }}
               fetchOptions={fetchDepartments} error={errors.department} required />
 
-            {/* ── responsible: เลือกแล้ว auto-fill supervisor/manager ─────── */}
             <ServerSingleSelect
               key={`resp-${formData.responsible || 'e'}`}
               id="responsible" title="responsible" label={t('responsible')}
@@ -607,81 +644,46 @@ function RouteComponent({ data }: any) {
               onChange={handleResponsibleChange}
               fetchOptions={fetchResponsible} error={errors.responsible} required />
 
-            {/* ── supervisor: ถูก auto-fill แต่แก้ได้ ───────────────────── */}
-            <ServerSingleSelect
-              key={`sup-${formData.supervisor || 'e'}`}
-              id="supervisor" title="supervisor" label={t('supervisor')}
-              placeholder={t('select_supervisor')} value={formData.supervisor}
-              initialLabel={formData.supervisorName}
-              onChange={makeMemberChange('supervisor', 'supervisorName', cachedSupervisor)}
-              fetchOptions={fetchSupervisor} />
-
-            {/* ── manager: ถูก auto-fill แต่แก้ได้ ─────────────────────── */}
-            <ServerSingleSelect
-              key={`mgr-${formData.manager || 'e'}`}
-              id="manager" title="manager" label={t('manager')}
-              placeholder={t('select_manager')} value={formData.manager}
-              initialLabel={formData.managerName}
-              onChange={makeMemberChange('manager', 'managerName', cachedManager)}
-              fetchOptions={fetchManager} />
+            <ReadOnlyField label={t('supervisor')} value={formData.supervisorName} />
+            <ReadOnlyField label={t('manager')}    value={formData.managerName} />
           </div>
 
           <TextField id="note" label={t('note')} value={formData.note}
             onChange={v => handleInputChange('note', v)} />
 
-          {/* ─── Warranty Section ──────────────────────────────────────────── */}
           <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
             <p className="text-sm font-semibold">{t('warranty')}</p>
-
             <SingleSelectField id="hasWarranty" label={t('has_warranty')}
               value={[formData.hasWarranty]}
               onChange={v => handleWarrantyToggle(v[0] || '')}
-              options={yesNoOptions}
-              error={errors.hasWarranty} />
-
+              options={yesNoOptions} error={errors.hasWarranty} />
             {formData.hasWarranty === 'YES' && (
               <>
                 <TextField id="warrantyNote" label={t('warranty_note')}
                   value={formData.warrantyNote}
                   onChange={v => handleInputChange('warrantyNote', v)}
                   error={errors.warrantyNote} required />
-
                 <DatePickerField id="warrantyExpireDate" label={t('warranty_expire_date')}
                   value={formData.warrantyExpireDate}
                   onChange={d => handleInputChange('warrantyExpireDate', d)} />
-
                 <FileUploadField id="warranty-docs" label={t('warranty_documents')} maxFiles={10}
-                  value={uploadedWarranty.map(f => ({
-                    name: f.fileName, size: f.fileSize,
-                    type: f.fileType, url: f.fileUrl,
-                  })) as unknown as File[]}
-                  onChange={handleWarrantyChange}
-                  onDownloadFile={handleDownloadFile}
+                  value={uploadedWarranty.map(f => ({ name: f.fileName, size: f.fileSize, type: f.fileType, url: f.fileUrl })) as unknown as File[]}
+                  onChange={handleWarrantyChange} onDownloadFile={handleDownloadFile}
                   onDeleteUploadedFile={handleDeleteWarranty}
                   onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
               </>
             )}
           </div>
 
-          {/* ─── Images ───────────────────────────────────────────────────── */}
           <FileUploadField id="register-images" label={t('images')} maxFiles={10}
-            value={uploadedImages.map(f => ({
-              name: f.fileName, size: f.fileSize,
-              type: f.fileType, url: f.fileUrl,
-            })) as unknown as File[]}
-            onChange={handleImagesChange}
-            onDownloadFile={handleDownloadFile}
+            value={uploadedImages.map(f => ({ name: f.fileName, size: f.fileSize, type: f.fileType, url: f.fileUrl })) as unknown as File[]}
+            onChange={handleImagesChange} onDownloadFile={handleDownloadFile}
             onDeleteUploadedFile={handleDeleteImage}
             onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
 
-          {/* ─── Work Instructions ─────────────────────────────────────────── */}
           <FileUploadField id="register-instructions" label={t('work_instructions')} maxFiles={10}
-            value={uploadedInstructions.map(f => ({
-              name: f.fileName, size: f.fileSize,
-              type: f.fileType, url: f.fileUrl,
-            })) as unknown as File[]}
-            onChange={handleInstructionsChange}
-            onDownloadFile={handleDownloadFile}
+            value={uploadedInstructions.map(f => ({ name: f.fileName, size: f.fileSize, type: f.fileType, url: f.fileUrl })) as unknown as File[]}
+            onChange={handleInstructionsChange} onDownloadFile={handleDownloadFile}
             onDeleteUploadedFile={handleDeleteInstruction}
             onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
         </div>

@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { FormLayout } from '@/components/layout/form-layout'
 import type { FormStep } from '@/components/layout/form-sidebar'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
-import { FileText, ChevronDown, AlertCircle, ClipboardList } from 'lucide-react'
+import { FileText, ChevronDown, AlertCircle, ClipboardList, CheckCircle2, Lock } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
@@ -40,6 +40,7 @@ interface MaintenanceRecord {
   maintenanceBy:          string
   responsibleMaintenance: string
   note:                   string
+  checklistRecordId:      number | null   // ← NEW: null = ยังไม่ได้ submit
 }
 
 interface ChecklistItem {
@@ -61,9 +62,29 @@ interface FileUploadResponse {
   uploadedBy?: string | null
 }
 
+// ── DTO สำหรับ checklist ที่ submit ไปแล้ว ────────────────────────────────────
+interface SubmittedChecklistItem {
+  id:                  number
+  questionDetail:      string
+  questionDescription: string
+  isChoice:            boolean
+  answerChoice:        string
+}
+
+interface SubmittedChecklist {
+  id:                     number
+  machineCode:            string
+  machineName:            string
+  machineStatus:          string
+  maintenanceBy:          string
+  responsibleMaintenance: string
+  actualDate:             string | null
+  submitted:              boolean
+  items:                  SubmittedChecklistItem[]
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// Choice keys map to translation keys in the checklist namespace
 const CHOICE_KEYS = [
   'choice_ready',
   'choice_not_ready_repair',
@@ -72,14 +93,12 @@ const CHOICE_KEYS = [
   'choice_others',
 ] as const
 
-// Machine status keys map to translation keys
 const MACHINE_STATUS_KEYS = [
   'status_operational',
   'status_non_operational',
   'status_under_maintenance',
 ] as const
 
-// Raw API values for machine statuses (sent to backend)
 const MACHINE_STATUS_VALUES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER REPAIR'] as const
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -118,6 +137,7 @@ function MaintenanceEdit() {
     id: 0, machineCode: '', machineName: '', years: '', round: 0,
     dueDate: '', planDate: '', startDate: '', actualDate: '',
     status: '', maintenanceBy: '', responsibleMaintenance: '', note: '',
+    checklistRecordId: null,
   })
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
@@ -137,12 +157,15 @@ function MaintenanceEdit() {
   const uploadedRef    = useRef<FileUploadResponse[]>([])
   useEffect(() => { uploadedRef.current = uploadedFiles }, [uploadedFiles])
 
-  // ── checklist ─────────────────────────────────────────────────────────────
+  // ── checklist (editable template) ────────────────────────────────────────
   const [checklist,               setChecklist]               = useState<ChecklistItem[]>([])
   const [checklistErrors,         setChecklistErrors]         = useState<Record<string, string>>({})
   const [selectedStatus,          setSelectedStatus]          = useState('')
   const [maintenanceBy,           setMaintenanceBy]           = useState<'INTERNAL' | 'EXTERNAL'>('INTERNAL')
   const [responsibleMaintenance2, setResponsibleMaintenance2] = useState('')
+
+  // ── checklist ที่ submit ไปแล้ว (read-only) ───────────────────────────────
+  const [submittedChecklist, setSubmittedChecklist] = useState<SubmittedChecklist | null>(null)
 
   const formSteps: FormStep[] = [
     { id: 'general', title: t('general'), description: t('maintenance_information'), required: true },
@@ -179,19 +202,36 @@ function MaintenanceEdit() {
         } catch {}
       }
 
-      const clRes  = await api.get<any>(`/api/maintenance-checklist/get/${id}`)
-      const clData = clRes?.data ?? clRes
-      setChecklist((clData?.checklistItems ?? []).map((item: any) => ({
-        ...item,
-        questionDetail:      item.question?.detail      ?? '',
-        questionDescription: item.question?.description ?? '',
-        answer: '',
-      })))
+      // ── ถ้ามี checklistRecordId → ดึงข้อมูล checklist ที่ submit แล้ว (read-only) ──
+      if (data?.checklistRecordId) {
+        try {
+          const savedRes  = await api.get<any>(`/api/maintenance-checklist/record/${data.checklistRecordId}`)
+          const savedData = savedRes?.data ?? savedRes
+          setSubmittedChecklist(savedData)
+        } catch {
+          // fallback: โหลด template แบบ editable ถ้าดึง saved record ไม่ได้
+          await fetchEditableChecklist(id)
+        }
+      } else {
+        // ── ยังไม่ได้ submit → โหลด template แบบ editable ────────────────────
+        await fetchEditableChecklist(id)
+      }
     } catch {
       toast.error(t('data_fetch_failed'))
     } finally {
       setLoading(false)
     }
+  }
+
+  const fetchEditableChecklist = async (maintenanceId: number) => {
+    const clRes  = await api.get<any>(`/api/maintenance-checklist/get/${maintenanceId}`)
+    const clData = clRes?.data ?? clRes
+    setChecklist((clData?.checklistItems ?? []).map((item: any) => ({
+      ...item,
+      questionDetail:      item.question?.detail      ?? '',
+      questionDescription: item.question?.description ?? '',
+      answer: '',
+    })))
   }
 
   const handleInputChange = (field: keyof MaintenanceRecord, value: any) => {
@@ -291,15 +331,18 @@ function MaintenanceEdit() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const errs: Record<string, string> = {}
-    if (checklist.length > 0 && !selectedStatus) errs.selectedStatus = t('please_select')
-    checklist.forEach(item => {
-      if (!getAnswer(item).trim()) errs[`item_${item.id}`] = t('field_required')
-    })
-    if (Object.keys(errs).length) {
-      setChecklistErrors(errs)
-      toast.error(t('fill_required_fields'))
-      return
+    // ── ถ้า checklist submit ไปแล้ว → ข้ามการ validate checklist ────────────
+    if (!submittedChecklist) {
+      const errs: Record<string, string> = {}
+      if (checklist.length > 0 && !selectedStatus) errs.selectedStatus = t('please_select')
+      checklist.forEach(item => {
+        if (!getAnswer(item).trim()) errs[`item_${item.id}`] = t('field_required')
+      })
+      if (Object.keys(errs).length) {
+        setChecklistErrors(errs)
+        toast.error(t('fill_required_fields'))
+        return
+      }
     }
 
     setSaving(true)
@@ -329,8 +372,8 @@ function MaintenanceEdit() {
         return
       }
 
-      // ── 2. Save checklist (if items exist) ───────────────────────────────
-      if (checklist.length > 0 && selectedStatus) {
+      // ── 2. Save checklist เฉพาะกรณีที่ยังไม่เคย submit ──────────────────
+      if (!submittedChecklist && checklist.length > 0 && selectedStatus) {
         const session = sessionStore.state.session
         const request = {
           maintenanceRecordId:    formData.id,
@@ -450,7 +493,6 @@ function MaintenanceEdit() {
                 onChange={e => handleInputChange('maintenanceBy', e.target.value)}
                 className="w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-border">
                 <option value="">-- {t('please_select')} --</option>
-                {/* INTERNAL / EXTERNAL are API enum values — kept as-is intentionally */}
                 <option value="INTERNAL">INTERNAL</option>
                 <option value="EXTERNAL">EXTERNAL</option>
               </select>
@@ -486,88 +528,150 @@ function MaintenanceEdit() {
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
-              <ClipboardList className="h-5 w-5 text-primary" />{t('checklist_records')}
+              <ClipboardList className="h-5 w-5 text-primary" />
+              {t('checklist_records')}
+              {/* Badge แสดงสถานะว่า submit แล้ว */}
+              {submittedChecklist && (
+                <span className="ml-auto flex items-center gap-1 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {t('already_submitted')}
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
 
-            {/* Machine Status */}
-            <div className="space-y-1.5">
-              <Label>{t('machine_status')} <span className="text-red-500">*</span></Label>
-              <div className="relative">
-                <select value={selectedStatus}
-                  onChange={e => {
-                    setSelectedStatus(e.target.value)
-                    setChecklistErrors(p => { const n = { ...p }; delete n.selectedStatus; return n })
-                  }}
-                  className={`w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    checklistErrors.selectedStatus ? 'border-red-400' : 'border-border'
-                  }`}>
-                  <option value="">-- {t('please_select')} --</option>
-                  {MACHINE_STATUS_VALUES.map((value, idx) => (
-                    <option key={value} value={value}>
-                      {t(MACHINE_STATUS_KEYS[idx])}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              </div>
-              {checklistErrors.selectedStatus && (
-                <p className="text-red-500 text-xs flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />{checklistErrors.selectedStatus}
-                </p>
-              )}
-            </div>
+            {submittedChecklist ? (
+              /* ════════════════════════════════════════════════════════════
+                 READ-ONLY VIEW — checklist ที่ submit ไปแล้ว ล็อกไม่ให้แก้ไข
+                 ════════════════════════════════════════════════════════════ */
+              <>
+                {/* แบนเนอร์แจ้งเตือน */}
+                <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-200 rounded-xl">
+                  <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <p className="text-sm text-amber-700">{t('checklist_locked_message')}</p>
+                </div>
 
-            {/* Checklist Items */}
-            {checklist.length === 0 ? (
-              <p className="text-muted-foreground text-sm text-center py-6">{t('no_checklist_items')}</p>
-            ) : (
-              <div className="space-y-3">
-                {checklist.map((item, idx) => {
-                  const answer   = getAnswer(item)
-                  const hasError = !!checklistErrors[`item_${item.id}`]
-                  return (
-                    <div key={item.id}
-                      className={`p-4 rounded-xl border ${hasError ? 'border-red-400 bg-red-50/10' : 'border-border bg-muted/20'}`}>
-                      <p className="text-sm mb-0.5">
-                        {idx + 1}. {item.questionDescription ?? 'N/A'}{' '}
-                        <span className="text-red-500">*</span>
-                      </p>
-                      {item.questionDetail && (
-                        <p className="text-xs text-muted-foreground mb-2">{item.questionDetail}</p>
-                      )}
-                      {item.isChoice ? (
-                        <div className="relative mt-2">
-                          <select value={answer} onChange={e => updateAnswer(item.id, e.target.value)}
-                            className={`w-full appearance-none border rounded-lg px-3 py-2 pr-8 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                              hasError ? 'border-red-400' : 'border-border'
-                            }`}>
-                            <option value="">-- {t('please_select')} --</option>
-                            {CHOICE_KEYS.map(key => (
-                              <option key={key} value={t(key)}>
-                                {t(key)}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                        </div>
-                      ) : (
-                        <input type="text" value={answer}
-                          onChange={e => updateAnswer(item.id, e.target.value)}
-                          className={`w-full mt-2 border rounded-lg px-3 py-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                            hasError ? 'border-red-400' : 'border-border'
-                          }`} />
-                      )}
-                      {hasError && (
-                        <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" />{t('field_required')}
+                {/* สรุปข้อมูล machine status / maintenance by */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-xl border border-border">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">{t('machine_status')}</p>
+                    <p className="text-sm font-medium">{submittedChecklist.machineStatus || '—'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">{t('maintenance')}</p>
+                    <p className="text-sm font-medium">{submittedChecklist.maintenanceBy || '—'}</p>
+                  </div>
+                </div>
+
+                {/* รายการ checklist แบบ read-only */}
+                {submittedChecklist.items.length === 0 ? (
+                  <p className="text-muted-foreground text-sm text-center py-6">{t('no_checklist_items')}</p>
+                ) : (
+                  <div className="space-y-3">
+                    {submittedChecklist.items.map((item, idx) => (
+                      <div key={item.id}
+                        className="p-4 rounded-xl border border-border bg-muted/10">
+                        <p className="text-sm mb-1">
+                          {idx + 1}. {item.questionDescription ?? 'N/A'}
                         </p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+                        {item.questionDetail && (
+                          <p className="text-xs text-muted-foreground mb-2">{item.questionDetail}</p>
+                        )}
+                        {/* คำตอบที่ lock ไม่ให้แก้ไข */}
+                        <div className="mt-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground select-none cursor-default">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                          <span>{item.answerChoice || '—'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              /* ════════════════════════════════════════════════════════════
+                 EDITABLE VIEW — กรณียังไม่ได้ submit checklist
+                 ════════════════════════════════════════════════════════════ */
+              <>
+                {/* Machine Status */}
+                <div className="space-y-1.5">
+                  <Label>{t('machine_status')} <span className="text-red-500">*</span></Label>
+                  <div className="relative">
+                    <select value={selectedStatus}
+                      onChange={e => {
+                        setSelectedStatus(e.target.value)
+                        setChecklistErrors(p => { const n = { ...p }; delete n.selectedStatus; return n })
+                      }}
+                      className={`w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        checklistErrors.selectedStatus ? 'border-red-400' : 'border-border'
+                      }`}>
+                      <option value="">-- {t('please_select')} --</option>
+                      {MACHINE_STATUS_VALUES.map((value, idx) => (
+                        <option key={value} value={value}>
+                          {t(MACHINE_STATUS_KEYS[idx])}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  </div>
+                  {checklistErrors.selectedStatus && (
+                    <p className="text-red-500 text-xs flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />{checklistErrors.selectedStatus}
+                    </p>
+                  )}
+                </div>
+
+                {/* Checklist Items */}
+                {checklist.length === 0 ? (
+                  <p className="text-muted-foreground text-sm text-center py-6">{t('no_checklist_items')}</p>
+                ) : (
+                  <div className="space-y-3">
+                    {checklist.map((item, idx) => {
+                      const answer   = getAnswer(item)
+                      const hasError = !!checklistErrors[`item_${item.id}`]
+                      return (
+                        <div key={item.id}
+                          className={`p-4 rounded-xl border ${hasError ? 'border-red-400 bg-red-50/10' : 'border-border bg-muted/20'}`}>
+                          <p className="text-sm mb-0.5">
+                            {idx + 1}. {item.questionDescription ?? 'N/A'}{' '}
+                            <span className="text-red-500">*</span>
+                          </p>
+                          {item.questionDetail && (
+                            <p className="text-xs text-muted-foreground mb-2">{item.questionDetail}</p>
+                          )}
+                          {item.isChoice ? (
+                            <div className="relative mt-2">
+                              <select value={answer} onChange={e => updateAnswer(item.id, e.target.value)}
+                                className={`w-full appearance-none border rounded-lg px-3 py-2 pr-8 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                  hasError ? 'border-red-400' : 'border-border'
+                                }`}>
+                                <option value="">-- {t('please_select')} --</option>
+                                {CHOICE_KEYS.map(key => (
+                                  <option key={key} value={t(key)}>
+                                    {t(key)}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                            </div>
+                          ) : (
+                            <input type="text" value={answer}
+                              onChange={e => updateAnswer(item.id, e.target.value)}
+                              className={`w-full mt-2 border rounded-lg px-3 py-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                hasError ? 'border-red-400' : 'border-border'
+                              }`} />
+                          )}
+                          {hasError && (
+                            <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3" />{t('field_required')}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
             )}
 
           </CardContent>
