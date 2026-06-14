@@ -287,13 +287,14 @@ function RouteComponent() {
       const session = sessionStore.state.session
 
       const request = {
+        machineId: machine.id,            
         machineCode: machine.machineCode,
         machineName: machine.machineName,
-        machineStatus: selectedStatus,        // ส่ง EN value เสมอ
+        machineStatus: selectedStatus,
         machineChecklist: JSON.stringify(checklist.map(item => ({
           id: item.id,
           questionDetail: item.question?.detail ?? 'N/A',
-          answerChoice: getAnswer(item),       // ส่ง EN value เสมอ
+          answerChoice: getAnswer(item),
           checkStatus: true,
         }))),
         machineNote: note,
