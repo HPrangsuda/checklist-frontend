@@ -107,7 +107,16 @@ function CalibrationEdit() {
     
     try {
       setSaving(true);
-      const response = await api.put(`/api/calibration/update`, formData);
+
+      // แปลง attachment กลับเป็น string ก่อนส่ง
+      const payload = {
+        ...formData,
+        attachment: Array.isArray(formData.attachment)
+          ? JSON.stringify(formData.attachment)
+          : formData.attachment ?? null
+      };
+
+      const response = await api.put(`/api/calibration/update`, payload);
       
       if (response) {
         toast.success(t("Calibration updated successfully"));
