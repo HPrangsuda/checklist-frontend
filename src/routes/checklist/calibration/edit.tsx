@@ -213,8 +213,8 @@ function CalibrationEdit() {
                     
                     handleInputChange('certificateDate', isoDate);
 
-                    if (formData.calibrationDueDate && isoDate) {
-                      const dueDate = new Date(formData.calibrationDueDate);
+                    if (formData.dueDate && isoDate) {
+                      const dueDate = new Date(formData.dueDate);
                       const certDate = new Date(isoDate);
 
                       if (certDate > dueDate) {
