@@ -34,7 +34,7 @@ interface CalibrationDTO {
   machineName: string
   years: number
   results?: string
-  calibrationDueDate?: string
+  dueDate?: string
   calibrationStatus?: string
 }
 
