@@ -367,10 +367,10 @@ function CalibrationTable() {
     { accessorKey: 'machineName', header: t('machine_name'), cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
     { accessorKey: 'years',       header: t('years'),         cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
     {
-      accessorKey: 'calibrationDueDate',
+      accessorKey: 'dueDate',
       header: t('calibration_due_date'),
       cell: ({ row }) => {
-        const d = row.original.calibrationDueDate
+        const d = row.original.dueDate
         if (!d) return <div className="text-sm">-</div>
         const [y, m, day] = d.split('-')
         return <div className="text-sm">{`${day}-${m}-${y}`}</div>
