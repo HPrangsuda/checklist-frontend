@@ -75,8 +75,8 @@ function CalibrationEdit() {
     years: new Date().getFullYear(),
     calibrationStatus: 'PENDING'
   })
-  const [loading, setSaving]  = useState(false)
-  const [saving,  setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
   const { t }    = useTranslation()
   const router   = useRouter()
 
