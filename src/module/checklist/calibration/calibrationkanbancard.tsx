@@ -476,7 +476,7 @@ export function CalibrationKanbanCard() {
               <Input
                 value={keyword}
                 onChange={e => setKeyword(e.target.value)}
-                placeholder={t('search_department')}
+                placeholder={t('search')}
                 className="pl-8 h-8 text-xs w-48"
               />
               {keyword && (
