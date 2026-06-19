@@ -332,8 +332,15 @@
   "warranty_documents": "Warranty Documents",
   "has_warranty_required": "Please specify whether there is a warranty",
   "warranty_note_required": "Please fill in the warranty note",
-  "filter":           "Filter",
-  "filter_by":        "Filter by",
-  "clear_all":        "Clear all",
-  "active_filters":   "active filters"
+  "filter": "Filter",
+  "filter_by": "Filter by",
+  "clear_all": "Clear all",
+  "active_filters": "Active Filters",
+  "kanban_todo": "To Do",
+  "kanban_inprogress": "In Progress",
+  "kanban_sorted_by_due": "Sorted by due date",
+  "kanban_overdue_days": "days",
+  "maintenance_by": "Maintained By",
+  "plan_duration_days": "days",
+  "search": "Search"
 }

@@ -12,17 +12,17 @@ import { toast } from 'sonner';
 import { TblAction } from '@/components/action/tbl-action';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { getStatusColor } from '@/utils/status.untils'
 
 interface CalibrationDTO {
   id: number;
   machineCode: string;
   machineName: string;
-  years: string;
-  round: number;
+  years: number;
   dueDate: string;
-  planDate: string;
-  actualDate: string;
-  status: string;
+  certificateDate: string;
+  results: string;
+  calibrationStatus: string;
 }
 
 interface ApiResponse<T> {
@@ -35,84 +35,79 @@ interface Props {
   machineCode: string;
 }
 
+// ─── i18n status key map ──────────────────────────────────────────────────────
+const STATUS_I18N_MAP: Record<string, string> = {
+  'pass':     'status_pass',
+  'not pass': 'status_not_pass',
+  'on time':  'status_on_time',
+  'overdue':  'status_overdue',
+  'pending':  'status_pending',
+}
+
+// ─── Format date YYYY-MM-DD or ISO → DD-MM-YYYY ───────────────────────────────
+const formatDate = (dateStr?: string): string => {
+  if (!dateStr) return '-'
+  const [year, month, day] = dateStr.split('T')[0].split('-')
+  return `${day}-${month}-${year}`
+}
+
 export function CalibrationTbl({ machineCode }: Props) {
-  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
+  const [pagination, setPagination]   = useState({ pageIndex: 0, pageSize: 10 });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [allData, setAllData] = useState<CalibrationDTO[]>([]);
-  const [data, setData] = useState<CalibrationDTO[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
-  const [keyword, setKeyword] = useState("");
+  const [allData, setAllData]         = useState<CalibrationDTO[]>([]);
+  const [data, setData]               = useState<CalibrationDTO[]>([]);
+  const [loading, setLoading]         = useState(false);
+  const [totalCount, setTotalCount]   = useState(0);
+  const [keyword, setKeyword]         = useState('');
   const debouncedSearch = useDebounce(keyword, 500);
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t }  = useTranslation();
 
-  const getStatusColor = (status: string) => {
-    switch ((status || '').toLowerCase()) {
-      case 'scheduled':
-        return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100';
-      case 'in progress':
-        return 'bg-blue-100 text-blue-600 dark:text-blue-100';
-      case 'completed':
-        return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100';
-      case 'completed (late)':
-        return 'bg-orange-100 text-orange-600 dark:text-orange-100';
-      case 'overdue':
-        return 'bg-red-100 text-red-600 dark:text-red-100';
-      default:
-        return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100';
-    }
-  };
+  const translateStatus = (status: string): string => {
+    if (!status) return '-'
+    const key = STATUS_I18N_MAP[status.toLowerCase()]
+    return key ? t(key) : status
+  }
 
   const columns = useMemo<ColumnDef<CalibrationDTO>[]>(() => [
     {
-      accessorKey: "years",
-      header: "Years",
+      accessorKey: 'years',
+      header: t('years'),
       cell: ({ row }) => <div>{row.original.years ?? '-'}</div>,
     },
     {
-      accessorKey: "dueDate",
-      header: "Due Date",
-      cell: ({ row }) => {
-        const dateStr = row.original.dueDate;
-        if (!dateStr) return <div className="text-sm">-</div>;
-        const [year, month, day] = dateStr.split('-');
-        return <div className="text-sm">{`${day}-${month}-${year}`}</div>;
-      },
+      accessorKey: 'dueDate',
+      header: t('due_date'),
+      cell: ({ row }) => <div className="text-sm">{formatDate(row.original.dueDate)}</div>,
     },
     {
-      accessorKey: "planDate",
-      header: "Plan Date",
-      cell: ({ row }) => {
-        const dateStr = row.original.planDate;
-        if (!dateStr) return <div className="text-sm">-</div>;
-        const [year, month, day] = dateStr.split('-');
-        return <div className="text-sm">{`${day}-${month}-${year}`}</div>;
-      },
+      accessorKey: 'certificateDate',
+      header: t('certificate_date'),
+      cell: ({ row }) => <div className="text-sm">{formatDate(row.original.certificateDate)}</div>,
     },
     {
-      accessorKey: "actualDate",
-      header: "Actual Date",
+      accessorKey: 'results',
+      header: t('results'),
       cell: ({ row }) => {
-        const dateStr = row.original.actualDate;
-        if (!dateStr) return <div className="text-sm">-</div>;
-        const [year, month, day] = dateStr.split('-');
-        return <div className="text-sm">{`${day}-${month}-${year}`}</div>;
-      },
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => {
-        const status = row.original.status;
+        const status = row.original.results
         return status
-          ? <Badge className={getStatusColor(status)}>{status}</Badge>
-          : <>-</>;
+          ? <Badge className={getStatusColor(status)}>{translateStatus(status)}</Badge>
+          : <span>-</span>
       },
     },
     {
-      id: "action",
-      header: "Action",
+      accessorKey: 'calibrationStatus',
+      header: t('calibration_status'),
+      cell: ({ row }) => {
+        const status = row.original.calibrationStatus
+        return status
+          ? <Badge className={getStatusColor(status)}>{translateStatus(status)}</Badge>
+          : <span>-</span>
+      },
+    },
+    {
+      id: 'action',
+      header: t('action'),
       cell: ({ row }) => (
         <TblAction
           view={true}
@@ -121,13 +116,11 @@ export function CalibrationTbl({ machineCode }: Props) {
           onEdit={() => handleEdit(row.original.id)}
         />
       ),
-    }
-  ], [data, selectedIds]);
+    },
+  ], [data, selectedIds, t]);
 
   useEffect(() => {
-    if (machineCode) {
-      onFetchData();
-    }
+    if (machineCode) onFetchData()
   }, [machineCode]);
 
   useEffect(() => {
@@ -140,8 +133,7 @@ export function CalibrationTbl({ machineCode }: Props) {
 
     setTotalCount(filtered.length);
     const start = pagination.pageIndex * pagination.pageSize;
-    const end = start + pagination.pageSize;
-    setData(filtered.slice(start, end));
+    setData(filtered.slice(start, start + pagination.pageSize));
     setSelectedIds([]);
   }, [debouncedSearch, pagination.pageIndex, pagination.pageSize, allData]);
 
@@ -153,30 +145,25 @@ export function CalibrationTbl({ machineCode }: Props) {
       if (responseData.status) {
         setAllData(responseData.data ?? []);
       } else {
-        toast.error(t(responseData.message ?? "Data fetch failed"));
+        toast.error(t(responseData.message ?? 'data_fetch_failed'));
       }
-    } catch (error) {
-      toast.error(t("Data fetch failed"));
+    } catch {
+      toast.error(t('data_fetch_failed'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleSearch = useCallback((value: string) => {
-    setKeyword(value || "");
+    setKeyword(value || '');
     setPagination(prev => ({ ...prev, pageIndex: 0 }));
   }, []);
 
-  const handleView = (id: number) => {
-    router.navigate({
-      to: "/checklist/calibration/view",
-      search: { id }
-    });
-  };
+  const handleView = (id: number) =>
+    router.navigate({ to: '/checklist/calibration/view', search: { id } });
 
-  const handleEdit = (id: number) => {
-    router.navigate({ to: "/checklist/calibration/edit", search: { id } });
-  };
+  const handleEdit = (id: number) =>
+    router.navigate({ to: '/checklist/calibration/edit', search: { id } });
 
   const table = useReactTable({
     data,
@@ -191,13 +178,13 @@ export function CalibrationTbl({ machineCode }: Props) {
     manualSorting: true,
     manualFiltering: true,
     state: { pagination },
-    getRowId: (row) => row.id.toString()
+    getRowId: (row) => row.id.toString(),
   });
 
   return (
     <Card className="shadow-sm border-dashboard-border mt-4">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b bg-dashboard-bg/50">
-        <CardTitle className="font-bold">Calibration History</CardTitle>
+        <CardTitle className="font-bold">{t('calibration_lists')}</CardTitle>
       </CardHeader>
       <CardContent className="p-2">
         <TblContainer>
@@ -218,14 +205,14 @@ export function CalibrationTbl({ machineCode }: Props) {
                 columnCount={columns.length}
                 rowCount={10}
                 filterCount={0}
-                cellWidths={["auto"]}
+                cellWidths={['auto']}
                 withViewOptions={false}
                 withPagination={true}
                 shrinkZero={false}
                 className="w-full"
               />
             ) : (
-              <DataTable table={table} emptyText={t("No Result")} />
+              <DataTable table={table} emptyText={t('no_result')} />
             )}
           </div>
         </TblContainer>

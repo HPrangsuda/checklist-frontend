@@ -77,10 +77,11 @@ function CalibrationEdit() {
   })
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
-  const { t }    = useTranslation()
-  const router   = useRouter()
+  const { t }   = useTranslation()
+  const router  = useRouter()
 
   // ─── File upload state ─────────────────────────────────────────────────────
+  const [newFiles,         setNewFiles]         = useState<File[]>([])
   const [uploadedFiles,    setUploadedFiles]    = useState<FileUploadResponse[]>([])
   const [isUploadingFiles, setIsUploadingFiles] = useState(false)
 
@@ -99,10 +100,9 @@ function CalibrationEdit() {
       const response = await api.get<any>(`/api/calibration/${id}`)
       if (response) {
         const data = response.data || response
-        // parse attachment string → FileUploadResponse[]
         const attachments = parseAttachments(data.attachment)
         setUploadedFiles(attachments)
-        // strip attachment from formData (managed separately)
+        uploadedFilesRef.current = attachments  // sync ref immediately
         const { attachment, ...rest } = data
         setFormData(rest)
       } else {
@@ -127,33 +127,51 @@ function CalibrationEdit() {
   }
 
   const handleFilesChange = (files: File[]) => {
+    const realFiles = files.filter(f => f instanceof File)
+    setNewFiles(realFiles)
+
     if (fileTimeoutRef.current) clearTimeout(fileTimeoutRef.current)
-    fileTimeoutRef.current = setTimeout(async () => {
-      const current  = uploadedFilesRef.current
-      const newFiles = files.filter(f => {
+
+    fileTimeoutRef.current = setTimeout(() => {
+      // ✅ เพิ่มเงื่อนไขเช็คก่อน เหมือน machine pattern
+      if (!realFiles.length || isUploadingFiles) return
+
+      const current = uploadedFilesRef.current
+      const toUpload = realFiles.filter(f => {
         const key = `${f.name}-${f.size}-${f.lastModified}`
         if (fileQueueRef.current.has(key)) return false
-        if (current.some(uf => uf.fileName.includes(f.name))) return false
+        // ✅ แก้จาก .includes(f.name) → exact match เพื่อป้องกัน false positive
+        if (current.some(uf => uf.fileName === f.name)) return false
         fileQueueRef.current.add(key)
         return true
       })
-      if (!newFiles.length) return
+
+      if (!toUpload.length) return
+
       setIsUploadingFiles(true)
-      try {
-        const results: FileUploadResponse[] = []
-        for (const file of newFiles) {
-          try { results.push(await uploadFile(file)) } catch {}
+      ;(async () => {
+        try {
+          const results: FileUploadResponse[] = []
+          for (const file of toUpload) {
+            try {
+              results.push(await uploadFile(file))
+            } catch (err) {
+              console.error(`Failed to upload ${file.name}:`, err)
+            }
+          }
+          if (results.length) {
+            setUploadedFiles(prev => [...prev, ...results])
+            toast.success(`${results.length} file(s) uploaded`)
+          }
+        } catch {
+          toast.error('Failed to upload files')
+        } finally {
+          toUpload.forEach(f =>
+            fileQueueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`)
+          )
+          setIsUploadingFiles(false)
         }
-        if (results.length) {
-          setUploadedFiles(prev => [...prev, ...results])
-          toast.success(`${results.length} file(s) uploaded`)
-        }
-      } catch {
-        toast.error('Failed to upload files')
-      } finally {
-        newFiles.forEach(f => fileQueueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`))
-        setIsUploadingFiles(false)
-      }
+      })()
     }, 100)
   }
 
@@ -205,7 +223,7 @@ function CalibrationEdit() {
 
   const handleCancel = () => router.navigate({ to: '/checklist/calibration/view', search: { id } })
 
-  if (saving) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
         <Skeleton className="h-12 w-64 mb-4" />
@@ -235,12 +253,12 @@ function CalibrationEdit() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={handleCancel} disabled={loading}>
+            <Button variant="outline" onClick={handleCancel} disabled={saving}>
               <X className="h-4 w-4 mr-2" />Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={loading}>
+            <Button onClick={handleSubmit} disabled={saving}>
               <Save className="h-4 w-4 mr-2" />
-              {loading ? 'Saving...' : 'Save Changes'}
+              {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         </div>
@@ -300,7 +318,7 @@ function CalibrationEdit() {
 
               <div className="space-y-2">
                 <Label>Results</Label>
-                <Select value={formData.results} onValueChange={v => handleInputChange('results', v)}>
+                <Select value={formData.results || ''} onValueChange={v => handleInputChange('results', v)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Pass">Pass</SelectItem>
@@ -311,7 +329,7 @@ function CalibrationEdit() {
 
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Select value={formData.calibrationStatus} onValueChange={v => handleInputChange('calibrationStatus', v)}>
+                <Select value={formData.calibrationStatus || ''} onValueChange={v => handleInputChange('calibrationStatus', v)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="On Time">On Time</SelectItem>
@@ -320,7 +338,7 @@ function CalibrationEdit() {
                 </Select>
               </div>
 
-              {[
+              {([
                 { id: 'criteria',            label: 'Criteria' },
                 { id: 'accuracy',            label: 'Accuracy' },
                 { id: 'measuringRange',      label: 'Measuring Range' },
@@ -329,7 +347,7 @@ function CalibrationEdit() {
                 { id: 'mpe',                 label: 'MPE' },
                 { id: 'maxUncertainty',      label: 'Max Uncertainty' },
                 { id: 'permissibleCapacity', label: 'Permissible Capacity' },
-              ].map(({ id: fid, label }) => (
+              ] as const).map(({ id: fid, label }) => (
                 <div key={fid} className="space-y-2">
                   <Label htmlFor={fid}>{label}</Label>
                   <Input
@@ -342,11 +360,11 @@ function CalibrationEdit() {
             </div>
 
             <div className="grid grid-cols-1 gap-6 pt-6">
-              {[
-                { id: 'note',          label: 'Note',           placeholder: 'Enter additional notes...' },
-                { id: 'comment',       label: 'Comment',        placeholder: 'Enter comments...' },
+              {([
+                { id: 'note',          label: 'Note',            placeholder: 'Enter additional notes...' },
+                { id: 'comment',       label: 'Comment',         placeholder: 'Enter comments...' },
                 { id: 'reasonNotPass', label: 'Reason Not Pass', placeholder: 'Enter reason for not passing...' },
-              ].map(({ id: fid, label, placeholder }) => (
+              ] as const).map(({ id: fid, label, placeholder }) => (
                 <div key={fid} className="space-y-2">
                   <Label htmlFor={fid}>{label}</Label>
                   <Textarea
@@ -372,7 +390,7 @@ function CalibrationEdit() {
 
               <div className="space-y-2">
                 <Label>Check MPE</Label>
-                <Select value={formData.checkMpe} onValueChange={v => handleInputChange('checkMpe', v)}>
+                <Select value={formData.checkMpe || ''} onValueChange={v => handleInputChange('checkMpe', v)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Pass">Pass</SelectItem>
@@ -383,7 +401,7 @@ function CalibrationEdit() {
 
               <div className="space-y-2">
                 <Label>Check Resolution</Label>
-                <Select value={formData.checkResolution} onValueChange={v => handleInputChange('checkResolution', v)}>
+                <Select value={formData.checkResolution || ''} onValueChange={v => handleInputChange('checkResolution', v)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Pass">Pass</SelectItem>
@@ -396,7 +414,7 @@ function CalibrationEdit() {
 
               <div className="space-y-2">
                 <Label>Check Result</Label>
-                <Select value={formData.checkResult} onValueChange={v => handleInputChange('checkResult', v)}>
+                <Select value={formData.checkResult || ''} onValueChange={v => handleInputChange('checkResult', v)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="OPERATIONAL">Operational</SelectItem>
@@ -427,12 +445,14 @@ function CalibrationEdit() {
               <FileUploadField
                 id="attachments"
                 maxFiles={10}
-                value={
-                  uploadedFiles.map(f => ({
-                    name: f.fileName, size: f.fileSize,
-                    type: f.fileType, url:  f.fileUrl
-                  })) as unknown as File[]
-                }
+                value={newFiles}
+                uploadedFiles={uploadedFiles.map(f => ({
+                  id:   f.fileName,
+                  name: f.fileName,
+                  size: f.fileSize,
+                  url:  f.fileUrl,
+                  type: f.fileType,
+                }))}
                 onChange={handleFilesChange}
                 onDownloadFile={handleDownloadFile}
                 onDeleteUploadedFile={handleDeleteFile}
@@ -449,12 +469,12 @@ function CalibrationEdit() {
 
         {/* Mobile Actions */}
         <div className="md:hidden flex gap-3">
-          <Button type="button" variant="outline" onClick={handleCancel} disabled={loading} className="flex-1">
+          <Button type="button" variant="outline" onClick={handleCancel} disabled={saving} className="flex-1">
             <X className="h-4 w-4 mr-2" />Cancel
           </Button>
-          <Button type="submit" disabled={loading} className="flex-1">
+          <Button type="submit" disabled={saving} className="flex-1">
             <Save className="h-4 w-4 mr-2" />
-            {loading ? 'Saving...' : 'Save'}
+            {saving ? 'Saving...' : 'Save'}
           </Button>
         </div>
 
