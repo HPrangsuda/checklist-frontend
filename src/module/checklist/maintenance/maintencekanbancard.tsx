@@ -6,7 +6,7 @@ import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import {
   Wrench, X, CalendarDays, CheckCircle2, Clock,
-  User, CircleDashed, PlayCircle, CheckCircle, AlertCircle, Search, Pencil,
+  User, CircleDashed, PlayCircle, CheckCircle, AlertCircle, Search, Pencil, Eye,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDebounce } from '@/core/hooks/use-debounce'
@@ -192,15 +192,26 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
           </div>
           <div className="flex items-center gap-1">
             {row && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id: row.id } })}
-                aria-label={t('edit')}
-              >
-                <Pencil className="w-4 h-4" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => router.navigate({ to: '/checklist/maintenance/view', search: { id: row.id } })}
+                  aria-label={t('view_document')}
+                >
+                  <Eye className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id: row.id } })}
+                  aria-label={t('edit')}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </>
             )}
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label={t('back_to_list')}>
               <X className="w-4 h-4" />
@@ -476,12 +487,13 @@ export function MaintenanceKanbanCard() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Search */}
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <Input
                 value={keyword}
                 onChange={e => setKeyword(e.target.value)}
-                placeholder={t('search')}
+                placeholder={t('search_department')}
                 className="pl-8 h-8 text-xs w-48"
               />
               {keyword && (

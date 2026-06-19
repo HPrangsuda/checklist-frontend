@@ -6,7 +6,7 @@ import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import {
   PencilRuler, X, CalendarDays, CheckCircle2, Clock,
-  User, CircleDashed, PlayCircle, CheckCircle, AlertCircle, Search, Pencil,
+  User, CircleDashed, PlayCircle, CheckCircle, AlertCircle, Search, Pencil, Eye,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDebounce } from '@/core/hooks/use-debounce'
@@ -18,10 +18,10 @@ interface CalibrationDTO {
   id: number
   machineCode: string
   machineName: string
-  years: number
+  years: string           // ★ varchar ใน DB ไม่ใช่ Integer
   dueDate: string
-  startDate: string           // null → To Do
-  certificateDate: string     // not null → Done
+  startDate: string
+  certificateDate: string
   results: string
   calibrationStatus: string
   responsibleMaintenanceName: string
@@ -187,15 +187,26 @@ function DetailDrawer({ row, onClose }: { row: CalibrationDTO | null; onClose: (
           </div>
           <div className="flex items-center gap-1">
             {row && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => router.navigate({ to: '/checklist/calibration/edit', search: { id: row.id } })}
-                aria-label={t('edit')}
-              >
-                <Pencil className="w-4 h-4" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => router.navigate({ to: '/checklist/calibration/view', search: { id: row.id } })}
+                  aria-label={t('view_document')}
+                >
+                  <Eye className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => router.navigate({ to: '/checklist/calibration/edit', search: { id: row.id } })}
+                  aria-label={t('edit')}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </>
             )}
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label={t('back_to_list')}>
               <X className="w-4 h-4" />
@@ -465,7 +476,7 @@ export function CalibrationKanbanCard() {
               <Input
                 value={keyword}
                 onChange={e => setKeyword(e.target.value)}
-                placeholder={t('search')}
+                placeholder={t('search_department')}
                 className="pl-8 h-8 text-xs w-48"
               />
               {keyword && (
