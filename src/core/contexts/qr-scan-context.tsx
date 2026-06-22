@@ -1,19 +1,20 @@
 import { createContext, useContext, useState } from 'react'
 
 interface QrScanContextType {
-  hideQrButton: boolean
-  setHideQrButton: (value: boolean) => void
+  showAnnouncement: boolean
+  setShowAnnouncement: (value: boolean) => void
 }
 
 const QrScanContext = createContext<QrScanContextType>({
-  hideQrButton: false,
-  setHideQrButton: () => {},
+  showAnnouncement: true,
+  setShowAnnouncement: () => {},
 })
 
 export function QrScanProvider({ children }: { children: React.ReactNode }) {
-  const [hideQrButton, setHideQrButton] = useState(false)
+  const [showAnnouncement, setShowAnnouncement] = useState(true)
+
   return (
-    <QrScanContext.Provider value={{ hideQrButton, setHideQrButton }}>
+    <QrScanContext.Provider value={{ showAnnouncement, setShowAnnouncement }}>
       {children}
     </QrScanContext.Provider>
   )

@@ -6,11 +6,7 @@ import { createPortal } from 'react-dom'
 
 const QR_READER_ID = 'qr-reader-container'
 
-interface QrScanButtonProps {
-  hidden?: boolean
-}
-
-export function QrScanButton({ hidden = false }: QrScanButtonProps) {
+export function QrScanButton() {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [scanned, setScanned] = useState<string | null>(null)
@@ -26,13 +22,11 @@ export function QrScanButton({ hidden = false }: QrScanButtonProps) {
       const parsed = JSON.parse(decoded)
       if (parsed?.code) return parsed.code
     } catch {}
-
     try {
       const url = new URL(decoded)
       const param = url.searchParams.get('machineCode')
       if (param) return param
     } catch {}
-
     return decoded
   }
 
@@ -64,15 +58,11 @@ export function QrScanButton({ hidden = false }: QrScanButtonProps) {
           { fps: 10, qrbox: { width: 220, height: 220 } },
           (decodedText) => {
             if (cancelled) return
-
             setScanned(decodedText)
             html5Qrcode.stop().catch(() => {})
-
             setTimeout(() => {
               if (cancelled) return
-
               const machineCode = extractMachineCode(decodedText)
-
               try {
                 const url = new URL(decodedText)
                 navigate({ to: url.pathname as any })
@@ -87,7 +77,6 @@ export function QrScanButton({ hidden = false }: QrScanButtonProps) {
         const videoEl = document.querySelector(
           `#${QR_READER_ID} video`
         ) as HTMLVideoElement | null
-
         const stream = videoEl?.srcObject as MediaStream | null
         trackRef.current = stream?.getVideoTracks()[0] ?? null
 
@@ -126,7 +115,6 @@ export function QrScanButton({ hidden = false }: QrScanButtonProps) {
   const toggleTorch = async () => {
     const track = trackRef.current
     if (!track) return
-
     try {
       await track.applyConstraints({
         advanced: [{ torch: !torch } as any],
@@ -146,35 +134,33 @@ export function QrScanButton({ hidden = false }: QrScanButtonProps) {
   return createPortal(
     <>
       {/* Floating Scan Button */}
-      {!hidden && (
-        <button
-          onClick={() => setOpen(true)}
-          title="สแกน QR Code"
-          style={{
-            position: 'fixed',
-            bottom: '60px',
-            right: '24px',
-            zIndex: 9999,
-            backgroundColor: '#89090a',
-          }}
-          className="
-            flex items-center gap-2
-            hover:opacity-90 active:scale-95
-            text-white font-semibold text-sm
-            px-4 py-3 rounded-2xl shadow-lg
-            transition-all duration-200
-            group relative
-          "
-        >
-          <QrCode className="w-5 h-5" />
-          <span className="hidden sm:inline">สแกน QR</span>
-          <span className="
-            absolute inset-0 rounded-2xl
-            ring-4 ring-transparent group-hover:ring-[#89090a]/30
-            transition-all duration-300
-          " />
-        </button>
-      )}
+      <button
+        onClick={() => setOpen(true)}
+        title="สแกน QR Code"
+        style={{
+          position: 'fixed',
+          bottom: '60px',
+          right: '24px',
+          zIndex: 9999,
+          backgroundColor: '#89090a',
+        }}
+        className="
+          flex items-center gap-2
+          hover:opacity-90 active:scale-95
+          text-white font-semibold text-sm
+          px-4 py-3 rounded-2xl shadow-lg
+          transition-all duration-200
+          group relative
+        "
+      >
+        <QrCode className="w-5 h-5" />
+        <span className="hidden sm:inline">สแกน QR</span>
+        <span className="
+          absolute inset-0 rounded-2xl
+          ring-4 ring-transparent group-hover:ring-[#89090a]/30
+          transition-all duration-300
+        " />
+      </button>
 
       {/* Modal */}
       {open && (
@@ -187,7 +173,6 @@ export function QrScanButton({ hidden = false }: QrScanButtonProps) {
             className="relative w-full max-w-sm mx-4 bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            {/* Header */}
             <div
               className="flex items-center justify-between px-5 py-4 border-b"
               style={{ borderColor: '#89090a33' }}
@@ -204,7 +189,6 @@ export function QrScanButton({ hidden = false }: QrScanButtonProps) {
               </button>
             </div>
 
-            {/* Camera Area */}
             <div className="relative aspect-square bg-black overflow-hidden">
               {error ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
@@ -225,8 +209,6 @@ export function QrScanButton({ hidden = false }: QrScanButtonProps) {
               ) : (
                 <>
                   <div id={QR_READER_ID} className="w-full h-full" />
-
-                  {/* Scan Frame */}
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="relative w-52 h-52">
                       {(['tl', 'tr', 'bl', 'br'] as const).map(pos => (
@@ -247,24 +229,18 @@ export function QrScanButton({ hidden = false }: QrScanButtonProps) {
                       />
                     </div>
                   </div>
-
                   <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.7)_100%)] pointer-events-none" />
                 </>
               )}
             </div>
 
-            {/* Footer */}
             {!error && !scanned && (
               <div className="flex items-center justify-between px-5 py-4">
                 <p className="text-zinc-500 text-xs">จ่อกล้องไปที่ QR Code</p>
                 <button
                   onClick={toggleTorch}
                   className="p-2 rounded-xl transition-colors"
-                  style={
-                    torch
-                      ? { backgroundColor: '#89090a33', color: '#c0393a' }
-                      : {}
-                  }
+                  style={torch ? { backgroundColor: '#89090a33', color: '#c0393a' } : {}}
                   title="ไฟฉาย"
                 >
                   <Flashlight
