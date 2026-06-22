@@ -5,10 +5,12 @@ import { QrScanButton } from "@/components/qr-scan/qr-scan-button"
 import { AuthProvider, useAuth } from "@/core/contexts/auth-context"
 import { QrScanProvider, useQrScan } from "@/core/contexts/qr-scan-context"
 import { X, Megaphone } from "lucide-react"
-import announcementPdf from '@/assets/file/meeting_11-06-2026.pdf'
+
+const ANNOUNCEMENT_PDF_URL = 'https://m-portal.acme-inter.com/assets/file/meeting_11-06-2026.pdf'
 
 function AnnouncementPopup() {
   const { showAnnouncement, setShowAnnouncement } = useQrScan()
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
   if (!showAnnouncement) return null
 
@@ -31,17 +33,25 @@ function AnnouncementPopup() {
         <div className="px-5 py-3 bg-neutral-50 border-b border-border shrink-0 flex flex-wrap gap-4 text-xs text-neutral-800">
           <span>📅 วันที่ 11 มิถุนายน 2569</span>
           <span>📍 ห้องประชุมห้อง 1</span>
-          <span>👥 ผู้เข้าร่วม 16 ท่าน</span>
         </div>
 
         {/* PDF Viewer */}
         <div className="flex-1 overflow-hidden">
-          <iframe
-            src={`${announcementPdf}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
-            className="w-full h-full"
-            style={{ minHeight: '70vh', border: 'none' }}
-            title="สรุปการประชุม"
-          />
+          {isMobile ? (
+            <iframe
+              src={`https://docs.google.com/viewer?url=${encodeURIComponent(ANNOUNCEMENT_PDF_URL)}&embedded=true`}
+              className="w-full h-full"
+              style={{ minHeight: '70vh', border: 'none' }}
+              title="สรุปการประชุม"
+            />
+          ) : (
+            <iframe
+              src={`${ANNOUNCEMENT_PDF_URL}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
+              className="w-full h-full"
+              style={{ minHeight: '70vh', border: 'none' }}
+              title="สรุปการประชุม"
+            />
+          )}
         </div>
 
         {/* Footer */}
