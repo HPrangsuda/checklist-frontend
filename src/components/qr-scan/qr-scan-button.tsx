@@ -6,7 +6,11 @@ import { createPortal } from 'react-dom'
 
 const QR_READER_ID = 'qr-reader-container'
 
-export function QrScanButton() {
+interface QrScanButtonProps {
+  hidden?: boolean
+}
+
+export function QrScanButton({ hidden = false }: QrScanButtonProps) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [scanned, setScanned] = useState<string | null>(null)
@@ -142,33 +146,35 @@ export function QrScanButton() {
   return createPortal(
     <>
       {/* Floating Scan Button */}
-      <button
-        onClick={() => setOpen(true)}
-        title="สแกน QR Code"
-        style={{
-          position: 'fixed',
-          bottom: '60px',
-          right: '24px',
-          zIndex: 9999,
-          backgroundColor: '#89090a',
-        }}
-        className="
-          flex items-center gap-2
-          hover:opacity-90 active:scale-95
-          text-white font-semibold text-sm
-          px-4 py-3 rounded-2xl shadow-lg
-          transition-all duration-200
-          group relative
-        "
-      >
-        <QrCode className="w-5 h-5" />
-        <span className="hidden sm:inline">สแกน QR</span>
-        <span className="
-          absolute inset-0 rounded-2xl
-          ring-4 ring-transparent group-hover:ring-[#89090a]/30
-          transition-all duration-300
-        " />
-      </button>
+      {!hidden && (
+        <button
+          onClick={() => setOpen(true)}
+          title="สแกน QR Code"
+          style={{
+            position: 'fixed',
+            bottom: '60px',
+            right: '24px',
+            zIndex: 9999,
+            backgroundColor: '#89090a',
+          }}
+          className="
+            flex items-center gap-2
+            hover:opacity-90 active:scale-95
+            text-white font-semibold text-sm
+            px-4 py-3 rounded-2xl shadow-lg
+            transition-all duration-200
+            group relative
+          "
+        >
+          <QrCode className="w-5 h-5" />
+          <span className="hidden sm:inline">สแกน QR</span>
+          <span className="
+            absolute inset-0 rounded-2xl
+            ring-4 ring-transparent group-hover:ring-[#89090a]/30
+            transition-all duration-300
+          " />
+        </button>
+      )}
 
       {/* Modal */}
       {open && (
