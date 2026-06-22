@@ -3,16 +3,23 @@ import { Toaster } from "@/components/ui/sonner"
 import { LanguageProvider } from "@/core/contexts/language-context"
 import { QrScanButton } from "@/components/qr-scan/qr-scan-button"
 import { AuthProvider, useAuth } from "@/core/contexts/auth-context"
-import { QrScanProvider, useQrScan } from "@/core/contexts/qr-scan-context"
 import { X, Megaphone } from "lucide-react"
+import { useState } from "react"
 
-const ANNOUNCEMENT_PDF_URL = 'https://m-portal.acme-inter.com/assets/file/meeting_11-06-2026.pdf'
+const ANNOUNCEMENT_PDF_URL = `${window.location.origin}/file/meeting_11-06-2026.pdf`
+
+let announcementDismissed = false
 
 function AnnouncementPopup() {
-  const { showAnnouncement, setShowAnnouncement } = useQrScan()
+  const [show, setShow] = useState(!announcementDismissed)
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
-  if (!showAnnouncement) return null
+  const handleClose = () => {
+    announcementDismissed = true
+    setShow(false)
+  }
+
+  if (!show) return null
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
@@ -24,7 +31,7 @@ function AnnouncementPopup() {
             <Megaphone className="w-5 h-5" />
             <span className="font-medium text-sm">ประกาศ — สรุปการประชุม การจัดการเครื่องจักรและอุปกรณ์</span>
           </div>
-          <button onClick={() => setShowAnnouncement(false)} className="text-white/70 hover:text-white transition">
+          <button onClick={handleClose} className="text-white/70 hover:text-white transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -57,7 +64,7 @@ function AnnouncementPopup() {
         {/* Footer */}
         <div className="px-5 py-4 border-t border-border shrink-0 flex justify-end">
           <button
-            onClick={() => setShowAnnouncement(false)}
+            onClick={handleClose}
             className="px-5 py-2 bg-neutral-700 hover:bg-neutral-800 text-white text-sm font-medium rounded-lg transition"
           >
             รับทราบ
@@ -89,9 +96,7 @@ function RootLayout() {
 export const Route = createRootRoute({
   component: () => (
     <AuthProvider>
-      <QrScanProvider>
-        <RootLayout />
-      </QrScanProvider>
+      <RootLayout />
     </AuthProvider>
   ),
 })
