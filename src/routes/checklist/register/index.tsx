@@ -21,48 +21,68 @@ export const Route = createFileRoute('/checklist/register/')({
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface CreatedByDTO {
+  id:   number
+  name: string | null
+}
+
 interface RegisterDTO {
-  id: number
-  machineName: string
-  brand: string
-  model: string
-  serialNumber: string
-  price: number
-  quantity: number
-  watt: number
-  horsePower: number
-  department: string
-  responsibleId: string
+  id:               number
+  machineName:      string
+  brand?:           string
+  model?:           string
+  serialNumber?:    string
+  department?:      string
+  note?:            string
+  responsibleId?:   string
   responsibleName?: string
-  supervisorId?: string
-  supervisorName?: string
-  managerId?: string
-  managerName?: string
-  note?: string
-  attachments?: { id: number; fileName: string }[]
-  maintenanceCount?: number
-  calibrationCount?: number
-  createdBy?: { id: number; name: string }
-  updatedBy?: { id: number; name: string }
-  createdAt?: string
-  updatedAt?: string
+  supervisorId?:    string
+  supervisorName?:  string
+  managerId?:       string
+  managerName?:     string
+  createdAt?:       string   // ← รับ string จาก backend (formatted)
+  createdBy?:       CreatedByDTO | null
+  updatedBy?:       CreatedByDTO | null
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** แปลง ISO string หรือ formatted string ให้อ่านง่าย */
+function formatDate(value?: string | null): string {
+  if (!value) return '-'
+  // ถ้า backend ส่งมาเป็น "yyyy-MM-dd HH:mm" แล้ว ใช้ตรงๆ
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value)) return value
+  // ถ้าเป็น ISO string แปลงก่อน
+  try {
+    return new Intl.DateTimeFormat('th-TH', {
+      year:   'numeric',
+      month:  '2-digit',
+      day:    '2-digit',
+      hour:   '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value))
+  } catch {
+    return value
+  }
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function DataTbl() {
-  const { t } = useTranslation('checklist')
+  const { t }  = useTranslation('checklist')
   const router = useRouter()
 
-  const [pagination, setPagination]       = useState({ pageIndex: 0, pageSize: 10 })
+  const [pagination,       setPagination]       = useState({ pageIndex: 0, pageSize: 10 })
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [selectedIds, setSelectedIds]     = useState<number[]>([])
-  const [data, setData]                   = useState<RegisterDTO[]>([])
-  const [loading, setLoading]             = useState(false)
-  const [totalCount, setTotalCount]       = useState(0)
-  const [keyword, setKeyword]             = useState('')
-  const [searchValue, setSearchValue]     = useState('')
-  const debouncedSearch                   = useDebounce(keyword, 500)
+  const [selectedIds,      setSelectedIds]      = useState<number[]>([])
+  const [data,             setData]             = useState<RegisterDTO[]>([])
+  const [loading,          setLoading]          = useState(false)
+  const [totalCount,       setTotalCount]       = useState(0)
+  const [keyword,          setKeyword]          = useState('')
+  const [searchValue,      setSearchValue]      = useState('')
+  const debouncedSearch = useDebounce(keyword, 500)
+
+  // ─── Columns ──────────────────────────────────────────────────────────────
 
   const columns: ColumnDef<RegisterDTO>[] = [
     {
@@ -79,9 +99,10 @@ function DataTbl() {
           <Checkbox
             checked={selectedIds.includes(row.original.id)}
             onCheckedChange={checked =>
-              setSelectedIds(prev => checked
-                ? [...prev, row.original.id]
-                : prev.filter(id => id !== row.original.id)
+              setSelectedIds(prev =>
+                checked
+                  ? [...prev, row.original.id]
+                  : prev.filter(id => id !== row.original.id)
               )
             }
             aria-label="Select row"
@@ -93,22 +114,32 @@ function DataTbl() {
     {
       accessorKey: 'machineName',
       header: t('machine_name'),
-      cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div>,
+      cell: ({ row }) => (
+        <div className="text-sm font-medium">{row.original.machineName || '-'}</div>
+      ),
     },
     {
       accessorKey: 'model',
       header: t('model'),
-      cell: ({ row }) => <div className="text-sm">{row.original.model || '-'}</div>,
+      cell: ({ row }) => (
+        <div className="text-sm">{row.original.model || '-'}</div>
+      ),
     },
     {
-      accessorKey: 'requestDate',
+      // ── FIX: ใช้ createdAt จาก backend โดยตรง ─────────────────────────────
+      accessorKey: 'createdAt',
       header: t('request_date'),
-      cell: ({ row }) => <div className="text-sm">{row.original.createdAt || '-'}</div>,
+      cell: ({ row }) => (
+        <div className="text-sm">{formatDate(row.original.createdAt)}</div>
+      ),
     },
     {
-      accessorKey: 'requestBy',
+      // ── FIX: ใช้ createdBy.name จาก backend ──────────────────────────────
+      id: 'requestBy',
       header: t('request_by'),
-      cell: ({ row }) => <div className="text-sm">{row.original.createdBy?.name ?? '-'}</div>,
+      cell: ({ row }) => (
+        <div className="text-sm">{row.original.createdBy?.name ?? '-'}</div>
+      ),
     },
     {
       id: 'action',
@@ -116,7 +147,7 @@ function DataTbl() {
       cell: ({ row }) => (
         <TblAction
           view
-          onView={() => handleView(row.original.id)}
+          onView={()   => handleView(row.original.id)}
           onDelete={() => handleDelete(row.original.id)}
         />
       ),
@@ -124,19 +155,24 @@ function DataTbl() {
     },
   ]
 
+  // ─── Effects ──────────────────────────────────────────────────────────────
+
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
   useEffect(() => { onFetchData() }, [searchValue, pagination.pageIndex, pagination.pageSize])
+
+  // ─── Data fetching ────────────────────────────────────────────────────────
 
   const onFetchData = async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       params.set('index', pagination.pageIndex.toString())
-      params.set('size', pagination.pageSize.toString())
+      params.set('size',  pagination.pageSize.toString())
       if (searchValue.trim()) params.set('keyword', searchValue.trim())
 
-      // backend จัดการ role เองผ่าน JWT principal
-      const response = await api.get<PageResponse<RegisterDTO>>('/api/register/get/page', { params })
+      const response = await api.get<PageResponse<RegisterDTO>>(
+        '/api/register/get/page', { params }
+      )
 
       if (response?.success) {
         setData(response.data ?? [])
@@ -154,12 +190,14 @@ function DataTbl() {
     }
   }
 
+  // ─── Delete ───────────────────────────────────────────────────────────────
+
   const onDeleteData = async (): Promise<{ success: boolean }> => {
     if (selectedIds.length === 0) return { success: false }
     try {
       const response = await api.delete<ResponseDTO<void>>('/api/register/delete', {
         headers: { 'Content-Type': 'application/json' },
-        data: selectedIds,
+        data:    selectedIds,
       })
       if (response.success) {
         toast.success(response.message)
@@ -173,6 +211,8 @@ function DataTbl() {
       return { success: false }
     }
   }
+
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
   const handleSearch = useCallback((value: string) => {
     setKeyword(value || '')
@@ -188,18 +228,25 @@ function DataTbl() {
   const handleView   = (id: number) => router.navigate({ to: '/checklist/register/view', search: { id } })
   const handleDelete = (id: number) => { setSelectedIds([id]); setShowDeleteDialog(true) }
 
+  // ─── Table ────────────────────────────────────────────────────────────────
+
   const table = useReactTable({
-    data, columns, manualPagination: true,
-    getCoreRowModel: getCoreRowModel(),
+    data,
+    columns,
+    manualPagination:  true,
+    manualSorting:     true,
+    manualFiltering:   true,
+    getCoreRowModel:       getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onPaginationChange: setPagination,
+    getSortedRowModel:     getSortedRowModel(),
+    getFilteredRowModel:   getFilteredRowModel(),
+    onPaginationChange:    setPagination,
     pageCount: Math.ceil(totalCount / pagination.pageSize),
-    manualSorting: true, manualFiltering: true,
     state: { pagination },
     getRowId: row => row.id.toString(),
   })
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-background">
@@ -208,6 +255,7 @@ function DataTbl() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="font-bold">{t('register_records')}</CardTitle>
           </CardHeader>
+
           <TblContainer>
             <div>
               <DataTableToolbar
@@ -224,17 +272,27 @@ function DataTbl() {
                 className="w-full gap-2"
               />
             </div>
+
             <div>
               {loading ? (
                 <DataTableSkeleton
-                  columnCount={columns.length} rowCount={10} filterCount={0}
-                  cellWidths={['auto']} withViewOptions={false} withPagination={true}
-                  shrinkZero={false} className="w-full"
+                  columnCount={columns.length}
+                  rowCount={10}
+                  filterCount={0}
+                  cellWidths={['auto']}
+                  withViewOptions={false}
+                  withPagination={true}
+                  shrinkZero={false}
+                  className="w-full"
                 />
               ) : (
-                <DataTable table={table} emptyText={t('no_result')} />
+                <DataTable
+                  table={table}
+                  emptyText={t('no_result')}
+                />
               )}
             </div>
+
             <DeleteDialog
               isOpen={showDeleteDialog}
               onClose={() => setShowDeleteDialog(false)}

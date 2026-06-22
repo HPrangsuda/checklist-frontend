@@ -37,6 +37,14 @@ interface AttachmentItem {
   category?: string | null
 }
 
+// ── FIX: typed ApiResponse เพื่อเช็ค success/error จาก backend ──────────────
+interface ApiResponse<T = unknown> {
+  code?: string
+  success?: boolean
+  message?: string
+  data?: T
+}
+
 function ReadOnlyField({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="space-y-1.5">
@@ -50,6 +58,28 @@ function ReadOnlyField({ label, value }: { label: string; value?: string | null 
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
 const API_BASE   = import.meta.env.VITE_API_URL ?? ''
+
+// ── FIX: helper — ตรวจสอบว่า response จาก backend สำเร็จจริง ─────────────────
+// Backend return HTTP 200 เสมอ แต่แยก success/error ด้วย code หรือ success field
+function isApiSuccess(resData: ApiResponse | null | undefined): boolean {
+  if (!resData) return false
+  // ถ้า backend ใช้ field "success"
+  if (typeof resData.success === 'boolean') return resData.success
+  // ถ้า backend ใช้ error code prefix (เช่น MS002, MS004 = error, MS001 = success)
+  if (resData.code) {
+    const errorCodes = ['MS002', 'MS004', 'MS006', 'MS007', 'MS008', 'MS009',
+                        'MS010', 'MS011', 'MS012', 'MS013', 'MS014', 'MS016',
+                        'MS018', 'MS019', 'MS020', 'MS030', 'MS032', 'MS041']
+    return !errorCodes.includes(resData.code)
+  }
+  // fallback: ถ้าไม่มี code และไม่มี success field ให้ถือว่าสำเร็จ
+  return true
+}
+
+function getApiErrorMessage(resData: ApiResponse | null | undefined): string {
+  if (!resData) return 'Unknown error'
+  return resData.message || resData.code || 'Unknown error'
+}
 
 function RouteComponent({ data }: any) {
   const navigate  = useNavigate()
@@ -336,7 +366,6 @@ function RouteComponent({ data }: any) {
         } catch {}
       }
 
-      // ── resolve supervisor/manager name จาก ID ────────────────────────────
       const supId = d.supervisorId ? String(d.supervisorId) : ''
       const mgrId = d.managerId    ? String(d.managerId)    : ''
       let supName = '', mgrName = ''
@@ -378,6 +407,8 @@ function RouteComponent({ data }: any) {
     if (!formData.machineStatus.trim())    e.machineStatus = t('machine_status_required')
     if (!formData.resetPeriod.trim())      e.resetPeriod   = t('reset_period_required')
     if (!buildMachineCode())               e.machineCode   = t('machine_code_required')
+    // ── FIX: ตรวจ responsible ตรงนี้ด้วย เพื่อไม่ให้ผ่านไปถึง backend แล้ว fail ─
+    if (!String(formData.responsible ?? '').trim()) e.responsible = t('responsible_required')
     if (!String(formData.hasWarranty ?? '').trim()) e.hasWarranty = t('has_warranty_required')
     if (formData.hasWarranty === 'YES' && !String(formData.warrantyNote ?? '').trim()) e.warrantyNote = t('warranty_note_required')
     setErrors(e)
@@ -385,9 +416,16 @@ function RouteComponent({ data }: any) {
   }
 
   const isFormValid = () => {
-    const base = !!(formData.name.trim() && formData.machineGroupId.trim() && formData.machineTypeId.trim() &&
-      getDeptCode(formData.department) && formData.machineStatus.trim() && formData.resetPeriod.trim() &&
-      String(formData.hasWarranty ?? '').trim())
+    const base = !!(
+      formData.name.trim() &&
+      formData.machineGroupId.trim() &&
+      formData.machineTypeId.trim() &&
+      getDeptCode(formData.department) &&
+      formData.machineStatus.trim() &&
+      formData.resetPeriod.trim() &&
+      String(formData.responsible ?? '').trim() &&   // ── FIX: เพิ่ม responsible
+      String(formData.hasWarranty ?? '').trim()
+    )
     if (formData.hasWarranty === 'YES') return base && !!String(formData.warrantyNote ?? '').trim()
     return base
   }
@@ -395,7 +433,8 @@ function RouteComponent({ data }: any) {
   const getStepStatus = (stepId: string): 'complete' | 'error' | 'incomplete' | 'empty' => {
     if (stepId !== 'general') return 'empty'
     const hasErrors = Object.keys(errors).some(k =>
-      ['name', 'machineStatus', 'department', 'machineType', 'machineGroup', 'machineCode', 'resetPeriod', 'hasWarranty', 'warrantyNote'].includes(k))
+      ['name', 'machineStatus', 'department', 'machineType', 'machineGroup',
+       'machineCode', 'resetPeriod', 'responsible', 'hasWarranty', 'warrantyNote'].includes(k))
     if (hasErrors) return 'error'
     return isFormValid() ? 'complete' : 'incomplete'
   }
@@ -406,7 +445,7 @@ function RouteComponent({ data }: any) {
   }
 
   const buildMachineDTO = () => {
-    const deptCode = getDeptCode(formData.department)
+    const deptCode    = getDeptCode(formData.department)
     const machineCode = buildMachineCode()
     const calibrationDTO = formData.calibrationDueDate ? {
       machineName: formData.name, dueDate: formatDateToISO(formData.calibrationDueDate),
@@ -421,18 +460,31 @@ function RouteComponent({ data }: any) {
       const dateValue = (formData as any)[`maintenance${i}`]
       if (!dateValue) continue
       const date = typeof dateValue === 'string' ? new Date(dateValue) : dateValue as Date
-      maintenanceList.push({ machineName: formData.name, years: date.getFullYear().toString(), round: i, dueDate: formatDateToISO(date.toISOString()), status: 'On Time', planDate: null, resultDate: null, maintenanceBy: null, note: null, attachment: null })
+      maintenanceList.push({
+        machineName: formData.name, years: date.getFullYear().toString(), round: i,
+        dueDate: formatDateToISO(date.toISOString()), status: 'On Time',
+        planDate: null, resultDate: null, maintenanceBy: null, note: null, attachment: null,
+      })
     }
     const allImgFiles      = [...existingImages, ...uploadedImages].map(f => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, uploadedBy: (f as any).uploadedBy ?? null }))
     const allInstrFiles    = [...existingInstructions, ...uploadedInstructions].map(f => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, uploadedBy: (f as any).uploadedBy ?? null }))
     const allWarrantyFiles = [...existingWarranty, ...uploadedWarranty].map(f => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, uploadedBy: (f as any).uploadedBy ?? null, category: 'WARRANTY' }))
+
+    // ── FIX: แปลง responsible เป็น number ก่อนส่ง ─────────────────────────────
+    const responsiblePersonId = formData.responsible ? Number(formData.responsible) : null
+    const supervisorId        = formData.supervisor  ? Number(formData.supervisor)  : null
+    const managerId           = formData.manager     ? Number(formData.manager)     : null
+
     return {
       machineName: formData.name, machineCode,
       brand: formData.brand || null, model: formData.model || null, serialNumber: formData.serialNumber || null,
       department: deptCode || null, businessUnit: formData.businessUnit || null, isCalibration: !!calibrationDTO,
-      responsiblePersonId: formData.responsible || null, responsiblePersonName: formData.responsibleName || null,
-      supervisorId: formData.supervisor || null, supervisorName: formData.supervisorName || null,
-      managerId: formData.manager || null, managerName: formData.managerName || null,
+      responsiblePersonId,                                        // ← Long ไม่ใช่ string
+      responsiblePersonName: formData.responsibleName || null,
+      supervisorId,                                               // ← Long
+      supervisorName: formData.supervisorName || null,
+      managerId,                                                  // ← Long
+      managerName: formData.managerName || null,
       machineStatus: formData.machineStatus || null, machineGroupId: formData.machineGroupId || null,
       groups: formData.machineGroup || null, machineTypeId: formData.machineTypeId || null,
       machineTypeName: formData.machineType || null, maintenancePeriod: formData.maintenancePeriod || null,
@@ -449,19 +501,45 @@ function RouteComponent({ data }: any) {
     }
   }
 
+  // ── FIX: handleSubmit เช็ค response จาก backend ก่อนแสดง success ────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validateRequiredFields()) { setCurrentStep('general'); toast.error(t('fill_required_fields')); return }
+    if (!validateRequiredFields()) {
+      setCurrentStep('general')
+      toast.error(t('fill_required_fields'))
+      return
+    }
     setIsSubmitting(true)
     try {
-      const response = await api.post('/api/machine/create', buildMachineDTO())
-      const savedId = response?.data?.id ?? response?.data?.data?.id
-      if (savedId) await api.post(`/api/machine/${savedId}/sync-to-lark`)
+      const response = await api.post<ApiResponse>('/api/machine/create', buildMachineDTO())
+      const resData  = response?.data
+
+      // ── เช็คว่า backend ตอบกลับ error จริงหรือไม่ ─────────────────────────
+      if (!isApiSuccess(resData)) {
+        toast.error(t('failed_to_create_machine'), {
+          description: getApiErrorMessage(resData),
+        })
+        return
+      }
+
+      // ── สำเร็จจริง: sync to lark แล้ว navigate ──────────────────────────
+      const savedId = (resData as any)?.id ?? (resData as any)?.data?.id
+      if (savedId) {
+        try { await api.post(`/api/machine/${savedId}/sync-to-lark`) } catch {}
+      }
       toast.success(t('machine_created'))
-      setTimeout(() => navigate(refId ? { to: '/checklist/register/view', search: { id: refId } } : { to: '/checklist/machine' }), 1000)
+      setTimeout(() => navigate(
+        refId
+          ? { to: '/checklist/register/view', search: { id: refId } }
+          : { to: '/checklist/machine' }
+      ), 1000)
     } catch (error: any) {
-      toast.error(t('failed_to_create_machine'), { description: error.response?.data?.message || error.message })
-    } finally { setIsSubmitting(false) }
+      // ── HTTP error (4xx / 5xx) ─────────────────────────────────────────────
+      const serverMsg = error?.response?.data?.message || error?.response?.data?.code || error?.message
+      toast.error(t('failed_to_create_machine'), { description: serverMsg })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleInputChange = (field: string, value: any) => {
@@ -561,7 +639,6 @@ function RouteComponent({ data }: any) {
       if (found) setFormData(prev => ({ ...prev, [field]: value, [nameField]: found.fullName }))
     }
 
-  // ─── Responsible change — API ส่งมาแค่ ID → resolve ชื่อจาก cache ────────
   const handleResponsibleChange = async (selected: any) => {
     const val = Array.isArray(selected) ? selected[0] : selected
     if (!val) {
@@ -641,11 +718,13 @@ function RouteComponent({ data }: any) {
               }}
               fetchOptions={fetchDepartments} error={errors.department} required />
 
+            {/* ── FIX: เพิ่ม error และ required ให้ responsible ─────────────── */}
             <ServerSingleSelect key={`resp-${formData.responsible || 'e'}`}
               id="responsible" title="responsible" label={t('responsible')}
               placeholder={t('select_responsible')} value={formData.responsible}
               initialLabel={formData.responsibleName}
-              onChange={handleResponsibleChange} fetchOptions={fetchResponsible} />
+              onChange={handleResponsibleChange} fetchOptions={fetchResponsible}
+              error={errors.responsible} required />
 
             <ReadOnlyField label={t('supervisor')} value={formData.supervisorName} />
             <ReadOnlyField label={t('manager')}    value={formData.managerName} />
