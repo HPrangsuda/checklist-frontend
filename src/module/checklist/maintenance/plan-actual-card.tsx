@@ -254,7 +254,7 @@ export function MaintenancePlanActualCard() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <Card className="mb-4 overflow-hidden p-0 gap-0">
+    <Card className="mb-4 overflow-hidden p-0">
 
       {/* Header */}
       <CardHeader className="flex flex-row items-center justify-between border-b px-5 py-4">
