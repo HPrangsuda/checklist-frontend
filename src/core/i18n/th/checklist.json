@@ -343,5 +343,12 @@
   "kanban_overdue_days": "วัน",
   "maintenance_by": "ผู้ดำเนินการ",
   "plan_duration_days": "วัน",
-  "search" : "ค้นหา"
+  "search" : "ค้นหา",
+  "plan_vs_actual":         "แผน vs ผล รายเดือน",
+  "plan_due_date":          "แผน (วันครบกำหนด)",
+  "completed_on_time":      "เสร็จทันเวลา",
+  "total_planned":          "วางแผนทั้งหมด",
+  "completed":              "เสร็จสิ้น",
+  "no_data_for_year":       "ไม่มีข้อมูลในปีนี้",
+  "select_year":            "เลือกปี"
 }

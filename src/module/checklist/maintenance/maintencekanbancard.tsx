@@ -28,8 +28,8 @@ interface MaintenanceDTO {
   maintenanceBy: string
   responsibleMaintenance: number
   responsibleMaintenanceName: string
-  machineDepartmentCode: string   // ★
-  machineDepartmentName: string   // ★
+  machineDepartmentCode: string
+  machineDepartmentName: string
   note: string
   attachment: string
   checklistRecordId: number | null
@@ -48,6 +48,12 @@ interface KanbanColumn {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// ★ unique key per row — machineCode+round+years is business-unique
+//   fallback to array index via the caller if somehow still clashing
+function rowUid(row: MaintenanceDTO): string {
+  return `${row.machineCode}-${row.round}-${row.years}`
+}
 
 function parseDate(s: string | null | undefined): Date | null {
   if (!s) return null
@@ -169,8 +175,8 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
   const col    = COLUMN_CONFIG.find(c => c.key === (row ? getColumnKey(row) : 'todo'))
 
   const timelineRows = [
-    { icon: <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />,                                      labelKey: 'plan_date',   value: fmtDate(plan),   hl: false,   hlClass: '' },
-    { icon: <CalendarDays className="w-3.5 h-3.5 text-red-500" />,                                                labelKey: 'due_date',    value: fmtDate(due),    hl: false,   hlClass: '' },
+    { icon: <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />,                                      labelKey: 'plan_date',   value: fmtDate(plan),   hl: false,    hlClass: '' },
+    { icon: <CalendarDays className="w-3.5 h-3.5 text-red-500" />,                                               labelKey: 'due_date',    value: fmtDate(due),    hl: false,    hlClass: '' },
     { icon: <PlayCircle   className={`w-3.5 h-3.5 ${start  ? 'text-blue-500'    : 'text-muted-foreground'}`} />, labelKey: 'start_date',  value: fmtDate(start),  hl: !!start,  hlClass: 'text-blue-600' },
     { icon: <CheckCircle2 className={`w-3.5 h-3.5 ${actual ? 'text-emerald-500' : 'text-muted-foreground'}`} />, labelKey: 'actual_date', value: fmtDate(actual), hl: !!actual, hlClass: 'text-emerald-600' },
   ]
@@ -379,14 +385,15 @@ function KanbanColumnView({
         {col.rows.length === 0 ? (
           <p className="text-[11px] text-muted-foreground text-center py-6">{t('no_result')}</p>
         ) : (
-          col.rows.map(row => {
-            const uid = `${row.id}-${row.round}`
+          // ★ ใช้ index เป็น fallback ป้องกัน key ซ้ำในทุกกรณี
+          col.rows.map((row, idx) => {
+            const uid = `${rowUid(row)}-${idx}`
             return (
               <MachineCard
                 key={uid}
                 row={row}
                 colConfig={col}
-                selected={selectedUid === uid}
+                selected={selectedUid === rowUid(row)}
                 onClick={() => onSelect(row)}
                 t={t}
               />
@@ -455,11 +462,11 @@ export function MaintenanceKanbanCard() {
     }))
   }, [data])
 
-  const selectedUid = selected ? `${selected.id}-${selected.round}` : null
+  // ★ selectedUid ใช้ rowUid (ไม่มี index) เพื่อ match กับ selected state
+  const selectedUid = selected ? rowUid(selected) : null
 
   const handleSelect = (row: MaintenanceDTO) => {
-    const uid = `${row.id}-${row.round}`
-    setSelected(prev => (prev && `${prev.id}-${prev.round}` === uid ? null : row))
+    setSelected(prev => (prev && rowUid(prev) === rowUid(row) ? null : row))
   }
 
   const summary = useMemo(() => ({

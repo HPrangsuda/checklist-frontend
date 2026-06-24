@@ -342,5 +342,12 @@
   "kanban_overdue_days": "days",
   "maintenance_by": "Maintained By",
   "plan_duration_days": "days",
-  "search": "Search"
+  "search": "Search",
+  "plan_vs_actual":         "Plan vs Actual — monthly",
+  "plan_due_date":          "Plan (due date)",
+  "completed_on_time":      "Completed on time",
+  "total_planned":          "Total planned",
+  "completed":              "Completed",
+  "no_data_for_year":       "No data for this year",
+  "select_year":            "Select year"
 }

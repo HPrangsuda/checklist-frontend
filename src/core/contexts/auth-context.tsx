@@ -40,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = () => {
+    sessionStorage.removeItem('announcement_shown')
     sessionStore.setState({ session: null });
     setIsAuthenticated(false);
     setRole(null);

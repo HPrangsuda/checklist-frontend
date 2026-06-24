@@ -8,14 +8,12 @@ import { useState } from "react"
 
 const ANNOUNCEMENT_PDF_URL = `${window.location.origin}/file/meeting_11-06-2026.pdf`
 
-let announcementDismissed = false
-
 function AnnouncementPopup() {
-  const [show, setShow] = useState(!announcementDismissed)
+  const [show, setShow] = useState(() => !sessionStorage.getItem('announcement_shown'))
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
   const handleClose = () => {
-    announcementDismissed = true
+    sessionStorage.setItem('announcement_shown', 'true')
     setShow(false)
   }
 
@@ -85,7 +83,7 @@ function RootLayout() {
       <Toaster position="top-right" richColors />
       {isAuthenticated && (
         <>
-          <AnnouncementPopup />
+          <AnnouncementPopup key={String(isAuthenticated)} />
           <QrScanButton />
         </>
       )}

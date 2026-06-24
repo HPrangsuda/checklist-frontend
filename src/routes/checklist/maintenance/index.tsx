@@ -17,6 +17,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Wrench } from 'lucide-react'
 import { MaintenanceKanbanCard } from '@/module/checklist/maintenance/maintencekanbancard'
 import { MaintenanceDepartmentDashboard } from '@/module/checklist/maintenance/maintenance-department-dashboard'
+import { MaintenancePlanActualCard } from '@/module/checklist/maintenance/plan-actual-card'
 
 export const Route = createFileRoute('/checklist/maintenance/')({
   component: Maintenance,
@@ -205,6 +206,7 @@ function Maintenance() {
       <main className="container mx-auto px-4 py-8">
         <MaintenanceDepartmentDashboard />
         <MaintenanceKanbanCard />
+        <MaintenancePlanActualCard />
       </main>
     </div>
   )
