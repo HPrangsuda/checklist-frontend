@@ -183,16 +183,10 @@ export function MaintenancePlanActualCard() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await api.get('/api/maintenance/monthly-summary')
-
-      // interceptor อาจคืนหลายรูปแบบ:
-      //   Flux endpoint → array โดยตรง
-      //   interceptor unwrap → res.data หรือ res ที่เป็น array แล้ว
-      // Controller คืน ApiResponse<List<...>> → interceptor unwrap เป็น res.data
-      // เหมือน endpoint อื่นในโปรเจกต์ (response?.success / response.data)
-      const rows: MonthlySummary[] = Array.isArray((res as { data?: unknown })?.data)
-        ? (res as { data: MonthlySummary[] }).data
-        : Array.isArray(res) ? (res as MonthlySummary[]) : []
+      // Flux endpoint คืน JSON array โดยตรง
+      // interceptor ของโปรเจกต์ไม่ wrap → ใช้ res เป็น array เลย
+      const res = await api.get('/api/maintenance/monthly-summary') as unknown
+      const rows: MonthlySummary[] = Array.isArray(res) ? (res as MonthlySummary[]) : []
 
       setAllRows(rows)
       const distinct = [...new Set(rows.map(r => r.year))].sort() as number[]
