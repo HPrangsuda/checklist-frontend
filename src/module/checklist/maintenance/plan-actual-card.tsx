@@ -154,9 +154,6 @@ function MonthRow({
         <span className={`text-right ${row.totalOverdue > 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
           {row.totalOverdue || '—'}
         </span>
-        <span className="text-right text-muted-foreground">
-          {row.totalPending > 0 ? row.totalPending : '—'}
-        </span>
       </div>
 
       {expanded && hasBreakdown && <ResponsibleRows rows={row.byResponsible} />}
