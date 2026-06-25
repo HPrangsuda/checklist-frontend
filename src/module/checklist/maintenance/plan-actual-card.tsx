@@ -1,3 +1,6 @@
+// maintenance-plan-actual-card.tsx
+// Uses Recharts (already in the project) — no extra dependencies needed
+
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -186,7 +189,7 @@ export function MaintenancePlanActualCard() {
       const rows: MonthlySummary[] = res != null && typeof res === 'object' && !Array.isArray(res)
         ? Object.values(res as Record<string, MonthlySummary>)
         : Array.isArray(res) ? (res as MonthlySummary[]) : []
-      console.log('[monthly] rows:', rows.length)
+      console.log('[monthly] rows:', rows.length, 'years:', rows.map(r => r.year))
 
       setAllRows(rows)
       const distinct = [...new Set(rows.map(r => r.year))].sort() as number[]
