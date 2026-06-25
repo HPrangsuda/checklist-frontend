@@ -1,6 +1,3 @@
-// maintenance-plan-actual-card.tsx
-// Uses Recharts (already in the project) — no extra dependencies needed
-
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -184,15 +181,13 @@ export function MaintenancePlanActualCard() {
     try {
       setLoading(true)
       const res = await api.get('/api/maintenance/monthly-summary') as unknown
-      console.log('[monthly] res:', typeof res, Array.isArray(res), JSON.stringify(res)?.slice(0, 150))
       // interceptor แปลง array → object {"0":{...},"1":{...}} ใช้ Object.values() แปลงกลับ
       const rows: MonthlySummary[] = res != null && typeof res === 'object' && !Array.isArray(res)
         ? Object.values(res as Record<string, MonthlySummary>)
         : Array.isArray(res) ? (res as MonthlySummary[]) : []
-      console.log('[monthly] rows:', rows.length, 'years:', rows.map(r => r.year))
 
       setAllRows(rows)
-      const distinct = [...new Set(rows.map(r => r.year))].sort() as number[]
+      const distinct = [...new Set(rows.map(r => r.year).filter(y => y != null && !isNaN(y)))].sort() as number[]
       if (distinct.length) {
         setYears(distinct)
         setYear(distinct[distinct.length - 1])
@@ -208,10 +203,12 @@ export function MaintenancePlanActualCard() {
 
   const monthly = useMemo(() => {
     const base = buildEmpty12(year)
-    allRows.filter(r => r.year === year).forEach(r => {
-      const idx = r.month - 1
-      if (idx >= 0 && idx < 12) base[idx] = r
-    })
+    allRows
+      .filter(r => r.year === year && r.year != null && r.month != null)
+      .forEach(r => {
+        const idx = r.month - 1
+        if (idx >= 0 && idx < 12) base[idx] = r
+      })
     return base
   }, [allRows, year])
 
