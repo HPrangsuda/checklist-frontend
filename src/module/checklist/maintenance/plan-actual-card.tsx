@@ -1,6 +1,3 @@
-// maintenance-plan-actual-card.tsx
-// Uses Recharts (already in the project) — no extra dependencies needed
-
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -183,10 +180,13 @@ export function MaintenancePlanActualCard() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
-      // Flux endpoint คืน JSON array โดยตรง
-      // interceptor ของโปรเจกต์ไม่ wrap → ใช้ res เป็น array เลย
       const res = await api.get('/api/maintenance/monthly-summary') as unknown
-      const rows: MonthlySummary[] = Array.isArray(res) ? (res as MonthlySummary[]) : []
+      console.log('[monthly] res:', typeof res, Array.isArray(res), JSON.stringify(res)?.slice(0, 150))
+      // interceptor แปลง array → object {"0":{...},"1":{...}} ใช้ Object.values() แปลงกลับ
+      const rows: MonthlySummary[] = res != null && typeof res === 'object' && !Array.isArray(res)
+        ? Object.values(res as Record<string, MonthlySummary>)
+        : Array.isArray(res) ? (res as MonthlySummary[]) : []
+      console.log('[monthly] rows:', rows.length)
 
       setAllRows(rows)
       const distinct = [...new Set(rows.map(r => r.year))].sort() as number[]
@@ -268,7 +268,7 @@ export function MaintenancePlanActualCard() {
             className="rounded border px-2 py-1 text-xs"
             aria-label={t('select_year')}
           >
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
+            {years.map((y, i) => <option key={`year-${y}-${i}`} value={y}>{y}</option>)}
           </select>
         </div>
       </CardHeader>
