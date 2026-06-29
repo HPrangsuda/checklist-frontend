@@ -18,6 +18,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { PencilRuler } from 'lucide-react'
 import { CalibrationDepartmentDashboard } from '@/module/checklist/calibration/calibration-department-dashboard'
 import { CalibrationKanbanCard } from '@/module/checklist/calibration/calibrationkanbancard'
+import { CalibrationPlanActualCard } from '@/module/checklist/calibration/plan-actual-cal'
 
 export const Route = createFileRoute('/checklist/calibration/')({
   component: Calibration,
@@ -244,6 +245,7 @@ function Calibration() {
       <main className="container mx-auto px-4 py-8">
         <CalibrationDepartmentDashboard />
         <CalibrationKanbanCard />
+        <CalibrationPlanActualCard />
       </main>
     </div>
   )
