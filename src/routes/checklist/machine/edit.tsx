@@ -605,10 +605,8 @@ function MachineEdit() {
 
     const nonActive = isNonActiveStatus(formData.machineStatus)
 
-    // cancel_date: ถ้า non-active และมีค่า → ส่งตามที่กรอก; ถ้า active → null
-    const cancelDate = nonActive && formData.cancelDate
-      ? formData.cancelDate
-      : null
+    // cancel_date: set เป็น timestamp ปัจจุบันอัตโนมัติเมื่อ non-active, null เมื่อ active
+    const cancelDate = nonActive ? new Date().toISOString() : null
 
     return {
       id,
@@ -828,39 +826,19 @@ function MachineEdit() {
               required
             />
 
-            {/* ── Non-active: cancel date + reason ───────────────────────── */}
+            {/* ── Non-active: reason only ─────────────────────────────────── */}
             {isNonActiveStatus(formData.machineStatus) && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-4 space-y-3">
-                <p className="text-xs font-medium text-amber-700">
-                  สถานะที่เลือกจะทำให้ check_status เปลี่ยนเป็น <span className="font-bold">OUT OF SERVICE</span> โดยอัตโนมัติ
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* วันที่ยกเลิก */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-amber-800">
-                      {t('cancel_date') || 'วันที่ยกเลิก / วันที่มีผล'}
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.cancelDate}
-                      onChange={e => setField('cancelDate', e.target.value)}
-                      className="w-full border border-amber-300 rounded-lg px-3 py-2.5 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
-                  </div>
-                  {/* เหตุผล */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-amber-800">
-                      {t('reason_cancel') || 'เหตุผล'}
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.reasonCancel}
-                      onChange={e => setField('reasonCancel', e.target.value)}
-                      placeholder={t('reason_cancel_placeholder') || 'ระบุเหตุผล...'}
-                      className="w-full border border-amber-300 rounded-lg px-3 py-2.5 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
-                  </div>
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  {t('reason_cancel') || 'เหตุผล'}
+                </label>
+                <input
+                  type="text"
+                  value={formData.reasonCancel}
+                  onChange={e => setField('reasonCancel', e.target.value)}
+                  placeholder={t('reason_cancel_placeholder') || 'ระบุเหตุผล...'}
+                  className="w-full border border-border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
             )}
 

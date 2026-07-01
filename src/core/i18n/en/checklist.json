@@ -382,7 +382,7 @@
   "check_result_damaged": "Damaged",
   "check_result_under_repair": "Under Repair",
   "check_result_na": "N/A",
-  "cancel_date": "Cancel / Effective Date",
+  "cancel_date": "Cancel Date",
   "reason_cancel": "Reason",
   "reason_cancel_placeholder": "e.g. Beyond repair, transferred to another site"
 }
