@@ -381,5 +381,8 @@
   "check_result_cert_mismatch": "Certificate Mismatch",
   "check_result_damaged": "Damaged",
   "check_result_under_repair": "Under Repair",
-  "check_result_na": "N/A"
+  "check_result_na": "N/A",
+  "cancel_date": "Cancel / Effective Date",
+  "reason_cancel": "Reason",
+  "reason_cancel_placeholder": "e.g. Beyond repair, transferred to another site"
 }

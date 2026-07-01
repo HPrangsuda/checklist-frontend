@@ -265,6 +265,8 @@ function MachineEdit() {
     supervisor:  '', supervisorName:  '',
     manager:     '', managerName:     '',
     machineStatus: '', resetPeriod: '', note: '', calibrationStatus: '',
+    cancelDate:   '',   // วันที่ยกเลิก / โอน / ทำลาย
+    reasonCancel: '',   // เหตุผล
   })
 
   // ── Load machine data ─────────────────────────────────────────────────────
@@ -322,6 +324,8 @@ function MachineEdit() {
         resetPeriod:      machineData.resetPeriod            || '',
         note:             machineData.note                   || '',
         calibrationStatus: cal.calibrationStatus             || '',
+        cancelDate:       machineData.cancelDate             || '',
+        reasonCancel:     machineData.reasonCancel           || '',
       })
     } catch (e) {
       console.error('Error loading machine data:', e)
@@ -601,6 +605,11 @@ function MachineEdit() {
 
     const nonActive = isNonActiveStatus(formData.machineStatus)
 
+    // cancel_date: ถ้า non-active และมีค่า → ส่งตามที่กรอก; ถ้า active → null
+    const cancelDate = nonActive && formData.cancelDate
+      ? formData.cancelDate
+      : null
+
     return {
       id,
       machineName:           formData.name,
@@ -621,9 +630,9 @@ function MachineEdit() {
       managerName:           formData.managerName     || null,
       machineStatus:         formData.machineStatus   || null,
       // ── Force OUT OF SERVICE on the client side as well (defence-in-depth) ──
-      // Backend will also enforce this; we send it explicitly so the value is
-      // visible in request payloads during debugging.
       checkStatus:           nonActive ? 'OUT OF SERVICE' : undefined,
+      cancelDate:            cancelDate,
+      reasonCancel:          nonActive ? (formData.reasonCancel || null) : null,
       resetPeriod:           formData.resetPeriod       || null,
       maintenancePeriod:     formData.maintenancePeriod || null,
       note:                  formData.note              || null,
@@ -819,11 +828,40 @@ function MachineEdit() {
               required
             />
 
-            {/* Hint when a non-active status is selected */}
+            {/* ── Non-active: cancel date + reason ───────────────────────── */}
             {isNonActiveStatus(formData.machineStatus) && (
-              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                {t('non_active_status_hint') || 'Check status will be set to OUT OF SERVICE automatically.'}
-              </p>
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-4 space-y-3">
+                <p className="text-xs font-medium text-amber-700">
+                  สถานะที่เลือกจะทำให้ check_status เปลี่ยนเป็น <span className="font-bold">OUT OF SERVICE</span> โดยอัตโนมัติ
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* วันที่ยกเลิก */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-amber-800">
+                      {t('cancel_date') || 'วันที่ยกเลิก / วันที่มีผล'}
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.cancelDate}
+                      onChange={e => setField('cancelDate', e.target.value)}
+                      className="w-full border border-amber-300 rounded-lg px-3 py-2.5 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                  {/* เหตุผล */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-amber-800">
+                      {t('reason_cancel') || 'เหตุผล'}
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.reasonCancel}
+                      onChange={e => setField('reasonCancel', e.target.value)}
+                      placeholder={t('reason_cancel_placeholder') || 'ระบุเหตุผล...'}
+                      className="w-full border border-amber-300 rounded-lg px-3 py-2.5 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                </div>
+              </div>
             )}
 
             <div className="space-y-1.5">
