@@ -77,8 +77,8 @@ function CalibrationEdit() {
   })
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
-  const { t }   = useTranslation()
-  const router  = useRouter()
+  const { t }  = useTranslation('checklist')
+  const router = useRouter()
 
   // ─── File upload state ─────────────────────────────────────────────────────
   const [newFiles,         setNewFiles]         = useState<File[]>([])
@@ -102,15 +102,15 @@ function CalibrationEdit() {
         const data = response.data || response
         const attachments = parseAttachments(data.attachment)
         setUploadedFiles(attachments)
-        uploadedFilesRef.current = attachments  // sync ref immediately
+        uploadedFilesRef.current = attachments
         const { attachment, ...rest } = data
         setFormData(rest)
       } else {
-        toast.error(t('Failed to load calibration details'))
+        toast.error(t('failed_to_load_calibration'))
       }
     } catch (error) {
       console.error('Fetch error:', error)
-      toast.error(t('Failed to load calibration details'))
+      toast.error(t('failed_to_load_calibration'))
     } finally {
       setLoading(false)
     }
@@ -133,14 +133,12 @@ function CalibrationEdit() {
     if (fileTimeoutRef.current) clearTimeout(fileTimeoutRef.current)
 
     fileTimeoutRef.current = setTimeout(() => {
-      // ✅ เพิ่มเงื่อนไขเช็คก่อน เหมือน machine pattern
       if (!realFiles.length || isUploadingFiles) return
 
       const current = uploadedFilesRef.current
       const toUpload = realFiles.filter(f => {
         const key = `${f.name}-${f.size}-${f.lastModified}`
         if (fileQueueRef.current.has(key)) return false
-        // ✅ แก้จาก .includes(f.name) → exact match เพื่อป้องกัน false positive
         if (current.some(uf => uf.fileName === f.name)) return false
         fileQueueRef.current.add(key)
         return true
@@ -161,10 +159,10 @@ function CalibrationEdit() {
           }
           if (results.length) {
             setUploadedFiles(prev => [...prev, ...results])
-            toast.success(`${results.length} file(s) uploaded`)
+            toast.success(t('files_uploaded').replace('{count}', String(results.length)))
           }
         } catch {
-          toast.error('Failed to upload files')
+          toast.error(t('failed_to_upload_files'))
         } finally {
           toUpload.forEach(f =>
             fileQueueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`)
@@ -178,7 +176,7 @@ function CalibrationEdit() {
   const handleDownloadFile = (file: any) => {
     const name = file?.fileName || file?.name
     if (name) window.open(`${import.meta.env.VITE_API_URL}/api/files/download/${name}`, '_blank')
-    else toast.error('File not found')
+    else toast.error(t('file_not_found'))
   }
 
   const handleDeleteFile = async (fileId: any) => {
@@ -187,9 +185,9 @@ function CalibrationEdit() {
     try {
       await api.delete(`/api/files/delete/${f.fileName}`)
       setUploadedFiles(prev => prev.filter(u => u.fileName !== f.fileName))
-      toast.success('File deleted')
+      toast.success(t('file_deleted'))
     } catch {
-      toast.error('Failed to delete file')
+      toast.error(t('failed_to_delete_file'))
     }
   }
 
@@ -208,14 +206,14 @@ function CalibrationEdit() {
       }
       const response = await api.put(`/api/calibration/update`, payload)
       if (response) {
-        toast.success(t('Calibration updated successfully'))
+        toast.success(t('calibration_updated'))
         router.navigate({ to: '/checklist/calibration/view', search: { id } })
       } else {
-        toast.error(t('Failed to update calibration'))
+        toast.error(t('failed_to_update_calibration'))
       }
     } catch (error) {
       console.error('Update error:', error)
-      toast.error(t('Failed to update calibration'))
+      toast.error(t('failed_to_update_calibration'))
     } finally {
       setSaving(false)
     }
@@ -254,11 +252,12 @@ function CalibrationEdit() {
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" onClick={handleCancel} disabled={saving}>
-              <X className="h-4 w-4 mr-2" />Cancel
+              <X className="h-4 w-4 mr-2" />
+              {t('cancel')}
             </Button>
             <Button onClick={handleSubmit} disabled={saving}>
               <Save className="h-4 w-4 mr-2" />
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? t('saving') : t('save_changes')}
             </Button>
           </div>
         </div>
@@ -272,7 +271,8 @@ function CalibrationEdit() {
           <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-foreground font-semibold">
               <PencilRuler className="h-5 w-5 text-primary" />
-              Calibration Details {formData.years && `- ${formData.years}`}
+              {t('calibration_information')}
+              {formData.years ? ` - ${formData.years}` : ''}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 pt-2">
@@ -280,7 +280,8 @@ function CalibrationEdit() {
 
               <div className="space-y-2">
                 <DatePickerField
-                  id="dueDate" label="Due Date"
+                  id="dueDate"
+                  label={t('due_date')}
                   value={formData.dueDate ? new Date(formData.dueDate) : null}
                   onChange={(date) => {
                     const isoDate = date ? date.toISOString().split('T')[0] : ''
@@ -288,7 +289,7 @@ function CalibrationEdit() {
                     if (formData.certificateDate && isoDate) {
                       if (new Date(formData.certificateDate) > new Date(isoDate)) {
                         handleInputChange('calibrationStatus', 'Overdue')
-                        toast.warning('Certificate date exceeds new due date. Status updated to Overdue.')
+                        toast.warning(t('cert_exceeds_due_date'))
                       } else if (formData.calibrationStatus === 'Overdue') {
                         handleInputChange('calibrationStatus', 'On Time')
                       }
@@ -299,7 +300,8 @@ function CalibrationEdit() {
 
               <div className="space-y-2">
                 <DatePickerField
-                  id="certificateDate" label="Certificate Date"
+                  id="certificateDate"
+                  label={t('certificate_date')}
                   value={formData.certificateDate ? new Date(formData.certificateDate) : null}
                   onChange={(date) => {
                     const isoDate = date ? date.toISOString().split('T')[0] : ''
@@ -307,7 +309,7 @@ function CalibrationEdit() {
                     if (formData.dueDate && isoDate) {
                       if (new Date(isoDate) > new Date(formData.dueDate)) {
                         handleInputChange('calibrationStatus', 'Overdue')
-                        toast.warning('Certificate date exceeds due date. Status changed to Overdue.', { duration: 4000 })
+                        toast.warning(t('cert_exceeds_due_date'), { duration: 4000 })
                       } else if (formData.calibrationStatus === 'Overdue') {
                         handleInputChange('calibrationStatus', 'On Time')
                       }
@@ -317,39 +319,43 @@ function CalibrationEdit() {
               </div>
 
               <div className="space-y-2">
-                <Label>Results</Label>
+                <Label>{t('results')}</Label>
                 <Select value={formData.results || ''} onValueChange={v => handleInputChange('results', v)}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('please_select')} />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Pass">Pass</SelectItem>
-                    <SelectItem value="Not Pass">Not Pass</SelectItem>
+                    <SelectItem value="Pass">{t('status_pass')}</SelectItem>
+                    <SelectItem value="Not Pass">{t('status_not_pass')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label>Status</Label>
+                <Label>{t('calibration_status')}</Label>
                 <Select value={formData.calibrationStatus || ''} onValueChange={v => handleInputChange('calibrationStatus', v)}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('please_select')} />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="On Time">On Time</SelectItem>
-                    <SelectItem value="Overdue">Overdue</SelectItem>
+                    <SelectItem value="On Time">{t('status_on_time')}</SelectItem>
+                    <SelectItem value="Overdue">{t('status_overdue')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {([
-                { id: 'criteria',            label: 'Criteria' },
-                { id: 'accuracy',            label: 'Accuracy' },
-                { id: 'measuringRange',      label: 'Measuring Range' },
-                { id: 'calibrationRange',    label: 'Calibration Range' },
-                { id: 'resolution',          label: 'Resolution' },
-                { id: 'mpe',                 label: 'MPE' },
-                { id: 'maxUncertainty',      label: 'Max Uncertainty' },
-                { id: 'permissibleCapacity', label: 'Permissible Capacity' },
-              ] as const).map(({ id: fid, label }) => (
+                { id: 'criteria',            labelKey: 'criteria' },
+                { id: 'accuracy',            labelKey: 'accuracy' },
+                { id: 'measuringRange',      labelKey: 'measuring_range' },
+                { id: 'calibrationRange',    labelKey: 'calibration_range' },
+                { id: 'resolution',          labelKey: 'resolution' },
+                { id: 'mpe',                 labelKey: 'mpe' },
+                { id: 'maxUncertainty',      labelKey: 'max_uncertainty' },
+                { id: 'permissibleCapacity', labelKey: 'permissible_capacity' },
+              ] as const).map(({ id: fid, labelKey }) => (
                 <div key={fid} className="space-y-2">
-                  <Label htmlFor={fid}>{label}</Label>
+                  <Label htmlFor={fid}>{t(labelKey)}</Label>
                   <Input
                     id={fid}
                     value={(formData as any)[fid] || ''}
@@ -361,14 +367,14 @@ function CalibrationEdit() {
 
             <div className="grid grid-cols-1 gap-6 pt-6">
               {([
-                { id: 'note',          label: 'Note',            placeholder: 'Enter additional notes...' },
-                { id: 'comment',       label: 'Comment',         placeholder: 'Enter comments...' },
-                { id: 'reasonNotPass', label: 'Reason Not Pass', placeholder: 'Enter reason for not passing...' },
-              ] as const).map(({ id: fid, label, placeholder }) => (
+                { id: 'note',          labelKey: 'note',          placeholderKey: 'note_placeholder' },
+                { id: 'comment',       labelKey: 'comment',       placeholderKey: 'comment_placeholder' },
+                { id: 'reasonNotPass', labelKey: 'reason_not_pass', placeholderKey: 'reason_not_pass_placeholder' },
+              ] as const).map(({ id: fid, labelKey, placeholderKey }) => (
                 <div key={fid} className="space-y-2">
-                  <Label htmlFor={fid}>{label}</Label>
+                  <Label htmlFor={fid}>{t(labelKey)}</Label>
                   <Textarea
-                    id={fid} rows={4} placeholder={placeholder}
+                    id={fid} rows={4} placeholder={t(placeholderKey)}
                     value={(formData as any)[fid] || ''}
                     onChange={e => handleInputChange(fid as keyof CalibrationFormData, e.target.value)}
                   />
@@ -382,48 +388,55 @@ function CalibrationEdit() {
         <Card className="bg-card border-border">
           <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-foreground font-semibold">
-              <CheckCircle2 className="h-5 w-5 text-success" />Check Results
+              <CheckCircle2 className="h-5 w-5 text-success" />
+              {t('check_results')}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 pt-2">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
               <div className="space-y-2">
-                <Label>Check MPE</Label>
+                <Label>{t('check_mpe')}</Label>
                 <Select value={formData.checkMpe || ''} onValueChange={v => handleInputChange('checkMpe', v)}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('please_select')} />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Pass">Pass</SelectItem>
-                    <SelectItem value="Not Pass">Failed</SelectItem>
+                    <SelectItem value="Pass">{t('status_pass')}</SelectItem>
+                    <SelectItem value="Not Pass">{t('check_failed')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label>Check Resolution</Label>
+                <Label>{t('check_resolution')}</Label>
                 <Select value={formData.checkResolution || ''} onValueChange={v => handleInputChange('checkResolution', v)}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('please_select')} />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Pass">Pass</SelectItem>
-                    <SelectItem value="Not Pass">Failed</SelectItem>
-                    <SelectItem value="Pass Only 3">Pass Only 3</SelectItem>
-                    <SelectItem value="Pass Only 5">Pass Only 5</SelectItem>
+                    <SelectItem value="Pass">{t('status_pass')}</SelectItem>
+                    <SelectItem value="Not Pass">{t('check_failed')}</SelectItem>
+                    <SelectItem value="Pass Only 3">{t('check_pass_only_3')}</SelectItem>
+                    <SelectItem value="Pass Only 5">{t('check_pass_only_5')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label>Check Result</Label>
+                <Label>{t('check_result')}</Label>
                 <Select value={formData.checkResult || ''} onValueChange={v => handleInputChange('checkResult', v)}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Select status" /></SelectTrigger>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('please_select')} />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="OPERATIONAL">Operational</SelectItem>
-                    <SelectItem value="DECOMMISSIONED">Decommissioned</SelectItem>
-                    <SelectItem value="LIMITED USE">Limited Use</SelectItem>
-                    <SelectItem value="CERTIFICATE MISMATCH">Certificate Mismatch</SelectItem>
-                    <SelectItem value="DAMAGED">Damaged</SelectItem>
-                    <SelectItem value="UNDER REPAIR">Under Repair</SelectItem>
-                    <SelectItem value="N/A">N/A</SelectItem>
+                    <SelectItem value="OPERATIONAL">{t('check_result_operational')}</SelectItem>
+                    <SelectItem value="DECOMMISSIONED">{t('check_result_decommissioned')}</SelectItem>
+                    <SelectItem value="LIMITED USE">{t('check_result_limited_use')}</SelectItem>
+                    <SelectItem value="CERTIFICATE MISMATCH">{t('check_result_cert_mismatch')}</SelectItem>
+                    <SelectItem value="DAMAGED">{t('check_result_damaged')}</SelectItem>
+                    <SelectItem value="UNDER REPAIR">{t('check_result_under_repair')}</SelectItem>
+                    <SelectItem value="N/A">{t('check_result_na')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -436,12 +449,13 @@ function CalibrationEdit() {
         <Card className="bg-card border-border">
           <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-foreground font-semibold">
-              <FileText className="h-5 w-5 text-primary" />Attachments
+              <FileText className="h-5 w-5 text-primary" />
+              {t('attachments')}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 pt-2">
             <div className="space-y-2">
-              <Label>Attachment</Label>
+              <Label>{t('attachment')}</Label>
               <FileUploadField
                 id="attachments"
                 maxFiles={10}
@@ -457,11 +471,11 @@ function CalibrationEdit() {
                 onDownloadFile={handleDownloadFile}
                 onDeleteUploadedFile={handleDeleteFile}
                 onFileReject={(file, message) =>
-                  toast.error(message, { description: `"${file.name}" could not be uploaded` })
+                  toast.error(message, { description: `"${file.name}" ${t('could_not_be_uploaded')}` })
                 }
               />
               {isUploadingFiles && (
-                <p className="text-sm text-muted-foreground animate-pulse">Uploading...</p>
+                <p className="text-sm text-muted-foreground animate-pulse">{t('uploading')}</p>
               )}
             </div>
           </CardContent>
@@ -470,11 +484,12 @@ function CalibrationEdit() {
         {/* Mobile Actions */}
         <div className="md:hidden flex gap-3">
           <Button type="button" variant="outline" onClick={handleCancel} disabled={saving} className="flex-1">
-            <X className="h-4 w-4 mr-2" />Cancel
+            <X className="h-4 w-4 mr-2" />
+            {t('cancel')}
           </Button>
           <Button type="submit" disabled={saving} className="flex-1">
             <Save className="h-4 w-4 mr-2" />
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? t('saving') : t('save')}
           </Button>
         </div>
 

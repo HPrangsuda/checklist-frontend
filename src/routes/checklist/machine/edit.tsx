@@ -12,6 +12,8 @@ import { toast } from 'sonner'
 import { X, Plus, Search, Check } from 'lucide-react'
 import { useAuth } from '@/core/contexts/auth-context'
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface FileUploadResponse {
   fileName:    string
   fileUrl:     string
@@ -38,6 +40,15 @@ interface QuestionOption {
 
 type MachineEditSearch = { id: number }
 
+// ─── Active statuses — must stay in sync with backend ACTIVE_STATUSES ─────────
+const ACTIVE_STATUSES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER MAINTENANCE'] as const
+type ActiveStatus = (typeof ACTIVE_STATUSES)[number]
+
+const isNonActiveStatus = (status: string): boolean =>
+  !!status && !(ACTIVE_STATUSES as readonly string[]).includes(status)
+
+// ─── Route ────────────────────────────────────────────────────────────────────
+
 export const Route = createFileRoute('/checklist/machine/edit')({
   component: MachineEdit,
   validateSearch: (search: Record<string, unknown>): MachineEditSearch => ({
@@ -55,12 +66,16 @@ export const Route = createFileRoute('/checklist/machine/edit')({
   },
 })
 
+// ─── Form steps ───────────────────────────────────────────────────────────────
+
 const formSteps: FormStep[] = [
   { id: 'general',     title: 'General',     description: 'Basic information',       required: true  },
   { id: 'checklist',   title: 'Checklist',   description: 'Checklist questions',     required: false },
   { id: 'maintenance', title: 'Maintenance', description: 'Maintenance information', required: false },
   { id: 'calibration', title: 'Calibration', description: 'Calibration information', required: false },
 ]
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ReadOnlyField({ label, value }: { label: string; value?: string | null }) {
   return (
@@ -73,7 +88,13 @@ function ReadOnlyField({ label, value }: { label: string; value?: string | null 
   )
 }
 
-function QuestionPicker({ onAdd, existingQuestionIds }: { onAdd: (q: QuestionOption) => void; existingQuestionIds: number[] }) {
+function QuestionPicker({
+  onAdd,
+  existingQuestionIds,
+}: {
+  onAdd: (q: QuestionOption) => void
+  existingQuestionIds: number[]
+}) {
   const [open,    setOpen]    = useState(false)
   const [keyword, setKeyword] = useState('')
   const [items,   setItems]   = useState<QuestionOption[]>([])
@@ -88,58 +109,96 @@ function QuestionPicker({ onAdd, existingQuestionIds }: { onAdd: (q: QuestionOpt
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  useEffect(() => { if (!open) return; fetchQuestions(keyword) }, [open, keyword])
+  useEffect(() => {
+    if (!open) return
+    fetchQuestions(keyword)
+  }, [open, keyword])
 
   const fetchQuestions = async (kw: string) => {
     setLoading(true)
     try {
-      const params: any = { index: 0, size: 50 }
+      const params: Record<string, unknown> = { index: 0, size: 50 }
       if (kw.trim()) params.keyword = kw.trim()
       const res = await api.getInstance().get<any>('/api/question/get/page', { params })
-      setItems((res.data?.data ?? []).map((q: any) => ({ id: q.id, detail: q.detail, description: q.description ?? '' })))
-    } catch { toast.error('Failed to fetch questions') }
-    finally { setLoading(false) }
+      setItems(
+        (res.data?.data ?? []).map((q: any) => ({
+          id:          q.id,
+          detail:      q.detail,
+          description: q.description ?? '',
+        })),
+      )
+    } catch {
+      toast.error('Failed to fetch questions')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-dashed border-primary text-primary hover:bg-primary/5 transition">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-dashed border-primary text-primary hover:bg-primary/5 transition"
+      >
         <Plus className="h-4 w-4" /> Add Question
       </button>
+
       {open && (
         <div className="absolute left-0 top-full mt-1 z-50 w-[420px] rounded-xl border bg-background shadow-lg overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2 border-b">
             <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <input autoFocus value={keyword} onChange={e => setKeyword(e.target.value)}
+            <input
+              autoFocus
+              value={keyword}
+              onChange={e => setKeyword(e.target.value)}
               placeholder="Search question..."
-              className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground" />
+              className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+            />
           </div>
           <div className="max-h-64 overflow-y-auto divide-y">
-            {loading && <div className="px-3 py-3 text-sm text-muted-foreground text-center">Loading...</div>}
-            {!loading && items.length === 0 && <div className="px-3 py-3 text-sm text-muted-foreground text-center">No results</div>}
-            {!loading && items.map(q => {
-              const already = existingQuestionIds.includes(q.id)
-              return (
-                <button key={q.id} type="button" disabled={already}
-                  onClick={() => { if (!already) { onAdd(q); setOpen(false) } }}
-                  className={`w-full text-left px-3 py-2.5 transition ${already ? 'opacity-40 cursor-not-allowed' : 'hover:bg-muted cursor-pointer'}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium line-clamp-1">{q.detail}</p>
-                      {q.description && <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{q.description}</p>}
+            {loading && (
+              <div className="px-3 py-3 text-sm text-muted-foreground text-center">Loading...</div>
+            )}
+            {!loading && items.length === 0 && (
+              <div className="px-3 py-3 text-sm text-muted-foreground text-center">No results</div>
+            )}
+            {!loading &&
+              items.map(q => {
+                const already = existingQuestionIds.includes(q.id)
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    disabled={already}
+                    onClick={() => {
+                      if (!already) {
+                        onAdd(q)
+                        setOpen(false)
+                      }
+                    }}
+                    className={`w-full text-left px-3 py-2.5 transition ${already ? 'opacity-40 cursor-not-allowed' : 'hover:bg-muted cursor-pointer'}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium line-clamp-1">{q.detail}</p>
+                        {q.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{q.description}</p>
+                        )}
+                      </div>
+                      {already && <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />}
                     </div>
-                    {already && <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />}
-                  </div>
-                </button>
-              )
-            })}
+                  </button>
+                )
+              })}
           </div>
         </div>
       )}
     </div>
   )
 }
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 function MachineEdit() {
   const navigate        = useNavigate()
@@ -148,18 +207,22 @@ function MachineEdit() {
   const { t }           = useTranslation('checklist')
   const { role }        = useAuth()
 
+  // ── Machine status options (role-gated) ──────────────────────────────────
   const machineStatusOptions = [
     { value: 'OPERATIONAL',       label: t('status_operational')       },
     { value: 'NON-OPERATIONAL',   label: t('status_non_operational')   },
     { value: 'UNDER MAINTENANCE', label: t('status_under_maintenance') },
-    ...(role === 'ADMIN' ? [
-      { value: 'CANCELED',  label: t('status_canceled')  },
-      { value: 'TRANSFER',  label: t('status_transfer')  },
-      { value: 'SCRAPPED',  label: t('status_scrapped')  },
-      { value: 'NOT FOUND', label: t('status_not_found') },
-    ] : []),
+    ...(role === 'ADMIN'
+      ? [
+          { value: 'CANCELED',  label: t('status_canceled')  },
+          { value: 'TRANSFER',  label: t('status_transfer')  },
+          { value: 'SCRAPPED',  label: t('status_scrapped')  },
+          { value: 'NOT FOUND', label: t('status_not_found') },
+        ]
+      : []),
   ]
 
+  // ── State ─────────────────────────────────────────────────────────────────
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentStep,  setCurrentStep]  = useState('general')
   const [errors,       setErrors]       = useState<Record<string, string>>({})
@@ -169,9 +232,9 @@ function MachineEdit() {
   const [cachedSupervisor,  setCachedSupervisor]  = useState<any[]>([])
   const [cachedManager,     setCachedManager]     = useState<any[]>([])
 
-  const [checklists,       setChecklists]       = useState<ChecklistQuestion[]>([])
-  const [checklistLoading, setChecklistLoading] = useState(false)
-  const [deletingIds,      setDeletingIds]      = useState<number[]>([])
+  const [checklists,            setChecklists]            = useState<ChecklistQuestion[]>([])
+  const [checklistLoading,      setChecklistLoading]      = useState(false)
+  const [deletingIds,           setDeletingIds]           = useState<number[]>([])
   const [maintChecklists,       setMaintChecklists]       = useState<ChecklistQuestion[]>([])
   const [maintChecklistLoading, setMaintChecklistLoading] = useState(false)
   const [maintDeletingIds,      setMaintDeletingIds]      = useState<number[]>([])
@@ -183,8 +246,8 @@ function MachineEdit() {
 
   const imageQueueRef   = useRef<Set<string>>(new Set())
   const instrQueueRef   = useRef<Set<string>>(new Set())
-  const imageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const instrTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const imageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const instrTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const uploadedImagesRef       = useRef<FileUploadResponse[]>([])
   const uploadedInstructionsRef = useRef<FileUploadResponse[]>([])
 
@@ -204,20 +267,27 @@ function MachineEdit() {
     machineStatus: '', resetPeriod: '', note: '', calibrationStatus: '',
   })
 
+  // ── Load machine data ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!machineData) return
     setIsLoading(true)
     try {
       setUploadedImages(parseFiles(machineData.image))
       setUploadedInstructions(parseFiles(machineData.workInstruction))
+
       const maintenanceData: Record<string, string> = {}
       const maintList = machineData.maintenanceRecords || machineData.maintenanceList || []
       if (Array.isArray(maintList)) {
-        ;[...maintList].sort((a: any, b: any) => (a.round ?? 0) - (b.round ?? 0))
-          .forEach((m: any, i: number) => { if (m.dueDate) maintenanceData[`maintenance${i + 1}`] = m.dueDate })
+        ;[...maintList]
+          .sort((a: any, b: any) => (a.round ?? 0) - (b.round ?? 0))
+          .forEach((m: any, i: number) => {
+            if (m.dueDate) maintenanceData[`maintenance${i + 1}`] = m.dueDate
+          })
       }
+
       const calList = machineData.calibrationRecords || machineData.calibration || []
       const cal = Array.isArray(calList) ? (calList[0] ?? {}) : (calList ?? {})
+
       setFormData({
         name:              machineData.machineName           || '',
         machineCode:       machineData.machineCode           || '',
@@ -242,7 +312,7 @@ function MachineEdit() {
         measuringRange:      cal.measuringRange              || '',
         accuracy:            cal.accuracy                    || '',
         calibrationRange:    cal.calibrationRange            || '',
-        responsible:      String(machineData.responsiblePersonId   || ''),
+        responsible:      String(machineData.responsiblePersonId || ''),
         responsibleName:  machineData.responsiblePersonName  || '',
         supervisor:       String(machineData.supervisorId    || ''),
         supervisorName:   machineData.supervisorName         || '',
@@ -261,7 +331,7 @@ function MachineEdit() {
     }
   }, [machineData])
 
-  // ── หลัง load ข้อมูลเสร็จ → fetch members แล้ว resolve ชื่อ supervisor/manager ──
+  // ── Resolve supervisor/manager names after initial load ───────────────────
   useEffect(() => {
     if (isLoading) return
     const init = async () => {
@@ -272,7 +342,6 @@ function MachineEdit() {
       let mgrMembers = cachedManager
       if (!mgrMembers.length) { const r = await fetchManager('', 0); mgrMembers = r.data }
 
-      // ถ้ามี ID แต่ยังไม่มีชื่อ → resolve จาก cache
       setFormData(prev => {
         const supName = prev.supervisorName || supMembers.find(m => String(m.value) === prev.supervisor)?.fullName || ''
         const mgrName = prev.managerName    || mgrMembers.find(m => String(m.value) === prev.manager)?.fullName    || ''
@@ -283,69 +352,124 @@ function MachineEdit() {
     init()
   }, [isLoading])
 
+  // ── Fetch checklist when step changes ─────────────────────────────────────
   useEffect(() => {
-    if (currentStep === 'checklist' && machineData?.machineCode) fetchChecklist()
-    if (currentStep === 'maintenance' && formData.machineCode)   fetchMaintChecklist()
+    if (currentStep === 'checklist'   && machineData?.machineCode) fetchChecklist()
+    if (currentStep === 'maintenance' && formData.machineCode)     fetchMaintChecklist()
   }, [currentStep])
+
+  // ─── Checklist ─────────────────────────────────────────────────────────────
 
   const fetchChecklist = async () => {
     setChecklistLoading(true)
     try {
-      const res = await api.getInstance().get<any>(`/api/machine-checklist/by-machine`, { params: { machineCode: machineData.machineCode } })
-      setChecklists((res.data?.data ?? []).map((item: any) => ({
-        id: item.id, questionId: item.questionId,
-        detail: item.question?.detail ?? '', description: item.question?.description ?? '',
-        resetTime: item.resetTime ?? '', isChoice: item.isChoice ?? false, checkStatus: item.checkStatus ?? false,
-      })))
-    } catch { toast.error('Failed to load checklist') }
-    finally { setChecklistLoading(false) }
+      const res = await api.getInstance().get<any>(`/api/machine-checklist/by-machine`, {
+        params: { machineCode: machineData.machineCode },
+      })
+      setChecklists(
+        (res.data?.data ?? []).map((item: any) => ({
+          id:          item.id,
+          questionId:  item.questionId,
+          detail:      item.question?.detail      ?? '',
+          description: item.question?.description ?? '',
+          resetTime:   item.resetTime  ?? '',
+          isChoice:    item.isChoice   ?? false,
+          checkStatus: item.checkStatus ?? false,
+        })),
+      )
+    } catch {
+      toast.error('Failed to load checklist')
+    } finally {
+      setChecklistLoading(false)
+    }
   }
 
   const handleAddQuestion = async (q: QuestionOption) => {
     try {
-      await api.getInstance().post('/api/machine-checklist', { machineCode: machineData.machineCode, questionId: q.id, isChoice: false, checkStatus: false, resetTime: '0 0 0 * * 1' })
-      toast.success('Question added'); fetchChecklist()
-    } catch (error: any) { toast.error(error?.response?.data?.detail ?? error?.response?.data?.message ?? 'Failed to add question') }
+      await api.getInstance().post('/api/machine-checklist', {
+        machineCode: machineData.machineCode,
+        questionId:  q.id,
+        isChoice:    false,
+        checkStatus: false,
+        resetTime:   '0 0 0 * * 1',
+      })
+      toast.success('Question added')
+      fetchChecklist()
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail ?? error?.response?.data?.message ?? 'Failed to add question')
+    }
   }
 
   const handleDeleteChecklist = async (rowId: number) => {
     setDeletingIds(prev => [...prev, rowId])
     try {
       await api.getInstance().delete('/api/machine-checklist', { data: [rowId] })
-      setChecklists(prev => prev.filter(c => c.id !== rowId)); toast.success('Removed')
-    } catch (error: any) { toast.error(error?.response?.data?.detail ?? error?.response?.data?.message ?? 'Failed to remove') }
-    finally { setDeletingIds(prev => prev.filter(i => i !== rowId)) }
+      setChecklists(prev => prev.filter(c => c.id !== rowId))
+      toast.success('Removed')
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail ?? error?.response?.data?.message ?? 'Failed to remove')
+    } finally {
+      setDeletingIds(prev => prev.filter(i => i !== rowId))
+    }
   }
+
+  // ─── Maintenance checklist ─────────────────────────────────────────────────
 
   const fetchMaintChecklist = async () => {
     setMaintChecklistLoading(true)
     try {
-      const res = await api.getInstance().get<any>(`/api/maintenance-checklist/by-machine`, { params: { machineCode: formData.machineCode } })
+      const res = await api.getInstance().get<any>(`/api/maintenance-checklist/by-machine`, {
+        params: { machineCode: formData.machineCode },
+      })
       const list = Array.isArray(res.data) ? res.data : []
-      setMaintChecklists(list.map((item: any) => ({
-        id: item.id, questionId: item.questionId,
-        detail: item.question?.detail ?? '', description: item.question?.description ?? '',
-        resetTime: item.resetTime ?? '', isChoice: item.isChoice ?? false, checkStatus: item.checkStatus ?? false,
-      })))
-    } catch { toast.error('Failed to load maintenance checklist') }
-    finally { setMaintChecklistLoading(false) }
+      setMaintChecklists(
+        list.map((item: any) => ({
+          id:          item.id,
+          questionId:  item.questionId,
+          detail:      item.question?.detail      ?? '',
+          description: item.question?.description ?? '',
+          resetTime:   item.resetTime  ?? '',
+          isChoice:    item.isChoice   ?? false,
+          checkStatus: item.checkStatus ?? false,
+        })),
+      )
+    } catch {
+      toast.error('Failed to load maintenance checklist')
+    } finally {
+      setMaintChecklistLoading(false)
+    }
   }
 
   const handleAddMaintQuestion = async (q: QuestionOption) => {
     try {
-      await api.getInstance().post('/api/maintenance-checklist', { machineCode: formData.machineCode, questionId: q.id, isChoice: false, checkStatus: false, resetTime: '0 0 0 * * 1' })
-      toast.success('Question added'); fetchMaintChecklist()
-    } catch (error: any) { toast.error(error?.response?.data?.detail ?? error?.response?.data?.message ?? 'Failed to add question') }
+      await api.getInstance().post('/api/maintenance-checklist', {
+        machineCode: formData.machineCode,
+        questionId:  q.id,
+        isChoice:    false,
+        checkStatus: false,
+        resetTime:   '0 0 0 * * 1',
+      })
+      toast.success('Question added')
+      fetchMaintChecklist()
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail ?? error?.response?.data?.message ?? 'Failed to add question')
+    }
   }
 
   const handleDeleteMaintChecklist = async (rowId: number) => {
     setMaintDeletingIds(prev => [...prev, rowId])
     try {
       await api.getInstance().delete('/api/maintenance-checklist', { data: [rowId] })
-      setMaintChecklists(prev => prev.filter(c => c.id !== rowId)); toast.success('Removed')
-    } catch (error: any) { toast.error(error?.response?.data?.detail ?? error?.response?.data?.message ?? 'Failed to remove') }
-    finally { setMaintDeletingIds(prev => prev.filter(i => i !== rowId)) }
+      setMaintChecklists(prev => prev.filter(c => c.id !== rowId))
+      toast.success('Removed')
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail ?? error?.response?.data?.message ?? 'Failed to remove')
+    } finally {
+      setMaintDeletingIds(prev => prev.filter(i => i !== rowId))
+    }
   }
+
+  // ─── File upload ───────────────────────────────────────────────────────────
 
   const parseFiles = (raw?: string | null): FileUploadResponse[] => {
     if (!raw) return []
@@ -356,7 +480,9 @@ function MachineEdit() {
   const uploadFile = async (file: File): Promise<FileUploadResponse> => {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await api.post<{ data: FileUploadResponse }>('/api/files/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const res = await api.post<{ data: FileUploadResponse }>('/api/files/upload', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
     return res.data
   }
 
@@ -371,44 +497,66 @@ function MachineEdit() {
       const key = `${f.name}-${f.size}-${f.lastModified}`
       if (queueRef.current.has(key)) return false
       if (uploadedRef.current.some(uf => uf.fileName.includes(f.name))) return false
-      queueRef.current.add(key); return true
+      queueRef.current.add(key)
+      return true
     })
     if (!newFiles.length) return
     setUploading(true)
     try {
       const results: FileUploadResponse[] = []
-      for (const file of newFiles) { try { results.push(await uploadFile(file)) } catch {} }
-      if (results.length) { setUploaded(prev => [...prev, ...results]); toast.success(t('files_uploaded').replace('{count}', String(results.length))) }
-    } catch { toast.error(t('failed_to_upload_files')) }
-    finally { newFiles.forEach(f => queueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`)); setUploading(false) }
+      for (const file of newFiles) {
+        try { results.push(await uploadFile(file)) } catch {}
+      }
+      if (results.length) {
+        setUploaded(prev => [...prev, ...results])
+        toast.success(t('files_uploaded').replace('{count}', String(results.length)))
+      }
+    } catch {
+      toast.error(t('failed_to_upload_files'))
+    } finally {
+      newFiles.forEach(f => queueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`))
+      setUploading(false)
+    }
   }
 
   const handleImagesChange = (files: File[]) => {
     if (imageTimeoutRef.current) clearTimeout(imageTimeoutRef.current)
     imageTimeoutRef.current = setTimeout(() => {
-      if (files?.length && !isUploadingImages) handleFileUpload(files, uploadedImagesRef, setUploadedImages, imageQueueRef, setIsUploadingImages)
+      if (files?.length && !isUploadingImages)
+        handleFileUpload(files, uploadedImagesRef, setUploadedImages, imageQueueRef, setIsUploadingImages)
     }, 100)
   }
 
   const handleInstructionsChange = (files: File[]) => {
     if (instrTimeoutRef.current) clearTimeout(instrTimeoutRef.current)
     instrTimeoutRef.current = setTimeout(() => {
-      if (files?.length && !isUploadingInstr) handleFileUpload(files, uploadedInstructionsRef, setUploadedInstructions, instrQueueRef, setIsUploadingInstr)
+      if (files?.length && !isUploadingInstr)
+        handleFileUpload(files, uploadedInstructionsRef, setUploadedInstructions, instrQueueRef, setIsUploadingInstr)
     }, 100)
   }
 
   const handleDeleteImage = async (fileId: any) => {
     const f = uploadedImages.find(u => u.fileName === fileId || u.fileName.includes(fileId))
     if (!f) return
-    try { await api.delete(`/api/files/delete/${f.fileName}`); setUploadedImages(prev => prev.filter(u => u.fileName !== f.fileName)); toast.success(t('file_deleted')) }
-    catch { toast.error(t('failed_to_delete_file')) }
+    try {
+      await api.delete(`/api/files/delete/${f.fileName}`)
+      setUploadedImages(prev => prev.filter(u => u.fileName !== f.fileName))
+      toast.success(t('file_deleted'))
+    } catch {
+      toast.error(t('failed_to_delete_file'))
+    }
   }
 
   const handleDeleteInstruction = async (fileId: any) => {
     const f = uploadedInstructions.find(u => u.fileName === fileId || u.fileName.includes(fileId))
     if (!f) return
-    try { await api.delete(`/api/files/delete/${f.fileName}`); setUploadedInstructions(prev => prev.filter(u => u.fileName !== f.fileName)); toast.success(t('file_deleted')) }
-    catch { toast.error(t('failed_to_delete_file')) }
+    try {
+      await api.delete(`/api/files/delete/${f.fileName}`)
+      setUploadedInstructions(prev => prev.filter(u => u.fileName !== f.fileName))
+      toast.success(t('file_deleted'))
+    } catch {
+      toast.error(t('failed_to_delete_file'))
+    }
   }
 
   const handleDownloadFile = (file: any) => {
@@ -416,6 +564,8 @@ function MachineEdit() {
     if (name) window.open(`${import.meta.env.VITE_API_URL}/api/files/download/${name}`, '_blank')
     else toast.error(t('file_not_found'))
   }
+
+  // ─── Form validation ───────────────────────────────────────────────────────
 
   const validateRequiredFields = () => {
     const e: Record<string, string> = {}
@@ -433,39 +583,64 @@ function MachineEdit() {
     return 'empty'
   }
 
+  // ─── Build DTO ─────────────────────────────────────────────────────────────
+
   const buildMachineDTO = () => {
-    const imageJson = uploadedImages.length ? JSON.stringify(uploadedImages.map(f => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, uploadedBy: f.uploadedBy ?? null }))) : null
-    const instrJson = uploadedInstructions.length ? JSON.stringify(uploadedInstructions.map(f => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, uploadedBy: f.uploadedBy ?? null }))) : null
+    const toFileJson = (files: FileUploadResponse[]) =>
+      files.length
+        ? JSON.stringify(
+            files.map(f => ({
+              fileName:   f.fileName,
+              fileUrl:    f.fileUrl,
+              fileType:   f.fileType,
+              fileSize:   f.fileSize,
+              uploadedBy: f.uploadedBy ?? null,
+            })),
+          )
+        : null
+
+    const nonActive = isNonActiveStatus(formData.machineStatus)
+
     return {
       id,
       machineName:           formData.name,
       machineCode:           formData.machineCode,
-      brand:                 formData.brand             || null,
-      model:                 formData.model             || null,
-      serialNumber:          formData.serialNumber      || null,
-      department:            machineData?.department    || null,
-      machineGroupId:        formData.machineGroupId    || null,
-      groups:                formData.machineGroup      || null,
-      machineTypeId:         formData.machineTypeId     || null,
-      machineTypeName:       formData.machineType       || null,
+      brand:                 formData.brand          || null,
+      model:                 formData.model          || null,
+      serialNumber:          formData.serialNumber   || null,
+      department:            machineData?.department || null,
+      machineGroupId:        formData.machineGroupId || null,
+      groups:                formData.machineGroup   || null,
+      machineTypeId:         formData.machineTypeId  || null,
+      machineTypeName:       formData.machineType    || null,
       responsiblePersonId:   formData.responsible  ? Number(formData.responsible)  : null,
       supervisorId:          formData.supervisor   ? Number(formData.supervisor)   : null,
       managerId:             formData.manager      ? Number(formData.manager)      : null,
-      responsiblePersonName: formData.responsibleName   || null,
-      supervisorName:        formData.supervisorName    || null,
-      managerName:           formData.managerName       || null,
-      machineStatus:         formData.machineStatus     || null,
+      responsiblePersonName: formData.responsibleName || null,
+      supervisorName:        formData.supervisorName  || null,
+      managerName:           formData.managerName     || null,
+      machineStatus:         formData.machineStatus   || null,
+      // ── Force OUT OF SERVICE on the client side as well (defence-in-depth) ──
+      // Backend will also enforce this; we send it explicitly so the value is
+      // visible in request payloads during debugging.
+      checkStatus:           nonActive ? 'OUT OF SERVICE' : undefined,
       resetPeriod:           formData.resetPeriod       || null,
       maintenancePeriod:     formData.maintenancePeriod || null,
       note:                  formData.note              || null,
-      image:                 imageJson,
-      workInstruction:       instrJson,
+      image:                 toFileJson(uploadedImages),
+      workInstruction:       toFileJson(uploadedInstructions),
     }
   }
 
+  // ─── Submit ────────────────────────────────────────────────────────────────
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validateRequiredFields()) { setCurrentStep('general'); toast.error(t('fill_required_fields')); return }
+    if (!validateRequiredFields()) {
+      setCurrentStep('general')
+      toast.error(t('fill_required_fields'))
+      return
+    }
     setIsSubmitting(true)
     try {
       await api.put('/api/machine/update', buildMachineDTO())
@@ -473,243 +648,369 @@ function MachineEdit() {
       toast.success(t('machine_updated'))
       setTimeout(() => navigate({ to: '/checklist/machine' }), 1000)
     } catch (error: any) {
-      toast.error(t('failed_to_update_machine'), { description: error.response?.data?.message || error.message })
-    } finally { setIsSubmitting(false) }
+      toast.error(t('failed_to_update_machine'), {
+        description: error.response?.data?.message || error.message,
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
+
+  // ─── Field helpers ─────────────────────────────────────────────────────────
 
   const setField = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }))
-    if (errors[field]) { const e = { ...errors }; delete e[field]; setErrors(e) }
+    if (errors[field]) {
+      const e = { ...errors }
+      delete e[field]
+      setErrors(e)
+    }
   }
 
+  // ─── Member fetch ──────────────────────────────────────────────────────────
+
   const fetchMembers = async (keyword: string, index: number) => {
-    const params: any = { index, size: 100 }
+    const params: Record<string, unknown> = { index, size: 100 }
     if (keyword.trim()) params.keyword = keyword.trim()
     const res = await api.get<ListResponse<MemberListDTO>>('/api/user/get/list', { params })
-    const all = res.data.map((m: any) => ({ label: `${m.firstName} ${m.lastName}`, value: String(m.id || ''), fullName: `${m.firstName} ${m.lastName}` }))
-    if (keyword.trim()) { const kw = keyword.trim().toLowerCase(); return all.filter(m => m.label.toLowerCase().includes(kw)) }
+    const all = res.data.map((m: any) => ({
+      label:    `${m.firstName} ${m.lastName}`,
+      value:    String(m.id || ''),
+      fullName: `${m.firstName} ${m.lastName}`,
+    }))
+    if (keyword.trim()) {
+      const kw = keyword.trim().toLowerCase()
+      return all.filter(m => m.label.toLowerCase().includes(kw))
+    }
     return all
   }
 
   const fetchResponsible = async (kw: string, idx: number) => {
-    try { const d = await fetchMembers(kw, idx); if (!kw) setCachedResponsible(d); return { data: d, hasMore: false } }
-    catch { return { data: [], hasMore: false } }
+    try {
+      const d = await fetchMembers(kw, idx)
+      if (!kw) setCachedResponsible(d)
+      return { data: d, hasMore: false }
+    } catch {
+      return { data: [], hasMore: false }
+    }
   }
   const fetchSupervisor = async (kw: string, idx: number) => {
-    try { const d = await fetchMembers(kw, idx); if (!kw) setCachedSupervisor(d); return { data: d, hasMore: false } }
-    catch { return { data: [], hasMore: false } }
+    try {
+      const d = await fetchMembers(kw, idx)
+      if (!kw) setCachedSupervisor(d)
+      return { data: d, hasMore: false }
+    } catch {
+      return { data: [], hasMore: false }
+    }
   }
   const fetchManager = async (kw: string, idx: number) => {
-    try { const d = await fetchMembers(kw, idx); if (!kw) setCachedManager(d); return { data: d, hasMore: false } }
-    catch { return { data: [], hasMore: false } }
+    try {
+      const d = await fetchMembers(kw, idx)
+      if (!kw) setCachedManager(d)
+      return { data: d, hasMore: false }
+    } catch {
+      return { data: [], hasMore: false }
+    }
   }
 
-  // ─── Responsible change — API ส่งมาแค่ ID → resolve ชื่อจาก cache ────────
+  // ── Responsible change → auto-resolve supervisor & manager ────────────────
   const handleResponsibleChange = async (selected: any) => {
     const val = Array.isArray(selected) ? selected[0] : selected
     if (!val) {
-      setFormData(prev => ({ ...prev, responsible: '', responsibleName: '', supervisor: '', supervisorName: '', manager: '', managerName: '' }))
+      setFormData(prev => ({
+        ...prev,
+        responsible: '', responsibleName: '',
+        supervisor:  '', supervisorName:  '',
+        manager:     '', managerName:     '',
+      }))
       return
     }
     const found = cachedResponsible.find(r => String(r.value) === String(val))
-    setFormData(prev => ({ ...prev, responsible: val, responsibleName: found?.fullName ?? prev.responsibleName, supervisor: '', supervisorName: '', manager: '', managerName: '' }))
+    setFormData(prev => ({
+      ...prev,
+      responsible:     val,
+      responsibleName: found?.fullName ?? prev.responsibleName,
+      supervisor:  '', supervisorName:  '',
+      manager:     '', managerName:     '',
+    }))
     try {
       const res    = await api.get<any>(`/api/user/${val}`)
       const member = res.data
       const supId  = member.supervisor ? String(member.supervisor) : ''
       const mgrId  = member.manager    ? String(member.manager)    : ''
+
       let supMembers = cachedSupervisor
       if (!supMembers.length) { const r = await fetchSupervisor('', 0); supMembers = r.data }
       let mgrMembers = cachedManager
       if (!mgrMembers.length) { const r = await fetchManager('', 0); mgrMembers = r.data }
+
       const supName = supMembers.find(m => String(m.value) === supId)?.fullName ?? ''
       const mgrName = mgrMembers.find(m => String(m.value) === mgrId)?.fullName ?? ''
-      setFormData(prev => ({ ...prev, supervisor: supId, supervisorName: supName, manager: mgrId, managerName: mgrName }))
+
+      setFormData(prev => ({
+        ...prev,
+        supervisor: supId, supervisorName: supName,
+        manager:    mgrId, managerName:    mgrName,
+      }))
     } catch {}
   }
 
-  const makeMemberChange = (field: string, nameField: string, cache: any[]) =>
+  const makeMemberChange =
+    (field: string, nameField: string, cache: any[]) =>
     async (selected: any) => {
       const val = Array.isArray(selected) ? selected[0] : selected
-      if (!val) { setFormData(prev => ({ ...prev, [field]: '', [nameField]: '' })); return }
+      if (!val) {
+        setFormData(prev => ({ ...prev, [field]: '', [nameField]: '' }))
+        return
+      }
       const found = cache.find(r => String(r.value) === String(val))
       if (found) setFormData(prev => ({ ...prev, [field]: val, [nameField]: found.fullName }))
     }
 
+  // ─── Step content ──────────────────────────────────────────────────────────
+
   const renderStepContent = () => {
-    if (isLoading) return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">{t('loading')}</p>
-      </div>
-    )
+    if (isLoading)
+      return (
+        <div className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">{t('loading')}</p>
+        </div>
+      )
 
     switch (currentStep) {
-      case 'general': return (
-        <div className="px-2 pt-2 space-y-4">
-          <ReadOnlyField label={t('name')} value={formData.name} />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ReadOnlyField label={t('machine_code')}  value={formData.machineCode} />
-            <ReadOnlyField label={t('serial_number')} value={formData.serialNumber} />
-            <ReadOnlyField label={t('brand')}         value={formData.brand} />
-            <ReadOnlyField label={t('model')}         value={formData.model} />
-            <ReadOnlyField label={t('machine_group')} value={formData.machineGroup} />
-            <ReadOnlyField label={t('machine_type')}  value={formData.machineType} />
-            <ReadOnlyField label={t('department')}    value={formData.department} />
-            <ServerSingleSelect
-              key={`resp-${formData.responsible || 'e'}`}
-              id="responsible" title={t('responsible')} label={t('responsible')}
-              placeholder={t('select_responsible')}
-              value={formData.responsible} initialLabel={formData.responsibleName}
-              onChange={handleResponsibleChange} fetchOptions={fetchResponsible}
-              error={errors.responsible} required />
-            <ReadOnlyField label={t('supervisor')} value={formData.supervisorName} />
-            <ReadOnlyField label={t('manager')}    value={formData.managerName} />
-          </div>
-          <SingleSelectField key={`status-${formData.machineStatus || 'empty'}`}
-            id="machineStatus" label={t('machine_status')}
-            value={formData.machineStatus ? [formData.machineStatus] : []}
-            onChange={v => setField('machineStatus', v[0] || '')}
-            options={machineStatusOptions} error={errors.machineStatus} required />
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{t('note')}</label>
-            <textarea value={formData.note} onChange={e => setField('note', e.target.value)} rows={3}
-              placeholder={t('note')}
-              className="w-full border border-border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-          </div>
-          <FileUploadField id="machine-images" label={t('images')} maxFiles={10}
-            value={uploadedImages.map(f => ({ name: f.fileName, size: f.fileSize, type: f.fileType, url: f.fileUrl })) as unknown as File[]}
-            onChange={handleImagesChange} onDownloadFile={handleDownloadFile} onDeleteUploadedFile={handleDeleteImage}
-            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
-          <FileUploadField id="machine-instructions" label={t('work_instructions')} maxFiles={10}
-            value={uploadedInstructions.map(f => ({ name: f.fileName, size: f.fileSize, type: f.fileType, url: f.fileUrl })) as unknown as File[]}
-            onChange={handleInstructionsChange} onDownloadFile={handleDownloadFile} onDeleteUploadedFile={handleDeleteInstruction}
-            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
-        </div>
-      )
-
-      case 'checklist': return (
-        <div className="px-2 pt-2 space-y-4">
-          {checklistLoading ? (
-            <div className="text-sm text-muted-foreground py-8 text-center">{t('loading')}</div>
-          ) : checklists.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-8 text-center border rounded-lg border-dashed">{t('no_result')}</div>
-          ) : (
-            <div className="rounded-md border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 border-b">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-medium">Detail</th>
-                    <th className="text-left px-4 py-3 font-medium w-[25%]">Description</th>
-                    <th className="text-left px-4 py-3 font-medium w-[16%]">Reset Time</th>
-                    <th className="px-4 py-3 w-10" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {checklists.map(item => (
-                    <tr key={item.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 font-medium"><span className="line-clamp-2">{item.detail}</span></td>
-                      <td className="px-4 py-3 text-muted-foreground"><span className="line-clamp-2">{item.description || '-'}</span></td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{item.resetTime || '-'}</td>
-                      <td className="px-4 py-3">
-                        <button type="button" disabled={deletingIds.includes(item.id)}
-                          onClick={() => handleDeleteChecklist(item.id)}
-                          className="p-1 rounded hover:bg-red-50 hover:text-red-500 text-muted-foreground transition disabled:opacity-40">
-                          <X className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      // ── General ─────────────────────────────────────────────────────────────
+      case 'general':
+        return (
+          <div className="px-2 pt-2 space-y-4">
+            <ReadOnlyField label={t('name')} value={formData.name} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ReadOnlyField label={t('machine_code')}  value={formData.machineCode} />
+              <ReadOnlyField label={t('serial_number')} value={formData.serialNumber} />
+              <ReadOnlyField label={t('brand')}         value={formData.brand} />
+              <ReadOnlyField label={t('model')}         value={formData.model} />
+              <ReadOnlyField label={t('machine_group')} value={formData.machineGroup} />
+              <ReadOnlyField label={t('machine_type')}  value={formData.machineType} />
+              <ReadOnlyField label={t('department')}    value={formData.department} />
+              <ServerSingleSelect
+                key={`resp-${formData.responsible || 'e'}`}
+                id="responsible"
+                title={t('responsible')}
+                label={t('responsible')}
+                placeholder={t('select_responsible')}
+                value={formData.responsible}
+                initialLabel={formData.responsibleName}
+                onChange={handleResponsibleChange}
+                fetchOptions={fetchResponsible}
+                error={errors.responsible}
+                required
+              />
+              <ReadOnlyField label={t('supervisor')} value={formData.supervisorName} />
+              <ReadOnlyField label={t('manager')}    value={formData.managerName} />
             </div>
-          )}
-          <div className="flex items-center gap-3 pt-1">
-            <QuestionPicker onAdd={handleAddQuestion} existingQuestionIds={checklists.map(c => c.questionId)} />
-            <p className="text-xs text-muted-foreground">{checklists.length} question{checklists.length !== 1 ? 's' : ''}</p>
-          </div>
-        </div>
-      )
 
-      case 'maintenance': return (
-        <div className="px-2 pt-2 space-y-4">
-          <ReadOnlyField label={t('maintenance_period')} value={formData.maintenancePeriod} />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-2">
-            <ReadOnlyField label={t('round_1')} value={formData.maintenance1 ? new Date(formData.maintenance1).toLocaleDateString('th-TH') : '-'} />
-            <ReadOnlyField label={t('round_2')} value={formData.maintenance2 ? new Date(formData.maintenance2).toLocaleDateString('th-TH') : '-'} />
-            <ReadOnlyField label={t('round_3')} value={formData.maintenance3 ? new Date(formData.maintenance3).toLocaleDateString('th-TH') : '-'} />
-            <ReadOnlyField label={t('round_4')} value={formData.maintenance4 ? new Date(formData.maintenance4).toLocaleDateString('th-TH') : '-'} />
-          </div>
-          <hr className="border-t pt-2" />
-          {maintChecklistLoading ? (
-            <div className="text-sm text-muted-foreground py-8 text-center">{t('loading')}</div>
-          ) : maintChecklists.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-8 text-center border rounded-lg border-dashed">{t('no_result')}</div>
-          ) : (
-            <div className="rounded-md border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 border-b">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-medium">Detail</th>
-                    <th className="text-left px-4 py-3 font-medium w-[25%]">Description</th>
-                    <th className="text-left px-4 py-3 font-medium w-[16%]">Reset Time</th>
-                    <th className="px-4 py-3 w-10" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {maintChecklists.map(item => (
-                    <tr key={item.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 font-medium"><span className="line-clamp-2">{item.detail}</span></td>
-                      <td className="px-4 py-3 text-muted-foreground"><span className="line-clamp-2">{item.description || '-'}</span></td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{item.resetTime || '-'}</td>
-                      <td className="px-4 py-3">
-                        <button type="button" disabled={maintDeletingIds.includes(item.id)}
-                          onClick={() => handleDeleteMaintChecklist(item.id)}
-                          className="p-1 rounded hover:bg-red-50 hover:text-red-500 text-muted-foreground transition disabled:opacity-40">
-                          <X className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <SingleSelectField
+              key={`status-${formData.machineStatus || 'empty'}`}
+              id="machineStatus"
+              label={t('machine_status')}
+              value={formData.machineStatus ? [formData.machineStatus] : []}
+              onChange={v => setField('machineStatus', v[0] || '')}
+              options={machineStatusOptions}
+              error={errors.machineStatus}
+              required
+            />
+
+            {/* Hint when a non-active status is selected */}
+            {isNonActiveStatus(formData.machineStatus) && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                {t('non_active_status_hint') || 'Check status will be set to OUT OF SERVICE automatically.'}
+              </p>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t('note')}</label>
+              <textarea
+                value={formData.note}
+                onChange={e => setField('note', e.target.value)}
+                rows={3}
+                placeholder={t('note')}
+                className="w-full border border-border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
             </div>
-          )}
-          <div className="flex items-center gap-3 pt-1">
-            <QuestionPicker onAdd={handleAddMaintQuestion} existingQuestionIds={maintChecklists.map(c => c.questionId)} />
-            <p className="text-xs text-muted-foreground">{maintChecklists.length} question{maintChecklists.length !== 1 ? 's' : ''}</p>
-          </div>
-        </div>
-      )
 
-      case 'calibration': return (
-        <div className="px-2 pt-2 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ReadOnlyField label={t('external_calibration_date')} value={formData.externalCalibration ? new Date(formData.externalCalibration).toLocaleDateString('th-TH') : '-'} />
-            <ReadOnlyField label={t('calibration_due_date')}      value={formData.calibrationDueDate  ? new Date(formData.calibrationDueDate).toLocaleDateString('th-TH')  : '-'} />
-            <ReadOnlyField label={t('certificate_date')}          value={formData.certificateDate     ? new Date(formData.certificateDate).toLocaleDateString('th-TH')     : '-'} />
-            <ReadOnlyField label={t('results')}            value={formData.results} />
-            <ReadOnlyField label={t('criteria')}           value={formData.criteria} />
-            <ReadOnlyField label={t('measuring_range')}    value={formData.measuringRange} />
-            <ReadOnlyField label={t('calibration_range')}  value={formData.calibrationRange} />
-            <ReadOnlyField label={t('accuracy')}           value={formData.accuracy} />
-            <ReadOnlyField label={t('calibration_status')} value={formData.calibrationStatus} />
+            <FileUploadField
+              id="machine-images"
+              label={t('images')}
+              maxFiles={10}
+              value={uploadedImages.map(f => ({ name: f.fileName, size: f.fileSize, type: f.fileType, url: f.fileUrl })) as unknown as File[]}
+              onChange={handleImagesChange}
+              onDownloadFile={handleDownloadFile}
+              onDeleteUploadedFile={handleDeleteImage}
+              onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+            />
+            <FileUploadField
+              id="machine-instructions"
+              label={t('work_instructions')}
+              maxFiles={10}
+              value={uploadedInstructions.map(f => ({ name: f.fileName, size: f.fileSize, type: f.fileType, url: f.fileUrl })) as unknown as File[]}
+              onChange={handleInstructionsChange}
+              onDownloadFile={handleDownloadFile}
+              onDeleteUploadedFile={handleDeleteInstruction}
+              onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+            />
           </div>
-        </div>
-      )
+        )
 
-      default: return null
+      // ── Checklist ────────────────────────────────────────────────────────────
+      case 'checklist':
+        return (
+          <div className="px-2 pt-2 space-y-4">
+            {checklistLoading ? (
+              <div className="text-sm text-muted-foreground py-8 text-center">{t('loading')}</div>
+            ) : checklists.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-8 text-center border rounded-lg border-dashed">
+                {t('no_result')}
+              </div>
+            ) : (
+              <div className="rounded-md border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 border-b">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-medium">Detail</th>
+                      <th className="text-left px-4 py-3 font-medium w-[25%]">Description</th>
+                      <th className="text-left px-4 py-3 font-medium w-[16%]">Reset Time</th>
+                      <th className="px-4 py-3 w-10" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {checklists.map(item => (
+                      <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-3 font-medium"><span className="line-clamp-2">{item.detail}</span></td>
+                        <td className="px-4 py-3 text-muted-foreground"><span className="line-clamp-2">{item.description || '-'}</span></td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{item.resetTime || '-'}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            disabled={deletingIds.includes(item.id)}
+                            onClick={() => handleDeleteChecklist(item.id)}
+                            className="p-1 rounded hover:bg-red-50 hover:text-red-500 text-muted-foreground transition disabled:opacity-40"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="flex items-center gap-3 pt-1">
+              <QuestionPicker onAdd={handleAddQuestion} existingQuestionIds={checklists.map(c => c.questionId)} />
+              <p className="text-xs text-muted-foreground">
+                {checklists.length} question{checklists.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+        )
+
+      // ── Maintenance ──────────────────────────────────────────────────────────
+      case 'maintenance':
+        return (
+          <div className="px-2 pt-2 space-y-4">
+            <ReadOnlyField label={t('maintenance_period')} value={formData.maintenancePeriod} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-2">
+              <ReadOnlyField label={t('round_1')} value={formData.maintenance1 ? new Date(formData.maintenance1).toLocaleDateString('th-TH') : '-'} />
+              <ReadOnlyField label={t('round_2')} value={formData.maintenance2 ? new Date(formData.maintenance2).toLocaleDateString('th-TH') : '-'} />
+              <ReadOnlyField label={t('round_3')} value={formData.maintenance3 ? new Date(formData.maintenance3).toLocaleDateString('th-TH') : '-'} />
+              <ReadOnlyField label={t('round_4')} value={formData.maintenance4 ? new Date(formData.maintenance4).toLocaleDateString('th-TH') : '-'} />
+            </div>
+            <hr className="border-t pt-2" />
+            {maintChecklistLoading ? (
+              <div className="text-sm text-muted-foreground py-8 text-center">{t('loading')}</div>
+            ) : maintChecklists.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-8 text-center border rounded-lg border-dashed">
+                {t('no_result')}
+              </div>
+            ) : (
+              <div className="rounded-md border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 border-b">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-medium">Detail</th>
+                      <th className="text-left px-4 py-3 font-medium w-[25%]">Description</th>
+                      <th className="text-left px-4 py-3 font-medium w-[16%]">Reset Time</th>
+                      <th className="px-4 py-3 w-10" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {maintChecklists.map(item => (
+                      <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-3 font-medium"><span className="line-clamp-2">{item.detail}</span></td>
+                        <td className="px-4 py-3 text-muted-foreground"><span className="line-clamp-2">{item.description || '-'}</span></td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{item.resetTime || '-'}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            disabled={maintDeletingIds.includes(item.id)}
+                            onClick={() => handleDeleteMaintChecklist(item.id)}
+                            className="p-1 rounded hover:bg-red-50 hover:text-red-500 text-muted-foreground transition disabled:opacity-40"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="flex items-center gap-3 pt-1">
+              <QuestionPicker onAdd={handleAddMaintQuestion} existingQuestionIds={maintChecklists.map(c => c.questionId)} />
+              <p className="text-xs text-muted-foreground">
+                {maintChecklists.length} question{maintChecklists.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+        )
+
+      // ── Calibration ──────────────────────────────────────────────────────────
+      case 'calibration':
+        return (
+          <div className="px-2 pt-2 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ReadOnlyField label={t('external_calibration_date')} value={formData.externalCalibration ? new Date(formData.externalCalibration).toLocaleDateString('th-TH') : '-'} />
+              <ReadOnlyField label={t('calibration_due_date')}      value={formData.calibrationDueDate  ? new Date(formData.calibrationDueDate).toLocaleDateString('th-TH')  : '-'} />
+              <ReadOnlyField label={t('certificate_date')}          value={formData.certificateDate     ? new Date(formData.certificateDate).toLocaleDateString('th-TH')     : '-'} />
+              <ReadOnlyField label={t('results')}            value={formData.results} />
+              <ReadOnlyField label={t('criteria')}           value={formData.criteria} />
+              <ReadOnlyField label={t('measuring_range')}    value={formData.measuringRange} />
+              <ReadOnlyField label={t('calibration_range')}  value={formData.calibrationRange} />
+              <ReadOnlyField label={t('accuracy')}           value={formData.accuracy} />
+              <ReadOnlyField label={t('calibration_status')} value={formData.calibrationStatus} />
+            </div>
+          </div>
+        )
+
+      default:
+        return null
     }
   }
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <FormLayout
       backLink="/checklist/machine"
       title={t('edit_machine')}
       subtitle={`${t('edit_machine')}: ${formData.name || formData.machineCode}`}
-      onSubmit={handleSubmit} steps={formSteps} currentStep={currentStep}
-      onStepChange={setCurrentStep} getStepStatus={getStepStatus}
-      isSubmitting={isSubmitting} isFormValid={isFormValid()}
-      submitText={t('update')} cancelLink="/checklist/machine"
+      onSubmit={handleSubmit}
+      steps={formSteps}
+      currentStep={currentStep}
+      onStepChange={setCurrentStep}
+      getStepStatus={getStepStatus}
+      isSubmitting={isSubmitting}
+      isFormValid={isFormValid()}
+      submitText={t('update')}
+      cancelLink="/checklist/machine"
     >
       {renderStepContent()}
     </FormLayout>

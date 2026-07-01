@@ -134,6 +134,8 @@ function AuthImage({ src, alt, className }: { src: string; alt: string; classNam
 function ImageDialog({ blobUrl, fileName, open, onClose }: {
   blobUrl: string; fileName: string; open: boolean; onClose: () => void
 }) {
+  const { t } = useTranslation('checklist')
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     if (open) { window.addEventListener('keydown', onKey); document.body.style.overflow = 'hidden' }
@@ -149,11 +151,11 @@ function ImageDialog({ blobUrl, fileName, open, onClose }: {
           <a href={blobUrl} download={fileName}
             className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors"
             onClick={e => e.stopPropagation()}>
-            <Download className="h-4 w-4" /> ดาวน์โหลด
+            <Download className="h-4 w-4" /> {t('download')}
           </a>
           <button onClick={onClose}
             className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
-            <X className="h-4 w-4" /> ปิด
+            <X className="h-4 w-4" /> {t('close')}
           </button>
         </div>
       </div>
@@ -167,6 +169,7 @@ function ImageDialog({ blobUrl, fileName, open, onClose }: {
 // ─── AttachmentFile ───────────────────────────────────────────────────────────
 
 function AttachmentFile({ file }: { file: AttachmentItem }) {
+  const { t }   = useTranslation('checklist')
   const ext     = file.fileName.split('.').pop()?.toLowerCase() ?? ''
   const isImage = IMAGE_EXTS.includes(ext)
   const src     = toFileUrl(file.fileUrl)
@@ -183,7 +186,7 @@ function AttachmentFile({ file }: { file: AttachmentItem }) {
         const res = await api.getInstance().get(src, { responseType: 'blob' })
         const url = URL.createObjectURL(res.data)
         setBlobUrl(url); setDialogOpen(true)
-      } catch { toast.error('โหลดไฟล์ไม่สำเร็จ') }
+      } catch { toast.error(t('data_fetch_failed')) }
       finally { setLoading(false) }
     } else {
       try {
@@ -191,7 +194,7 @@ function AttachmentFile({ file }: { file: AttachmentItem }) {
         const url = URL.createObjectURL(res.data)
         window.open(url, '_blank')
         setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      } catch { toast.error('โหลดไฟล์ไม่สำเร็จ') }
+      } catch { toast.error(t('data_fetch_failed')) }
     }
   }
 
@@ -205,7 +208,7 @@ function AttachmentFile({ file }: { file: AttachmentItem }) {
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
               {loading
                 ? <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <p className="text-[10px] text-white text-center px-1">🔍 ดูเต็มจอ</p>}
+                : <p className="text-[10px] text-white text-center px-1">🔍 {t('view_fullscreen')}</p>}
             </div>
           </>
         ) : (
@@ -230,7 +233,7 @@ function CalibrationView() {
   const { id } = useSearch({ from: '/checklist/calibration/view' })
   const [record, setCalibration] = useState<CalibrationRecord | null>(null)
   const [loading, setLoading] = useState(true)
-  const { t } = useTranslation()
+  const { t } = useTranslation('checklist')
   const router = useRouter()
 
   useEffect(() => {
@@ -244,11 +247,11 @@ function CalibrationView() {
       if (response) {
         setCalibration(response.data || response)
       } else {
-        toast.error(t('Failed to load calibration details'))
+        toast.error(t('failed_to_load_calibration'))
       }
     } catch (error) {
       console.error('Fetch error:', error)
-      toast.error(t('Failed to load calibration details'))
+      toast.error(t('failed_to_load_calibration'))
     } finally {
       setLoading(false)
     }
@@ -271,9 +274,10 @@ function CalibrationView() {
       <div className="min-h-screen bg-gray-50 p-6">
         <Card>
           <CardContent className="p-6 text-center">
-            <p className="text-muted-foreground mb-4">Calibration not found</p>
+            <p className="text-muted-foreground mb-4">{t('data_not_found')}</p>
             <Button onClick={handleBack}>
-              <ArrowLeft className="mr-2 h-4 w-4" />Back to List
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              {t('back_to_list')}
             </Button>
           </CardContent>
         </Card>
@@ -305,7 +309,8 @@ function CalibrationView() {
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" className="gap-2" onClick={handleEdit}>
-              <Edit3 className="h-4 w-4" />Edit
+              <Edit3 className="h-4 w-4" />
+              {t('edit')}
             </Button>
           </div>
         </div>
@@ -318,7 +323,8 @@ function CalibrationView() {
           <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-foreground font-semibold">
               <PencilRuler className="h-5 w-5 text-primary" />
-              Calibration Details {record.years ? `- ${record.years}` : ''}
+              {t('calibration_information')}
+              {record.years ? ` - ${record.years}` : ''}
               {record.calibrationStatus && (
                 <Badge className={getStatusColor(record.calibrationStatus)}>
                   {record.calibrationStatus}
@@ -333,30 +339,30 @@ function CalibrationView() {
           </CardHeader>
           <CardContent className="p-6 pt-2">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <InfoRow label="Due Date"             value={record.dueDate} />
-              <InfoRow label="Start Date"           value={record.startDate} />
-              <InfoRow label="Certificate Date"     value={record.certificateDate} />
-              <InfoRow label="Criteria"             value={record.criteria} />
-              <InfoRow label="Accuracy"             value={record.accuracy} />
-              <InfoRow label="Measuring Range"      value={record.measuringRange} />
-              <InfoRow label="Calibration Range"    value={record.calibrationRange} />
-              <InfoRow label="Resolution"           value={record.resolution} />
-              <InfoRow label="MPE"                  value={record.mpe} />
-              <InfoRow label="Max Uncertainty"      value={record.maxUncertainty} />
-              <InfoRow label="Permissible Capacity" value={record.permissibleCapacity} />
+              <InfoRow label={t('due_date')}             value={record.dueDate} />
+              <InfoRow label={t('start_date')}           value={record.startDate} />
+              <InfoRow label={t('certificate_date')}     value={record.certificateDate} />
+              <InfoRow label={t('criteria')}             value={record.criteria} />
+              <InfoRow label={t('accuracy')}             value={record.accuracy} />
+              <InfoRow label={t('measuring_range')}      value={record.measuringRange} />
+              <InfoRow label={t('calibration_range')}    value={record.calibrationRange} />
+              <InfoRow label={t('resolution')}           value={record.resolution} />
+              <InfoRow label={t('mpe')}                  value={record.mpe} />
+              <InfoRow label={t('max_uncertainty')}      value={record.maxUncertainty} />
+              <InfoRow label={t('permissible_capacity')} value={record.permissibleCapacity} />
             </div>
 
             <div className="grid grid-cols-1 pt-6 gap-4">
               <div className="p-4 rounded-lg bg-secondary/50 border border-border/50">
-                <p className="text-sm font-medium text-muted-foreground mb-2">Note</p>
+                <p className="text-sm font-medium text-muted-foreground mb-2">{t('note')}</p>
                 <p className="text-foreground">{record.note || '-'}</p>
               </div>
               <div className="p-4 rounded-lg bg-secondary/50 border border-border/50">
-                <p className="text-sm font-medium text-muted-foreground mb-2">Comment</p>
+                <p className="text-sm font-medium text-muted-foreground mb-2">{t('comment')}</p>
                 <p className="text-foreground">{record.comment || '-'}</p>
               </div>
               <div className="p-4 rounded-lg bg-secondary/50 border border-border/50">
-                <p className="text-sm font-medium text-muted-foreground mb-2">Reason Not Pass</p>
+                <p className="text-sm font-medium text-muted-foreground mb-2">{t('reason_not_pass')}</p>
                 <p className="text-foreground">{record.reasonNotPass || '-'}</p>
               </div>
             </div>
@@ -368,14 +374,14 @@ function CalibrationView() {
           <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-foreground font-semibold">
               <CheckCircle2 className="h-5 w-5 text-success" />
-              Check Results
+              {t('check_results')}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 pt-2 pb-2">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <InfoRow label="Check MPE"        value={record.checkMpe} />
-              <InfoRow label="Check Resolution" value={record.checkResolution} />
-              <InfoRow label="Check Result"     value={record.checkResult} />
+              <InfoRow label={t('check_mpe')}        value={record.checkMpe} />
+              <InfoRow label={t('check_resolution')} value={record.checkResolution} />
+              <InfoRow label={t('check_result')}     value={record.checkResult} />
             </div>
           </CardContent>
         </Card>
@@ -385,7 +391,7 @@ function CalibrationView() {
           <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-foreground font-semibold">
               <FileText className="h-5 w-5 text-primary" />
-              Attachments
+              {t('attachments')}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 pt-4">
@@ -394,7 +400,7 @@ function CalibrationView() {
                 {attachments.map((f, i) => <AttachmentFile key={i} file={f} />)}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">-</p>
+              <p className="text-sm text-muted-foreground">{t('no_attachments')}</p>
             )}
           </CardContent>
         </Card>
