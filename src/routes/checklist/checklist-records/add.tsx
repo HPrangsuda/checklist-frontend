@@ -206,7 +206,7 @@ function RouteComponent() {
   // ─── i18n option arrays (re-computed on language change) ──────────────────
   const machineStatusOptions = MACHINE_STATUS_VALUES.map(value => ({
     value,
-    label: t(`status_${value.toLowerCase().replace(/ /g, '_')}`),
+    label: t(`status_${value.toLowerCase().replace(/[\s-]/g, '_')}`),
   }))
 
   const choiceOptions = CHOICE_VALUES.map((value, idx) => ({
