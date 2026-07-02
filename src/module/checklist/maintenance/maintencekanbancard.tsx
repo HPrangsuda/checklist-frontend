@@ -11,6 +11,8 @@ import {
 import { toast } from 'sonner'
 import { useDebounce } from '@/core/hooks/use-debounce'
 import { useRouter } from '@tanstack/react-router'
+import { sessionStore } from '@/core/lib/store'
+import { useAuth } from '@/core/contexts/auth-context'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,8 +51,6 @@ interface KanbanColumn {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// ★ unique key per row — machineCode+round+years is business-unique
-//   fallback to array index via the caller if somehow still clashing
 function rowUid(row: MaintenanceDTO): string {
   return `${row.machineCode}-${row.round}-${row.years}`
 }
@@ -155,6 +155,16 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
   const router = useRouter()
   const ref    = useRef<HTMLDivElement>(null)
 
+  const session  = sessionStore.state.session
+  const memberId = session?.memberId ?? null
+  const { role } = useAuth()
+  const isAdmin = role === 'ADMIN'
+
+  const canEdit = row != null && (
+    isAdmin ||
+    (memberId != null && row.responsibleMaintenance === Number(memberId))
+  )
+  
   useEffect(() => {
     if (!row) return
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
@@ -208,15 +218,19 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
                 >
                   <Eye className="w-4 h-4" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id: row.id } })}
-                  aria-label={t('edit')}
-                >
-                  <Pencil className="w-4 h-4" />
-                </Button>
+
+                {/* ✅ แสดงปุ่ม Edit เฉพาะ responsible maintenance */}
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id: row.id } })}
+                    aria-label={t('edit')}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                )}
               </>
             )}
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label={t('back_to_list')}>
@@ -331,13 +345,11 @@ function MachineCard({
         ${isOverdue ? '!border-red-300 bg-red-50/50 dark:bg-red-950/20' : ''}
       `}
     >
-      {/* Code + status dot */}
       <div className="flex items-center justify-between gap-1">
         <p className="text-[11px] font-semibold">{row.machineCode} - {row.machineName}</p>
         <span className={`w-2 h-2 rounded-full shrink-0 ${isOverdue ? 'bg-red-500' : colConfig.dotClass}`} />
       </div>
 
-      {/* Responsible person */}
       {responsibleName && (
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
           <User className="w-2.5 h-2.5 shrink-0" />
@@ -345,7 +357,6 @@ function MachineCard({
         </div>
       )}
 
-      {/* Department badge + Timeliness badge + round · date */}
       <div className="flex items-center justify-between gap-1 pt-0.5 flex-wrap">
         <div className="flex items-center gap-1 flex-wrap">
           {deptLabel && (
@@ -385,7 +396,6 @@ function KanbanColumnView({
         {col.rows.length === 0 ? (
           <p className="text-[11px] text-muted-foreground text-center py-6">{t('no_result')}</p>
         ) : (
-          // ★ ใช้ index เป็น fallback ป้องกัน key ซ้ำในทุกกรณี
           col.rows.map((row, idx) => {
             const uid = `${rowUid(row)}-${idx}`
             return (
@@ -462,7 +472,6 @@ export function MaintenanceKanbanCard() {
     }))
   }, [data])
 
-  // ★ selectedUid ใช้ rowUid (ไม่มี index) เพื่อ match กับ selected state
   const selectedUid = selected ? rowUid(selected) : null
 
   const handleSelect = (row: MaintenanceDTO) => {

@@ -13,6 +13,7 @@ import { MaintenanceTbl } from '@/module/checklist/maintenance/history-table'
 import { CalibrationTbl } from '@/module/checklist/calibration/history-table'
 import { ChecklistTab } from '@/module/checklist/machine/checklist-tab'
 import { MaintenanceChecklistTab } from '@/module/checklist/machine/maintenance-checklist-tab'
+import { useAuth } from '@/core/contexts/auth-context' 
 
 export const Route = createFileRoute('/checklist/machine/view')({
   component: MachineView,
@@ -255,6 +256,9 @@ function MachineView() {
   const { t }  = useTranslation('checklist')
   const router = useRouter()
 
+  const { role } = useAuth()
+  const isAdmin = role === 'ADMIN'
+
   const [machine,   setMachine]   = useState<MachineResponseDTO | null>(null)
   const [loading,   setLoading]   = useState(true)
   const [activeTab, setActiveTab] = useState('general')
@@ -403,7 +407,7 @@ function MachineView() {
             </Card>
 
             {/* QR Code */}
-            {machine.qrCode && (
+            {machine.qrCode && isAdmin && (
               <Card>
                 <CardHeader className="border-b">
                   <CardTitle className="font-semibold">{t('qr_code')}</CardTitle>
