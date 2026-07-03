@@ -37,12 +37,18 @@ interface AttachmentItem {
   category?: string | null
 }
 
-// ── FIX: typed ApiResponse เพื่อเช็ค success/error จาก backend ──────────────
+// ── FIX: typed ApiResponse — รองรับทั้ง success field และ code-based pattern ──
 interface ApiResponse<T = unknown> {
   code?: string
   success?: boolean
   message?: string
   data?: T
+}
+
+// ── FIX: response data จาก create endpoint — ตรงกับ Map<String,Object> ของ backend ──
+interface CreateMachineResult {
+  id: number
+  machineCode: string
 }
 
 function ReadOnlyField({ label, value }: { label: string; value?: string | null }) {
@@ -59,21 +65,21 @@ function ReadOnlyField({ label, value }: { label: string; value?: string | null 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
 const API_BASE   = import.meta.env.VITE_API_URL ?? ''
 
-// ── FIX: helper — ตรวจสอบว่า response จาก backend สำเร็จจริง ─────────────────
-// Backend return HTTP 200 เสมอ แต่แยก success/error ด้วย code หรือ success field
+// ── FIX: success code whitelist แทน error code blacklist ─────────────────────
+// ใช้ whitelist เพราะปลอดภัยกว่า: code ที่ไม่รู้จัก = ถือว่า error
+const SUCCESS_CODES = new Set(['MS001', 'MS003', 'MS017', 'MS031', 'MS040'])
+
 function isApiSuccess(resData: ApiResponse | null | undefined): boolean {
   if (!resData) return false
-  // ถ้า backend ใช้ field "success"
+
+  // backend ส่ง success field ตรงๆ (boolean)
   if (typeof resData.success === 'boolean') return resData.success
-  // ถ้า backend ใช้ error code prefix (เช่น MS002, MS004 = error, MS001 = success)
-  if (resData.code) {
-    const errorCodes = ['MS002', 'MS004', 'MS006', 'MS007', 'MS008', 'MS009',
-                        'MS010', 'MS011', 'MS012', 'MS013', 'MS014', 'MS016',
-                        'MS018', 'MS019', 'MS020', 'MS030', 'MS032', 'MS041']
-    return !errorCodes.includes(resData.code)
-  }
-  // fallback: ถ้าไม่มี code และไม่มี success field ให้ถือว่าสำเร็จ
-  return true
+
+  // backend ใช้ code-based pattern
+  if (resData.code) return SUCCESS_CODES.has(resData.code)
+
+  // ไม่มีทั้ง success และ code → ถือว่า error เพื่อความปลอดภัย
+  return false
 }
 
 function getApiErrorMessage(resData: ApiResponse | null | undefined): string {
@@ -407,7 +413,6 @@ function RouteComponent({ data }: any) {
     if (!formData.machineStatus.trim())    e.machineStatus = t('machine_status_required')
     if (!formData.resetPeriod.trim())      e.resetPeriod   = t('reset_period_required')
     if (!buildMachineCode())               e.machineCode   = t('machine_code_required')
-    // ── FIX: ตรวจ responsible ตรงนี้ด้วย เพื่อไม่ให้ผ่านไปถึง backend แล้ว fail ─
     if (!String(formData.responsible ?? '').trim()) e.responsible = t('responsible_required')
     if (!String(formData.hasWarranty ?? '').trim()) e.hasWarranty = t('has_warranty_required')
     if (formData.hasWarranty === 'YES' && !String(formData.warrantyNote ?? '').trim()) e.warrantyNote = t('warranty_note_required')
@@ -423,7 +428,7 @@ function RouteComponent({ data }: any) {
       getDeptCode(formData.department) &&
       formData.machineStatus.trim() &&
       formData.resetPeriod.trim() &&
-      String(formData.responsible ?? '').trim() &&   // ── FIX: เพิ่ม responsible
+      String(formData.responsible ?? '').trim() &&
       String(formData.hasWarranty ?? '').trim()
     )
     if (formData.hasWarranty === 'YES') return base && !!String(formData.warrantyNote ?? '').trim()
@@ -470,7 +475,7 @@ function RouteComponent({ data }: any) {
     const allInstrFiles    = [...existingInstructions, ...uploadedInstructions].map(f => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, uploadedBy: (f as any).uploadedBy ?? null }))
     const allWarrantyFiles = [...existingWarranty, ...uploadedWarranty].map(f => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, uploadedBy: (f as any).uploadedBy ?? null, category: 'WARRANTY' }))
 
-    // ── FIX: แปลง responsible เป็น number ก่อนส่ง ─────────────────────────────
+    // แปลง id เป็น number (Long) ก่อนส่ง backend
     const responsiblePersonId = formData.responsible ? Number(formData.responsible) : null
     const supervisorId        = formData.supervisor  ? Number(formData.supervisor)  : null
     const managerId           = formData.manager     ? Number(formData.manager)     : null
@@ -479,11 +484,11 @@ function RouteComponent({ data }: any) {
       machineName: formData.name, machineCode,
       brand: formData.brand || null, model: formData.model || null, serialNumber: formData.serialNumber || null,
       department: deptCode || null, businessUnit: formData.businessUnit || null, isCalibration: !!calibrationDTO,
-      responsiblePersonId,                                        // ← Long ไม่ใช่ string
+      responsiblePersonId,
       responsiblePersonName: formData.responsibleName || null,
-      supervisorId,                                               // ← Long
+      supervisorId,
       supervisorName: formData.supervisorName || null,
-      managerId,                                                  // ← Long
+      managerId,
       managerName: formData.managerName || null,
       machineStatus: formData.machineStatus || null, machineGroupId: formData.machineGroupId || null,
       groups: formData.machineGroup || null, machineTypeId: formData.machineTypeId || null,
@@ -501,9 +506,11 @@ function RouteComponent({ data }: any) {
     }
   }
 
-  // ── FIX: handleSubmit เช็ค response จาก backend ก่อนแสดง success ────────────
+  // ── FIX: handleSubmit — กัน double-submit + เช็ค backend response ด้วย whitelist ──
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // FIX: ถ้ากำลัง submit อยู่แล้วให้ return ทันที — ป้องกัน DuplicateKeyException
+    if (isSubmitting) return
     if (!validateRequiredFields()) {
       setCurrentStep('general')
       toast.error(t('fill_required_fields'))
@@ -511,10 +518,16 @@ function RouteComponent({ data }: any) {
     }
     setIsSubmitting(true)
     try {
-      const response = await api.post<ApiResponse>('/api/machine/create', buildMachineDTO())
-      const resData  = response?.data
+      const raw = await api.post('/api/machine/create', buildMachineDTO())
 
-      // ── เช็คว่า backend ตอบกลับ error จริงหรือไม่ ─────────────────────────
+      // ── FIX: api interceptor บางตัวทำ return response.data ไปแล้ว ──────────
+      // ต้องหา ApiResponse ให้เจอก่อน ไม่ว่าจะอยู่ที่ raw หรือ raw.data
+      const resData: ApiResponse<CreateMachineResult> =
+        (raw as any)?.success !== undefined || (raw as any)?.code !== undefined
+          ? (raw as any)
+          : (raw as any)?.data
+
+      // ── เช็ค response จาก backend ด้วย whitelist ──────────────────────────
       if (!isApiSuccess(resData)) {
         toast.error(t('failed_to_create_machine'), {
           description: getApiErrorMessage(resData),
@@ -522,20 +535,28 @@ function RouteComponent({ data }: any) {
         return
       }
 
-      // ── สำเร็จจริง: sync to lark แล้ว navigate ──────────────────────────
-      const savedId = (resData as any)?.id ?? (resData as any)?.data?.id
+      // ── สำเร็จ: ดึง savedId จาก data field ────────────────────────────────
+      const savedId = resData?.data?.id
       if (savedId) {
-        try { await api.post(`/api/machine/${savedId}/sync-to-lark`) } catch {}
+        try {
+          await api.post(`/api/machine/${savedId}/sync-to-lark`)
+        } catch (larkErr) {
+          console.warn('[sync-to-lark] failed (non-blocking):', larkErr)
+        }
       }
+
       toast.success(t('machine_created'))
       setTimeout(() => navigate(
         refId
           ? { to: '/checklist/register/view', search: { id: refId } }
           : { to: '/checklist/machine' }
       ), 1000)
+
     } catch (error: any) {
-      // ── HTTP error (4xx / 5xx) ─────────────────────────────────────────────
-      const serverMsg = error?.response?.data?.message || error?.response?.data?.code || error?.message
+      const serverMsg = error?.response?.data?.message
+                     || error?.response?.data?.code
+                     || error?.message
+                     || t('unknown_error')
       toast.error(t('failed_to_create_machine'), { description: serverMsg })
     } finally {
       setIsSubmitting(false)
@@ -718,7 +739,6 @@ function RouteComponent({ data }: any) {
               }}
               fetchOptions={fetchDepartments} error={errors.department} required />
 
-            {/* ── FIX: เพิ่ม error และ required ให้ responsible ─────────────── */}
             <ServerSingleSelect key={`resp-${formData.responsible || 'e'}`}
               id="responsible" title="responsible" label={t('responsible')}
               placeholder={t('select_responsible')} value={formData.responsible}
