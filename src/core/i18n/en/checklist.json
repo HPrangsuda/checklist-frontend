@@ -384,5 +384,7 @@
   "check_result_na": "N/A",
   "cancel_date": "Cancel Date",
   "reason_cancel": "Reason",
-  "reason_cancel_placeholder": "e.g. Beyond repair, transferred to another site"
+  "reason_cancel_placeholder": "e.g. Beyond repair, transferred to another site",
+  "add_machine_status": "status",
+  "has_machine":    "has machine created"
 }

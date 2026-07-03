@@ -384,5 +384,7 @@
   "check_result_na": "N/A",
   "cancel_date": "วันที่ยกเลิก",
   "reason_cancel": "เหตุผล",
-  "reason_cancel_placeholder": "ระบุเหตุผล เช่น ชำรุดเกินซ่อม / โอนย้าย"
+  "reason_cancel_placeholder": "ระบุเหตุผล เช่น ชำรุดเกินซ่อม / โอนย้าย",
+  "add_machine_status": "สถานะ",
+  "has_machine":    "มีเครื่องจักรแล้ว"
 }
