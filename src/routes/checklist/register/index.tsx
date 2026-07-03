@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { TblAction } from '@/components/action/tbl-action'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAuth } from '@/core/contexts/auth-context'
 
 export const Route = createFileRoute('/checklist/register/')({
   component: DataTbl,
@@ -71,6 +72,9 @@ function DataTbl() {
   const { t }  = useTranslation('checklist')
   const router = useRouter()
 
+  const { role } = useAuth()
+  const isAdmin = role === 'ADMIN'
+
   const [pagination,       setPagination]       = useState({ pageIndex: 0, pageSize: 10 })
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [selectedIds,      setSelectedIds]      = useState<number[]>([])
@@ -84,98 +88,98 @@ function DataTbl() {
   // ─── Columns ──────────────────────────────────────────────────────────────
 
   const columns: ColumnDef<RegisterDTO>[] = [
-    {
-      id: 'select',
-      header: () => (
+  {
+    id: 'select',
+    header: () => (
+      <Checkbox
+        checked={data.length > 0 && data.every(row => selectedIds.includes(row.id))}
+        onCheckedChange={checked => setSelectedIds(checked ? data.map(r => r.id) : [])}
+        aria-label="Select all"
+      />
+    ),
+    cell: ({ row }) => (
+      <div onClick={e => e.stopPropagation()}>
         <Checkbox
-          checked={data.length > 0 && data.every(row => selectedIds.includes(row.id))}
-          onCheckedChange={checked => setSelectedIds(checked ? data.map(r => r.id) : [])}
-          aria-label="Select all"
+          checked={selectedIds.includes(row.original.id)}
+          onCheckedChange={checked =>
+            setSelectedIds(prev =>
+              checked
+                ? [...prev, row.original.id]
+                : prev.filter(id => id !== row.original.id)
+            )
+          }
+          aria-label="Select row"
         />
-      ),
-      cell: ({ row }) => (
-        <div onClick={e => e.stopPropagation()}>
-          <Checkbox
-            checked={selectedIds.includes(row.original.id)}
-            onCheckedChange={checked =>
-              setSelectedIds(prev =>
-                checked
-                  ? [...prev, row.original.id]
-                  : prev.filter(id => id !== row.original.id)
-              )
-            }
-            aria-label="Select row"
-          />
-        </div>
-      ),
-      size: 32,
+      </div>
+    ),
+    size: 32,
+  },
+  {
+    accessorKey: 'machineName',
+    header: t('machine_name'),
+    cell: ({ row }) => (
+      <div className="text-sm font-medium">{row.original.machineName || '-'}</div>
+    ),
+  },
+  {
+    accessorKey: 'model',
+    header: t('model'),
+    cell: ({ row }) => (
+      <div className="text-sm">{row.original.model || '-'}</div>
+    ),
+  },
+  {
+    accessorKey: 'createdAt',
+    header: t('request_date'),
+    cell: ({ row }) => (
+      <div className="text-sm">{formatDate(row.original.createdAt)}</div>
+    ),
+  },
+  {
+    id: 'requestBy',
+    header: t('request_by'),
+    cell: ({ row }) => (
+      <div className="text-sm">{row.original.createdBy?.name ?? '-'}</div>
+    ),
+  },
+  // ── คอลัมน์สถานะเครื่องจักร (เฉพาะ ADMIN) ──────────────────────────────
+  ...(isAdmin ? [{
+    id: 'hasMachine',
+    header: t('add_machine_status'),
+    cell: ({ row }: { row: { original: RegisterDTO } }) => {
+      const count = row.original.machineCount ?? 0
+      return count > 0 ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+              clipRule="evenodd"
+            />
+          </svg>
+          {t('has_machine')} {count}
+        </span>
+      ) : (
+        <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
+          {t('pending')}
+        </span>
+      )
     },
-    {
-      accessorKey: 'machineName',
-      header: t('machine_name'),
-      cell: ({ row }) => (
-        <div className="text-sm font-medium">{row.original.machineName || '-'}</div>
-      ),
-    },
-    {
-      accessorKey: 'model',
-      header: t('model'),
-      cell: ({ row }) => (
-        <div className="text-sm">{row.original.model || '-'}</div>
-      ),
-    },
-    {
-      accessorKey: 'createdAt',
-      header: t('request_date'),
-      cell: ({ row }) => (
-        <div className="text-sm">{formatDate(row.original.createdAt)}</div>
-      ),
-    },
-    {
-      id: 'requestBy',
-      header: t('request_by'),
-      cell: ({ row }) => (
-        <div className="text-sm">{row.original.createdBy?.name ?? '-'}</div>
-      ),
-    },
-    // ── คอลัมน์สถานะเครื่องจักร ────────────────────────────────────────────
-    {
-      id: 'hasMachine',
-      header: t('add_machine_status'),
-      cell: ({ row }) => {
-        const count = row.original.machineCount ?? 0
-        return count > 0 ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-            {t('has_machine')} {count}
-          </span>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
-            {t('pending')}
-          </span>
-        )
-      },
-      size: 160,
-    },
-    {
-      id: 'action',
-      header: t('action'),
-      cell: ({ row }) => (
-        <TblAction
-          view
-          onView={()   => handleView(row.original.id)}
-          onDelete={() => handleDelete(row.original.id)}
-        />
-      ),
-      size: 80,
-    },
-  ]
+    size: 160,
+  } satisfies ColumnDef<RegisterDTO>] : []),
+  {
+    id: 'action',
+    header: t('action'),
+    cell: ({ row }) => (
+      <TblAction
+        view
+        onView={()   => handleView(row.original.id)}
+        onDelete={() => handleDelete(row.original.id)}
+      />
+    ),
+    size: 80,
+  },
+]
 
   // ─── Effects ──────────────────────────────────────────────────────────────
 
