@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { FormLayout } from '@/components/layout/form-layout'
 import type { FormStep } from '@/components/layout/form-sidebar'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
-import { FileText, ChevronDown, AlertCircle, ClipboardList, CheckCircle2, Lock } from 'lucide-react'
+import { FileText, ChevronDown, AlertCircle, ClipboardList, CheckCircle2, Lock, Paperclip, Download } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
@@ -233,7 +233,7 @@ function MaintenanceEdit() {
 
       // ── ใช้ /get/{maintenanceId} เสมอ (endpoint เดียวที่มีจริง)
       // แล้วแยก read-only vs editable จาก checklistRecordId
-      await fetchChecklistByMaintenanceId(id, !!data?.checklistRecordId)
+      await fetchChecklistByMaintenanceId(id, !!data?.checklistRecordId, data?.checklistRecordId ?? undefined)
     } catch {
       toast.error(t('data_fetch_failed'))
     } finally {
@@ -251,46 +251,100 @@ function MaintenanceEdit() {
    * isAlreadySubmitted = false → still a template / not yet submitted
    *                              → display editable checklist form
    */
+  /**
+   * If checklistRecordId exists (already submitted) → fetch the saved record
+   * from /api/maintenance-checklist/{checklistRecordId} to get real answers.
+   * Fallback chain: try several URL patterns until one returns data.
+   * If all fail → fall back to the editable template from /get/{maintenanceId}.
+   *
+   * If not submitted → load editable template from /get/{maintenanceId}.
+   */
   const fetchChecklistByMaintenanceId = async (
     maintenanceId: number,
     isAlreadySubmitted: boolean,
+    checklistRecordId?: number,
   ) => {
+    try {
+      if (isAlreadySubmitted && checklistRecordId) {
+        // ── Try to load the saved/submitted record ───────────────────────────
+        // Real endpoint: /api/checklist/{checklistRecordId}
+        // machineChecklist field is a JSON STRING that must be parsed separately
+        try {
+          const res  = await api.get<any>(`/api/checklist/${checklistRecordId}`)
+          const body = res?.data ?? res
+
+          // machineChecklist is a JSON-encoded string of checklist items
+          let rawItems: any[] = []
+          if (body?.machineChecklist) {
+            try {
+              rawItems = typeof body.machineChecklist === 'string'
+                ? JSON.parse(body.machineChecklist)
+                : body.machineChecklist
+            } catch {
+              rawItems = []
+            }
+          }
+
+          const normalisedItems: SubmittedChecklistItem[] = rawItems.map((item: any) => ({
+            id:                  item.id,
+            // /api/checklist returns questionDetail only (no questionDescription)
+            questionDetail:      item.questionDetail ?? '',
+            questionDescription: item.questionDetail ?? '',  // use same field for display
+            isChoice:            item.isChoice ?? true,
+            answerChoice:        item.answerChoice ?? item.answer ?? '',
+          }))
+
+          setSubmittedChecklist({
+            id:                     body?.id          ?? checklistRecordId,
+            machineCode:            body?.machineCode ?? '',
+            machineName:            body?.machineName ?? '',
+            machineStatus:          body?.machineStatus ?? '',
+            maintenanceBy:          body?.maintenanceBy ?? '',
+            responsibleMaintenance: String(body?.responsibleMaintenance ?? ''),
+            actualDate:             body?.actualDate ?? null,
+            submitted:              true,
+            items:                  normalisedItems,
+          })
+          return  // success
+        } catch (err) {
+          console.warn('[MaintenanceEdit] /api/checklist fetch failed, falling back:', err)
+          await loadEditableTemplate(maintenanceId, true)
+        }
+      } else {
+        await loadEditableTemplate(maintenanceId, false)
+      }
+    } catch (err) {
+      console.warn('[MaintenanceEdit] fetchChecklistByMaintenanceId failed:', err)
+    }
+  }
+
+  const loadEditableTemplate = async (maintenanceId: number, asReadOnly: boolean) => {
     try {
       const res  = await api.get<any>(`/api/maintenance-checklist/get/${maintenanceId}`)
       const body = res?.data ?? res
+      const rawItems: any[] = body?.checklistItems ?? body?.items ?? []
 
-      if (isAlreadySubmitted) {
-        // ── Read-only view ───────────────────────────────────────────────────
-        // The /get endpoint returns the same data structure whether submitted
-        // or not; we just present it as locked.
-        const rawItems: any[] =
-          body?.checklistItems ??
-          body?.items ??
-          []
-
+      if (asReadOnly) {
         const normalisedItems: SubmittedChecklistItem[] = rawItems.map((item: any) => ({
           id:                  item.id,
           questionDetail:      item.questionDetail ?? item.question?.detail      ?? '',
           questionDescription: item.questionDescription ?? item.question?.description ?? '',
           isChoice:            item.isChoice ?? false,
-          // answerChoice may come back as answer / checkAnswer depending on version
           answerChoice:        item.answerChoice ?? item.answer ?? item.checkAnswer ?? '',
         }))
-
         setSubmittedChecklist({
-          id:                     body?.id            ?? maintenanceId,
-          machineCode:            body?.machineCode   ?? '',
-          machineName:            body?.machineName   ?? '',
-          machineStatus:          body?.machineStatus ?? body?.status ?? '',
-          maintenanceBy:          body?.maintenanceBy ?? '',
-          responsibleMaintenance: body?.responsibleMaintenance ?? '',
-          actualDate:             body?.actualDate    ?? null,
-          submitted:              true,
-          items:                  normalisedItems,
+          id: maintenanceId,
+          machineCode: body?.machineCode ?? '',
+          machineName: body?.machineName ?? '',
+          machineStatus: body?.machineStatus ?? body?.status ?? '',
+          maintenanceBy: body?.maintenanceBy ?? '',
+          responsibleMaintenance: String(body?.responsibleMaintenance ?? ''),
+          actualDate: body?.actualDate ?? null,
+          submitted: true,
+          items: normalisedItems,
         })
       } else {
-        // ── Editable template ────────────────────────────────────────────────
-        setChecklist((body?.checklistItems ?? body?.items ?? []).map((item: any) => ({
+        setChecklist(rawItems.map((item: any) => ({
           ...item,
           questionDetail:      item.questionDetail ?? item.question?.detail      ?? '',
           questionDescription: item.questionDescription ?? item.question?.description ?? '',
@@ -298,8 +352,7 @@ function MaintenanceEdit() {
         })))
       }
     } catch (err) {
-      console.warn('[MaintenanceEdit] fetchChecklistByMaintenanceId failed:', err)
-      // Leave checklist empty — user can still save the main record
+      console.warn('[MaintenanceEdit] loadEditableTemplate failed:', err)
     }
   }
 
@@ -661,11 +714,13 @@ function MaintenanceEdit() {
             {submittedChecklist ? (
               /* ── READ-ONLY ───────────────────────────────────────────── */
               <>
+                {/* Lock banner */}
                 <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-200 rounded-xl">
                   <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                   <p className="text-sm text-amber-700">{t('checklist_locked_message')}</p>
                 </div>
 
+                {/* Summary row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-xl border border-border">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t('machine_status')}</p>
@@ -677,28 +732,48 @@ function MaintenanceEdit() {
                   </div>
                 </div>
 
+                {/* Checklist items — read-only with answer badge */}
                 {submittedChecklist.items.length === 0 ? (
                   <p className="text-muted-foreground text-sm text-center py-6">
                     {t('no_checklist_items')}
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {submittedChecklist.items.map((item, idx) => (
-                      <div key={item.id} className="p-4 rounded-xl border border-border bg-muted/10">
-                        <p className="text-sm mb-1">
-                          {idx + 1}. {item.questionDescription || item.questionDetail || 'N/A'}
-                        </p>
-                        {item.questionDetail && item.questionDetail !== item.questionDescription && (
-                          <p className="text-xs text-muted-foreground mb-2">{item.questionDetail}</p>
-                        )}
-                        <div className="mt-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground select-none cursor-default">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                          <span>{item.answerChoice || '—'}</span>
+                    {submittedChecklist.items.map((item, idx) => {
+                      const answer = item.answerChoice?.trim() || ''
+                      return (
+                        <div key={item.id} className="p-4 rounded-xl border border-border bg-background">
+                          {/* Question description */}
+                          <p className="text-sm font-medium leading-snug">
+                            {item.questionDescription || item.questionDetail || 'N/A'}
+                          </p>
+                          {/* Question detail (sub-text) */}
+                          {item.questionDetail && item.questionDetail !== item.questionDescription && (
+                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                              {item.questionDetail}
+                            </p>
+                          )}
+                          {/* Answer badge — styled like the green "READY TO USE" in the screenshot */}
+                          <div className="mt-3">
+                            {answer ? (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                {answer}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+                                —
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
+
+                {/* Submitted checklist attachments (if any) */}
+                {existingFiles.length > 0 || uploadedFiles.length > 0 ? null : null}
               </>
             ) : (
               /* ── EDITABLE ────────────────────────────────────────────── */
@@ -794,7 +869,40 @@ function MaintenanceEdit() {
               <FileText className="h-5 w-5 text-primary" />{t('attachments')}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-6 space-y-4">
+            {/* Files from the submitted checklist record */}
+            {submittedChecklist && (() => {
+              const clFiles = parseAttachment((submittedChecklist as any).attachment)
+              if (clFiles.length === 0) return null
+              return (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                    {t('checklist_attachments') || 'Checklist Files'}
+                  </p>
+                  <div className="space-y-2">
+                    {clFiles.map(f => (
+                      <div key={f.fileName}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors">
+                        <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm flex-1 truncate">{f.fileName}</span>
+                        <button
+                          type="button"
+                          onClick={() => window.open(
+                            f.fileUrl || `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
+                            '_blank'
+                          )}
+                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Files on the maintenance record itself (editable) */}
             <FileUploadField
               id="attachments"
               maxFiles={10}
