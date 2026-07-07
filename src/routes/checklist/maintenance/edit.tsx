@@ -231,31 +231,9 @@ function MaintenanceEdit() {
 
       setExistingFiles(parseAttachment(data?.attachment))
 
-      if (data?.checklistRecordId) {
-        try {
-          const savedRes  = await api.get<any>(`/api/maintenance-checklist/record/${data.checklistRecordId}`)
-          const savedData = savedRes?.data ?? savedRes
-
-          const rawItems: any[] =
-            savedData?.items ??
-            savedData?.checklistItems ??
-            []
-
-          const normalisedItems: SubmittedChecklistItem[] = rawItems.map((item: any) => ({
-            id:                  item.id,
-            questionDetail:      item.questionDetail      ?? item.question?.detail      ?? '',
-            questionDescription: item.questionDescription ?? item.question?.description ?? '',
-            isChoice:            item.isChoice ?? false,
-            answerChoice:        item.answerChoice ?? item.answer ?? item.checkAnswer ?? '',
-          }))
-
-          setSubmittedChecklist({ ...savedData, items: normalisedItems })
-        } catch {
-          await fetchEditableChecklist(id)
-        }
-      } else {
-        await fetchEditableChecklist(id)
-      }
+      // ── ใช้ /get/{maintenanceId} เสมอ (endpoint เดียวที่มีจริง)
+      // แล้วแยก read-only vs editable จาก checklistRecordId
+      await fetchChecklistByMaintenanceId(id, !!data?.checklistRecordId)
     } catch {
       toast.error(t('data_fetch_failed'))
     } finally {
@@ -263,15 +241,66 @@ function MaintenanceEdit() {
     }
   }
 
-  const fetchEditableChecklist = async (maintenanceId: number) => {
-    const clRes  = await api.get<any>(`/api/maintenance-checklist/get/${maintenanceId}`)
-    const clData = clRes?.data ?? clRes
-    setChecklist((clData?.checklistItems ?? []).map((item: any) => ({
-      ...item,
-      questionDetail:      item.question?.detail      ?? '',
-      questionDescription: item.question?.description ?? '',
-      answer: '',
-    })))
+
+  /**
+   * Fetch checklist via /api/maintenance-checklist/get/{maintenanceId}
+   * — the only real endpoint available.
+   *
+   * isAlreadySubmitted = true  → the backend returned a saved/locked record
+   *                              → display read-only SubmittedChecklist view
+   * isAlreadySubmitted = false → still a template / not yet submitted
+   *                              → display editable checklist form
+   */
+  const fetchChecklistByMaintenanceId = async (
+    maintenanceId: number,
+    isAlreadySubmitted: boolean,
+  ) => {
+    try {
+      const res  = await api.get<any>(`/api/maintenance-checklist/get/${maintenanceId}`)
+      const body = res?.data ?? res
+
+      if (isAlreadySubmitted) {
+        // ── Read-only view ───────────────────────────────────────────────────
+        // The /get endpoint returns the same data structure whether submitted
+        // or not; we just present it as locked.
+        const rawItems: any[] =
+          body?.checklistItems ??
+          body?.items ??
+          []
+
+        const normalisedItems: SubmittedChecklistItem[] = rawItems.map((item: any) => ({
+          id:                  item.id,
+          questionDetail:      item.questionDetail ?? item.question?.detail      ?? '',
+          questionDescription: item.questionDescription ?? item.question?.description ?? '',
+          isChoice:            item.isChoice ?? false,
+          // answerChoice may come back as answer / checkAnswer depending on version
+          answerChoice:        item.answerChoice ?? item.answer ?? item.checkAnswer ?? '',
+        }))
+
+        setSubmittedChecklist({
+          id:                     body?.id            ?? maintenanceId,
+          machineCode:            body?.machineCode   ?? '',
+          machineName:            body?.machineName   ?? '',
+          machineStatus:          body?.machineStatus ?? body?.status ?? '',
+          maintenanceBy:          body?.maintenanceBy ?? '',
+          responsibleMaintenance: body?.responsibleMaintenance ?? '',
+          actualDate:             body?.actualDate    ?? null,
+          submitted:              true,
+          items:                  normalisedItems,
+        })
+      } else {
+        // ── Editable template ────────────────────────────────────────────────
+        setChecklist((body?.checklistItems ?? body?.items ?? []).map((item: any) => ({
+          ...item,
+          questionDetail:      item.questionDetail ?? item.question?.detail      ?? '',
+          questionDescription: item.questionDescription ?? item.question?.description ?? '',
+          answer: '',
+        })))
+      }
+    } catch (err) {
+      console.warn('[MaintenanceEdit] fetchChecklistByMaintenanceId failed:', err)
+      // Leave checklist empty — user can still save the main record
+    }
   }
 
   const handleInputChange = (field: keyof MaintenanceRecord, value: any) => {
