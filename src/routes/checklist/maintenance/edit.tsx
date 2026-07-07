@@ -40,7 +40,7 @@ interface MaintenanceRecord {
   maintenanceBy:          string
   responsibleMaintenance: string
   note:                   string
-  checklistRecordId:      number | null   // ← NEW: null = ยังไม่ได้ submit
+  checklistRecordId:      number | null
 }
 
 interface ChecklistItem {
@@ -62,7 +62,6 @@ interface FileUploadResponse {
   uploadedBy?: string | null
 }
 
-// ── DTO สำหรับ checklist ที่ submit ไปแล้ว ────────────────────────────────────
 interface SubmittedChecklistItem {
   id:                  number
   questionDetail:      string
@@ -127,6 +126,32 @@ const toLocalDateString = (date?: string | Date | null | any): string | null => 
   return str
 }
 
+/**
+ * Parse attachment field — supports two formats:
+ *   1. JSON array  → new format
+ *   2. Comma-separated string → legacy format
+ */
+const parseAttachment = (raw: unknown): FileUploadResponse[] => {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw as FileUploadResponse[]
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return []
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed as FileUploadResponse[]
+      } catch { /* fall through */ }
+    }
+    return trimmed
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(name => ({ fileName: name, fileUrl: '', fileType: '', fileSize: 0, uploadedBy: null }))
+  }
+  return []
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function MaintenanceEdit() {
@@ -143,8 +168,11 @@ function MaintenanceEdit() {
   const [saving,  setSaving]  = useState(false)
 
   // ── responsible person ────────────────────────────────────────────────────
-  const [responsibleId,   setResponsibleId]   = useState<string>('')
-  const [responsibleName, setResponsibleName] = useState<string>('')
+  // responsibleId  = current value shown in the select (may be changed by user)
+  // originalResponsibleId = value loaded from server (used to detect changes)
+  const [responsibleId,         setResponsibleId]         = useState<string>('')
+  const [originalResponsibleId, setOriginalResponsibleId] = useState<string>('')
+  const [responsibleName,       setResponsibleName]       = useState<string>('')
 
   // ── existing uploaded files ───────────────────────────────────────────────
   const [existingFiles, setExistingFiles] = useState<FileUploadResponse[]>([])
@@ -182,38 +210,50 @@ function MaintenanceEdit() {
       const data = res?.data ?? res
       setFormData(data)
 
-      if (data?.responsibleMaintenance) {
-        setResponsibleId(String(data.responsibleMaintenance))
+      // Store original responsible id to detect changes later
+      const rid = data?.responsibleMaintenance ? String(data.responsibleMaintenance) : ''
+      setResponsibleId(rid)
+      setOriginalResponsibleId(rid)
+
+      if (rid) {
         try {
           const memberRes = await api.get<any>(`/api/user/${data.responsibleMaintenance}`)
           if (memberRes?.data) {
-            setResponsibleName(`${memberRes.data.firstName} ${memberRes.data.lastName}`)
+            const d = memberRes.data
+            setResponsibleName(
+              [d.firstName, d.lastName].filter(Boolean).join(' ') || rid
+            )
           }
         } catch {
-          setResponsibleName(String(data.responsibleMaintenance))
+          setResponsibleName(rid)
         }
       }
 
-      if (data?.attachment) {
-        try {
-          const parsed = typeof data.attachment === 'string'
-            ? JSON.parse(data.attachment) : data.attachment
-          if (Array.isArray(parsed)) setExistingFiles(parsed)
-        } catch {}
-      }
+      setExistingFiles(parseAttachment(data?.attachment))
 
-      // ── ถ้ามี checklistRecordId → ดึงข้อมูล checklist ที่ submit แล้ว (read-only) ──
       if (data?.checklistRecordId) {
         try {
           const savedRes  = await api.get<any>(`/api/maintenance-checklist/record/${data.checklistRecordId}`)
           const savedData = savedRes?.data ?? savedRes
-          setSubmittedChecklist(savedData)
+
+          const rawItems: any[] =
+            savedData?.items ??
+            savedData?.checklistItems ??
+            []
+
+          const normalisedItems: SubmittedChecklistItem[] = rawItems.map((item: any) => ({
+            id:                  item.id,
+            questionDetail:      item.questionDetail      ?? item.question?.detail      ?? '',
+            questionDescription: item.questionDescription ?? item.question?.description ?? '',
+            isChoice:            item.isChoice ?? false,
+            answerChoice:        item.answerChoice ?? item.answer ?? item.checkAnswer ?? '',
+          }))
+
+          setSubmittedChecklist({ ...savedData, items: normalisedItems })
         } catch {
-          // fallback: โหลด template แบบ editable ถ้าดึง saved record ไม่ได้
           await fetchEditableChecklist(id)
         }
       } else {
-        // ── ยังไม่ได้ submit → โหลด template แบบ editable ────────────────────
         await fetchEditableChecklist(id)
       }
     } catch {
@@ -258,14 +298,8 @@ function MaintenanceEdit() {
 
   const handleResponsibleChange = (selected: any) => {
     const val = Array.isArray(selected) ? selected[0] : selected
-    if (!val) {
-      setResponsibleId('')
-      setResponsibleName('')
-      setFormData(prev => ({ ...prev, responsibleMaintenance: '' }))
-      return
-    }
-    setResponsibleId(String(val))
-    setFormData(prev => ({ ...prev, responsibleMaintenance: String(val) }))
+    // val = undefined / null / "" means user cleared the select — keep original
+    setResponsibleId(val ? String(val) : '')
   }
 
   // ─── File upload ──────────────────────────────────────────────────────────
@@ -297,14 +331,19 @@ function MaintenanceEdit() {
       setIsUploading(true)
       try {
         const results: FileUploadResponse[] = []
-        for (const f of toUpload) { try { results.push(await uploadFile(f)) } catch {} }
+        for (const f of toUpload) {
+          try { results.push(await uploadFile(f)) } catch {}
+        }
         if (results.length) {
           setUploadedFiles(prev => [...prev, ...results])
           toast.success(t('files_uploaded').replace('{count}', String(results.length)))
         }
-      } catch { toast.error(t('failed_to_upload_files')) }
-      finally {
-        toUpload.forEach(f => fileQueueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`))
+      } catch {
+        toast.error(t('failed_to_upload_files'))
+      } finally {
+        toUpload.forEach(f =>
+          fileQueueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`)
+        )
         setIsUploading(false)
       }
     }, 100)
@@ -323,15 +362,16 @@ function MaintenanceEdit() {
       await api.delete(`/api/files/delete/${newFile.fileName}`)
       setUploadedFiles(prev => prev.filter(u => u.fileName !== newFile.fileName))
       toast.success(t('file_deleted'))
-    } catch { toast.error(t('failed_to_delete_file')) }
+    } catch {
+      toast.error(t('failed_to_delete_file'))
+    }
   }
 
-  // ─── Submit (main + checklist together) ──────────────────────────────────
+  // ─── Submit ───────────────────────────────────────────────────────────────
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // ── ถ้า checklist submit ไปแล้ว → ข้ามการ validate checklist ────────────
     if (!submittedChecklist) {
       const errs: Record<string, string> = {}
       if (checklist.length > 0 && !selectedStatus) errs.selectedStatus = t('please_select')
@@ -347,23 +387,48 @@ function MaintenanceEdit() {
 
     setSaving(true)
     try {
-      // ── 1. Save main maintenance record ──────────────────────────────────
-      const allFiles = [...existingFiles, ...uploadedFiles].map(f => ({
-        fileName: f.fileName, fileUrl: f.fileUrl, fileType: f.fileType,
-        fileSize: f.fileSize, uploadedBy: f.uploadedBy ?? null,
-      }))
-      const payload = {
-        id:                     formData.id,
-        dueDate:                toLocalDateString(formData.dueDate),
-        planDate:               toLocalDateString(formData.planDate),
-        startDate:              toLocalDateString(formData.startDate),
-        actualDate:             toLocalDateString(formData.actualDate),
-        status:                 formData.status        || null,
-        maintenanceBy:          formData.maintenanceBy || null,
-        responsibleMaintenance: responsibleId          || null,
-        note:                   formData.note          || null,
-        attachment:             allFiles.length ? JSON.stringify(allFiles) : null,
+      // ── Build deduplicated file list ──────────────────────────────────────
+      const seen = new Set<string>()
+      const allFiles = [...existingFiles, ...uploadedFiles]
+        .filter(f => {
+          if (!f.fileName || seen.has(f.fileName)) return false
+          seen.add(f.fileName)
+          return true
+        })
+        .map(f => ({
+          fileName:   f.fileName,
+          fileUrl:    f.fileUrl,
+          fileType:   f.fileType,
+          fileSize:   f.fileSize,
+          uploadedBy: f.uploadedBy ?? null,
+        }))
+
+      // ── Decide whether responsible_maintenance should be sent ─────────────
+      // Only include it in the payload when the user actually picked a different
+      // person. If the value is unchanged (or the user never touched the field)
+      // we omit it so the backend leaves the DB column untouched.
+      const responsibleChanged = responsibleId !== originalResponsibleId
+      const resolvedResponsible: number | undefined = responsibleChanged && responsibleId.trim() !== ''
+        ? Number(responsibleId)
+        : undefined   // omit from payload → backend skips update for this field
+
+      const payload: Record<string, unknown> = {
+        id:            formData.id,
+        dueDate:       toLocalDateString(formData.dueDate),
+        planDate:      toLocalDateString(formData.planDate),
+        startDate:     toLocalDateString(formData.startDate),
+        actualDate:    toLocalDateString(formData.actualDate),
+        status:        formData.status        || null,
+        maintenanceBy: formData.maintenanceBy || null,
+        note:          formData.note          || null,
+        attachment:    allFiles.length > 0 ? JSON.stringify(allFiles) : null,
       }
+
+      // Include responsible_maintenance only when changed
+      if (resolvedResponsible !== undefined) {
+        payload.responsibleMaintenance = resolvedResponsible
+      }
+
       const fd = new FormData()
       fd.append('request', new Blob([JSON.stringify(payload)], { type: 'application/json' }))
       const res = await api.put('/api/maintenance/update', fd)
@@ -372,7 +437,12 @@ function MaintenanceEdit() {
         return
       }
 
-      // ── 2. Save checklist เฉพาะกรณีที่ยังไม่เคย submit ──────────────────
+      // Update originalResponsibleId so a second save won't re-send the field
+      if (responsibleChanged) {
+        setOriginalResponsibleId(responsibleId)
+      }
+
+      // ── Save checklist only when not yet submitted ────────────────────────
       if (!submittedChecklist && checklist.length > 0 && selectedStatus) {
         const session = sessionStore.state.session
         const request = {
@@ -380,16 +450,21 @@ function MaintenanceEdit() {
           machineCode:            formData.machineCode,
           machineName:            formData.machineName,
           machineStatus:          selectedStatus,
-          machineChecklist:       JSON.stringify(checklist.map(item => ({
-            id: item.id, questionDetail: item.questionDetail ?? 'N/A',
-            answerChoice: getAnswer(item), checkStatus: true,
-          }))),
+          machineChecklist:       JSON.stringify(
+            checklist.map(item => ({
+              id:             item.id,
+              questionDetail: item.questionDetail ?? 'N/A',
+              answerChoice:   getAnswer(item),
+              checkStatus:    true,
+            }))
+          ),
           machineNote:            formData.note,
           userId:                 session?.employeeId ?? '',
           userName:               `${session?.firstName ?? ''} ${session?.lastName ?? ''}`.trim(),
           supervisor: '', manager: '',
           jobDetail:              `Maintenance Round ${formData.round}/${formData.years}`,
-          actualDate:             toLocalDateString(formData.actualDate) ?? new Date().toISOString().split('T')[0],
+          actualDate:             toLocalDateString(formData.actualDate)
+                                    ?? new Date().toISOString().split('T')[0],
           dueDate:                toLocalDateString(formData.dueDate),
           maintenanceBy,
           responsibleMaintenance: maintenanceBy === 'INTERNAL' ? responsibleMaintenance2 : '',
@@ -404,8 +479,11 @@ function MaintenanceEdit() {
       }
 
       toast.success(t('maintenance_updated'))
-    } catch { toast.error(t('data_fetch_failed')) }
-    finally { setSaving(false) }
+    } catch {
+      toast.error(t('data_fetch_failed'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ─── Checklist helpers ────────────────────────────────────────────────────
@@ -413,8 +491,14 @@ function MaintenanceEdit() {
   const getAnswer = (item: ChecklistItem) => item.answer ?? ''
 
   const updateAnswer = (itemId: number, value: string) => {
-    setChecklist(prev => prev.map(item => item.id === itemId ? { ...item, answer: value } : item))
-    setChecklistErrors(prev => { const n = { ...prev }; delete n[`item_${itemId}`]; return n })
+    setChecklist(prev =>
+      prev.map(item => item.id === itemId ? { ...item, answer: value } : item)
+    )
+    setChecklistErrors(prev => {
+      const n = { ...prev }
+      delete n[`item_${itemId}`]
+      return n
+    })
   }
 
   // ─── Loading ──────────────────────────────────────────────────────────────
@@ -433,7 +517,7 @@ function MaintenanceEdit() {
       name: f.fileName,
       size: f.fileSize,
       type: f.fileType,
-      url:  `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
+      url:  f.fileUrl || `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
     })),
     ...uploadedFiles.map(f => ({
       name: f.fileName,
@@ -489,9 +573,11 @@ function MaintenanceEdit() {
           <div className="space-y-2">
             <Label>{t('maintenance')}</Label>
             <div className="relative">
-              <select value={formData.maintenanceBy}
+              <select
+                value={formData.maintenanceBy}
                 onChange={e => handleInputChange('maintenanceBy', e.target.value)}
-                className="w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-border">
+                className="w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-border"
+              >
                 <option value="">-- {t('please_select')} --</option>
                 <option value="INTERNAL">INTERNAL</option>
                 <option value="EXTERNAL">EXTERNAL</option>
@@ -503,7 +589,7 @@ function MaintenanceEdit() {
           {/* Responsible Person */}
           <div className="space-y-2">
             <ServerSingleSelect
-              key={`resp-${responsibleId || 'empty'}`}
+              key={`resp-${originalResponsibleId || 'empty'}`}
               id="responsibleMaintenance"
               title={t('responsible')}
               label={t('responsible')}
@@ -519,9 +605,12 @@ function MaintenanceEdit() {
         {/* Note */}
         <div className="space-y-2">
           <Label>{t('note')}</Label>
-          <Textarea rows={4} value={formData.note || ''}
+          <Textarea
+            rows={4}
+            value={formData.note || ''}
             onChange={e => handleInputChange('note', e.target.value)}
-            placeholder={t('note')} />
+            placeholder={t('note')}
+          />
         </div>
 
         {/* ── Checklist ─────────────────────────────────────────────────── */}
@@ -530,7 +619,6 @@ function MaintenanceEdit() {
             <CardTitle className="flex items-center gap-2 font-semibold">
               <ClipboardList className="h-5 w-5 text-primary" />
               {t('checklist_records')}
-              {/* Badge แสดงสถานะว่า submit แล้ว */}
               {submittedChecklist && (
                 <span className="ml-auto flex items-center gap-1 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                   <CheckCircle2 className="w-3.5 h-3.5" />
@@ -542,17 +630,13 @@ function MaintenanceEdit() {
           <CardContent className="p-6 space-y-4">
 
             {submittedChecklist ? (
-              /* ════════════════════════════════════════════════════════════
-                 READ-ONLY VIEW — checklist ที่ submit ไปแล้ว ล็อกไม่ให้แก้ไข
-                 ════════════════════════════════════════════════════════════ */
+              /* ── READ-ONLY ───────────────────────────────────────────── */
               <>
-                {/* แบนเนอร์แจ้งเตือน */}
                 <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-200 rounded-xl">
                   <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                   <p className="text-sm text-amber-700">{t('checklist_locked_message')}</p>
                 </div>
 
-                {/* สรุปข้อมูล machine status / maintenance by */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-xl border border-border">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t('machine_status')}</p>
@@ -564,21 +648,20 @@ function MaintenanceEdit() {
                   </div>
                 </div>
 
-                {/* รายการ checklist แบบ read-only */}
                 {submittedChecklist.items.length === 0 ? (
-                  <p className="text-muted-foreground text-sm text-center py-6">{t('no_checklist_items')}</p>
+                  <p className="text-muted-foreground text-sm text-center py-6">
+                    {t('no_checklist_items')}
+                  </p>
                 ) : (
                   <div className="space-y-3">
                     {submittedChecklist.items.map((item, idx) => (
-                      <div key={item.id}
-                        className="p-4 rounded-xl border border-border bg-muted/10">
+                      <div key={item.id} className="p-4 rounded-xl border border-border bg-muted/10">
                         <p className="text-sm mb-1">
-                          {idx + 1}. {item.questionDescription ?? 'N/A'}
+                          {idx + 1}. {item.questionDescription || item.questionDetail || 'N/A'}
                         </p>
-                        {item.questionDetail && (
+                        {item.questionDetail && item.questionDetail !== item.questionDescription && (
                           <p className="text-xs text-muted-foreground mb-2">{item.questionDetail}</p>
                         )}
-                        {/* คำตอบที่ lock ไม่ให้แก้ไข */}
                         <div className="mt-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground select-none cursor-default">
                           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                           <span>{item.answerChoice || '—'}</span>
@@ -589,27 +672,26 @@ function MaintenanceEdit() {
                 )}
               </>
             ) : (
-              /* ════════════════════════════════════════════════════════════
-                 EDITABLE VIEW — กรณียังไม่ได้ submit checklist
-                 ════════════════════════════════════════════════════════════ */
+              /* ── EDITABLE ────────────────────────────────────────────── */
               <>
-                {/* Machine Status */}
                 <div className="space-y-1.5">
-                  <Label>{t('machine_status')} <span className="text-red-500">*</span></Label>
+                  <Label>
+                    {t('machine_status')} <span className="text-red-500">*</span>
+                  </Label>
                   <div className="relative">
-                    <select value={selectedStatus}
+                    <select
+                      value={selectedStatus}
                       onChange={e => {
                         setSelectedStatus(e.target.value)
                         setChecklistErrors(p => { const n = { ...p }; delete n.selectedStatus; return n })
                       }}
                       className={`w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                         checklistErrors.selectedStatus ? 'border-red-400' : 'border-border'
-                      }`}>
+                      }`}
+                    >
                       <option value="">-- {t('please_select')} --</option>
                       {MACHINE_STATUS_VALUES.map((value, idx) => (
-                        <option key={value} value={value}>
-                          {t(MACHINE_STATUS_KEYS[idx])}
-                        </option>
+                        <option key={value} value={value}>{t(MACHINE_STATUS_KEYS[idx])}</option>
                       ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -621,9 +703,10 @@ function MaintenanceEdit() {
                   )}
                 </div>
 
-                {/* Checklist Items */}
                 {checklist.length === 0 ? (
-                  <p className="text-muted-foreground text-sm text-center py-6">{t('no_checklist_items')}</p>
+                  <p className="text-muted-foreground text-sm text-center py-6">
+                    {t('no_checklist_items')}
+                  </p>
                 ) : (
                   <div className="space-y-3">
                     {checklist.map((item, idx) => {
@@ -647,9 +730,7 @@ function MaintenanceEdit() {
                                 }`}>
                                 <option value="">-- {t('please_select')} --</option>
                                 {CHOICE_KEYS.map(key => (
-                                  <option key={key} value={t(key)}>
-                                    {t(key)}
-                                  </option>
+                                  <option key={key} value={t(key)}>{t(key)}</option>
                                 ))}
                               </select>
                               <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -694,7 +775,9 @@ function MaintenanceEdit() {
                 window.open(file.url ?? `${API_BASE}/api/files/download/${file.name}`, '_blank')
               }
               onDeleteUploadedFile={handleDeleteFile}
-              onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+              onFileReject={(f, m) =>
+                toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })
+              }
             />
           </CardContent>
         </Card>
