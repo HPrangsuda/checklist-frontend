@@ -3,7 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, Download, Edit3, FileText, Wrench, X } from 'lucide-react'
+import {
+  ArrowLeft, CheckCircle2, ClipboardList, Download,
+  Edit3, FileText, Wrench, X,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
@@ -34,6 +37,7 @@ interface MaintenanceRecord {
   responsibleMaintenance?: string
   note?:                   string
   attachment?:             string
+  checklistRecordId?:      number | null
 }
 
 interface AttachmentItem {
@@ -42,6 +46,23 @@ interface AttachmentItem {
   fileType:   string
   fileSize:   number
   uploadedBy: string | null
+}
+
+interface ChecklistItem {
+  id:           number
+  questionDetail: string
+  answerChoice:   string
+  checkStatus:    boolean
+}
+
+interface ChecklistRecord {
+  id:            number
+  machineCode:   string
+  machineName:   string
+  machineStatus: string
+  maintenanceBy: string
+  actualDate:    string | null
+  items:         ChecklistItem[]
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -88,13 +109,9 @@ const parseAttachments = (raw?: string | AttachmentItem[]): AttachmentItem[] => 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
 
 function InfoRow({
-  label,
-  value,
-  className = '',
+  label, value, className = '',
 }: {
-  label: string
-  value?: string | number | null
-  className?: string
+  label: string; value?: string | number | null; className?: string
 }) {
   return (
     <div className={className}>
@@ -214,7 +231,8 @@ function AttachmentFile({ file }: { file: AttachmentItem }) {
         )}
       </div>
       {isImage && blobUrl && (
-        <ImageDialog blobUrl={blobUrl} fileName={file.fileName} open={dialogOpen} onClose={() => setDialogOpen(false)} />
+        <ImageDialog blobUrl={blobUrl} fileName={file.fileName}
+          open={dialogOpen} onClose={() => setDialogOpen(false)} />
       )}
     </>
   )
@@ -232,6 +250,58 @@ function AttachmentList({ attachment }: { attachment?: string | AttachmentItem[]
   )
 }
 
+// ─── ChecklistView ────────────────────────────────────────────────────────────
+
+function ChecklistView({ checklist }: { checklist: ChecklistRecord }) {
+  return (
+    <div className="space-y-4">
+      {/* Summary row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-xl border border-border">
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">สถานะเครื่องจักร</p>
+          <p className="text-sm font-medium">{checklist.machineStatus || '—'}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">ซ่อมบำรุงโดย</p>
+          <p className="text-sm font-medium">{checklist.maintenanceBy || '—'}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">วันที่ดำเนินการ</p>
+          <p className="text-sm font-medium">{formatDate(checklist.actualDate)}</p>
+        </div>
+      </div>
+
+      {/* Checklist items */}
+      {checklist.items.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-6">ไม่มีรายการตรวจสอบ</p>
+      ) : (
+        <div className="space-y-3">
+          {checklist.items.map((item, idx) => (
+            <div key={item.id}
+              className="p-4 rounded-xl border border-border bg-background">
+              <p className="text-sm font-medium leading-snug">
+                {idx + 1}. {item.questionDetail || 'N/A'}
+              </p>
+              <div className="mt-3">
+                {item.answerChoice ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {item.answerChoice}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+                    —
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function MaintenanceView() {
@@ -242,6 +312,8 @@ function MaintenanceView() {
   const [record,          setRecord]          = useState<MaintenanceRecord | null>(null)
   const [loading,         setLoading]         = useState(true)
   const [responsibleName, setResponsibleName] = useState<string>('')
+  const [checklist,       setChecklist]       = useState<ChecklistRecord | null>(null)
+  const [checklistLoading, setChecklistLoading] = useState(false)
 
   useEffect(() => { if (id) fetchDetail() }, [id])
 
@@ -249,20 +321,30 @@ function MaintenanceView() {
     try {
       setLoading(true)
       const response = await api.get<any>(`/api/maintenance/${id}`)
-      if (response?.data) {
-        setRecord(response.data)
-        if (response.data.responsibleMaintenance) {
-          try {
-            const memberRes = await api.get<any>(`/api/user/${response.data.responsibleMaintenance}`)
-            if (memberRes?.data) {
-              setResponsibleName(`${memberRes.data.firstName} ${memberRes.data.lastName}`)
-            }
-          } catch {
-            setResponsibleName(response.data.responsibleMaintenance)
-          }
-        }
-      } else {
+      if (!response?.data) {
         toast.error('Failed to load maintenance details')
+        return
+      }
+
+      const data: MaintenanceRecord = response.data
+      setRecord(data)
+
+      // Resolve responsible person name
+      if (data.responsibleMaintenance) {
+        try {
+          const memberRes = await api.get<any>(`/api/user/${data.responsibleMaintenance}`)
+          if (memberRes?.data) {
+            const d = memberRes.data
+            setResponsibleName([d.firstName, d.lastName].filter(Boolean).join(' '))
+          }
+        } catch {
+          setResponsibleName(String(data.responsibleMaintenance))
+        }
+      }
+
+      // Fetch checklist record
+      if (data.checklistRecordId) {
+        fetchChecklist(data.checklistRecordId, Number(id))
       }
     } catch {
       toast.error('Failed to load maintenance details')
@@ -270,6 +352,73 @@ function MaintenanceView() {
       setLoading(false)
     }
   }
+
+  const fetchChecklist = async (checklistRecordId: number, maintenanceId: number) => {
+    setChecklistLoading(true)
+    try {
+      // Real endpoint confirmed: /api/checklist/{checklistRecordId}
+      const res  = await api.get<any>(`/api/checklist/${checklistRecordId}`)
+      const body = res?.data ?? res
+
+      // machineChecklist is a JSON-encoded string inside the response
+      let rawItems: any[] = []
+      if (body?.machineChecklist) {
+        try {
+          rawItems = typeof body.machineChecklist === 'string'
+            ? JSON.parse(body.machineChecklist)
+            : body.machineChecklist
+        } catch {
+          rawItems = []
+        }
+      }
+
+      const items: ChecklistItem[] = rawItems.map((item: any) => ({
+        id:             item.id,
+        questionDetail: item.questionDetail ?? '',
+        answerChoice:   item.answerChoice   ?? item.answer ?? '',
+        checkStatus:    item.checkStatus    ?? true,
+      }))
+
+      setChecklist({
+        id:            body?.id          ?? checklistRecordId,
+        machineCode:   body?.machineCode ?? '',
+        machineName:   body?.machineName ?? '',
+        machineStatus: body?.machineStatus ?? '',
+        maintenanceBy: body?.maintenanceBy ?? '',
+        actualDate:    body?.actualDate    ?? null,
+        items,
+      })
+    } catch (err) {
+      console.warn('[MaintenanceView] fetchChecklist failed:', err)
+      // Fallback: try /api/maintenance-checklist/get/{maintenanceId}
+      try {
+        const res  = await api.get<any>(`/api/maintenance-checklist/get/${maintenanceId}`)
+        const body = res?.data ?? res
+        const rawItems: any[] = body?.checklistItems ?? body?.items ?? []
+        const items: ChecklistItem[] = rawItems.map((item: any) => ({
+          id:             item.id,
+          questionDetail: item.questionDetail ?? item.question?.detail ?? '',
+          answerChoice:   item.answerChoice   ?? item.answer ?? '',
+          checkStatus:    item.checkStatus    ?? true,
+        }))
+        setChecklist({
+          id:            body?.id ?? checklistRecordId,
+          machineCode:   body?.machineCode   ?? '',
+          machineName:   body?.machineName   ?? '',
+          machineStatus: body?.machineStatus ?? body?.status ?? '',
+          maintenanceBy: body?.maintenanceBy ?? '',
+          actualDate:    body?.actualDate    ?? null,
+          items,
+        })
+      } catch {
+        // Leave checklist null — section will be hidden
+      }
+    } finally {
+      setChecklistLoading(false)
+    }
+  }
+
+  // ─── Loading / not-found guards ───────────────────────────────────────────
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -290,6 +439,8 @@ function MaintenanceView() {
       </Card>
     </div>
   )
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-background">
@@ -322,7 +473,7 @@ function MaintenanceView() {
       {/* ── Content ───────────────────────────────────────────────────────── */}
       <div className="max-w-7xl mx-auto p-6 space-y-6">
 
-        {/* Maintenance Details */}
+        {/* ── Maintenance Details ────────────────────────────────────────── */}
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-3 font-semibold">
@@ -348,7 +499,45 @@ function MaintenanceView() {
           </CardContent>
         </Card>
 
-        {/* Attachments */}
+        {/* ── Checklist Record ───────────────────────────────────────────── */}
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-2 font-semibold">
+              <ClipboardList className="h-5 w-5 text-primary" />
+              {t('checklist_records')}
+              {/* Badge: submitted / not yet */}
+              {record.checklistRecordId ? (
+                <span className="ml-auto flex items-center gap-1 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {t('already_submitted') || 'บันทึกแล้ว'}
+                </span>
+              ) : (
+                <span className="ml-auto text-xs font-normal text-muted-foreground bg-muted border border-border px-2.5 py-1 rounded-full">
+                  {t('not_submitted') || 'ยังไม่ได้บันทึก'}
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            {checklistLoading ? (
+              <div className="space-y-3">
+                <Skeleton className="h-16 w-full rounded-xl" />
+                <Skeleton className="h-16 w-full rounded-xl" />
+                <Skeleton className="h-16 w-full rounded-xl" />
+              </div>
+            ) : checklist ? (
+              <ChecklistView checklist={checklist} />
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                {record.checklistRecordId
+                  ? 'ไม่สามารถโหลดข้อมูลการตรวจสอบได้'
+                  : 'ยังไม่มีการบันทึกผลการตรวจสอบ'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Attachments ───────────────────────────────────────────────── */}
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
@@ -361,7 +550,7 @@ function MaintenanceView() {
           </CardContent>
         </Card>
 
-        {/* Maintenance History */}
+        {/* ── Maintenance History ────────────────────────────────────────── */}
         <MaintenanceTbl machineCode={record.machineCode} />
 
       </div>
