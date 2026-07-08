@@ -180,6 +180,7 @@ function MaintenanceEdit() {
   // ── checklist (editable template) ────────────────────────────────────────
   const [checklist,               setChecklist]               = useState<ChecklistItem[]>([])
   const [checklistErrors,         setChecklistErrors]         = useState<Record<string, string>>({})
+  const [formErrors,              setFormErrors]              = useState<Record<string, string>>({})
   const [selectedStatus,          setSelectedStatus]          = useState('')
   const [maintenanceBy,           setMaintenanceBy]           = useState<'INTERNAL' | 'EXTERNAL'>('INTERNAL')
   const [responsibleMaintenance2, setResponsibleMaintenance2] = useState('')
@@ -345,6 +346,7 @@ function MaintenanceEdit() {
   const handleResponsibleChange = (selected: any) => {
     const val = Array.isArray(selected) ? selected[0] : selected
     setResponsibleId(val ? String(val) : '')
+    if (val) setFormErrors(prev => { const n = { ...prev }; delete n.responsible; return n })
   }
 
   // pendingFiles: store File objects — no pre-upload
@@ -373,6 +375,15 @@ function MaintenanceEdit() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Validate required fields (checklist + responsible)
+    const fErrs: Record<string, string> = {}
+    if (!responsibleId.trim()) fErrs.responsible = t('responsible_required') || 'กรุณาเลือกผู้รับผิดชอบ'
+    setFormErrors(fErrs)
+    if (Object.keys(fErrs).length) {
+      toast.error(t('fill_required_fields') || 'กรุณากรอกข้อมูลที่จำเป็น')
+      return
+    }
+
     if (!submittedChecklist) {
       const errs: Record<string, string> = {}
       if (checklist.length > 0 && !selectedStatus) errs.selectedStatus = t('please_select')
@@ -399,10 +410,13 @@ function MaintenanceEdit() {
           uploadedBy: f.uploadedBy ?? null,
         }))
 
+      // อัปเดต responsible เฉพาะเมื่อ:
+      // 1. ค่าเปลี่ยนจากเดิม (responsibleId !== originalResponsibleId)
+      // 2. ค่าใหม่ไม่ใช่ null/empty (user เลือกคนจริงๆ ไม่ใช่ clear ออก)
       const responsibleChanged  = responsibleId !== originalResponsibleId
-      const resolvedResponsible = responsibleChanged && responsibleId.trim() !== ''
+      const resolvedResponsible = (responsibleChanged && responsibleId.trim() !== '')
         ? Number(responsibleId)
-        : undefined
+        : undefined   // ไม่ส่ง → backend ไม่แตะ column นี้
 
       const payload: Record<string, unknown> = {
         id:            formData.id,
@@ -465,8 +479,15 @@ function MaintenanceEdit() {
         }
       }
 
+      // Reload only the attachment data so existingFiles reflects newly uploaded files.
+      // We do NOT call fetchData() here to avoid resetting responsibleId/name state
+      // which would clear the responsible person if backend stored null.
+      try {
+        const refreshed = await api.get<any>(`/api/maintenance/${formData.id}`)
+        const refreshedData = refreshed?.data ?? refreshed
+        setExistingFiles(parseAttachment(refreshedData?.attachment))
+      } catch { /* ignore — existingFiles may be slightly stale but not critical */ }
       setPendingFiles([])
-      await fetchData()
       toast.success(t('maintenance_updated'))
     } catch {
       toast.error(t('data_fetch_failed'))
@@ -558,13 +579,19 @@ function MaintenanceEdit() {
               key={`resp-${originalResponsibleId || 'empty'}`}
               id="responsibleMaintenance"
               title={t('responsible')}
-              label={t('responsible')}
+              label={`${t('responsible')} *`}
               placeholder={t('select_responsible')}
               value={responsibleId}
               initialLabel={responsibleName}
               onChange={handleResponsibleChange}
               fetchOptions={fetchMembers}
+              error={formErrors.responsible}
             />
+            {formErrors.responsible && (
+              <p className="text-red-500 text-xs flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3 h-3" />{formErrors.responsible}
+              </p>
+            )}
           </div>
         </div>
 
