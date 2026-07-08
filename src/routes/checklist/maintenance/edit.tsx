@@ -7,7 +7,7 @@ import type { FormStep } from '@/components/layout/form-sidebar'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import {
   FileText, ChevronDown, AlertCircle, ClipboardList,
-  CheckCircle2,
+  CheckCircle2, Paperclip, Download, X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
@@ -759,54 +759,61 @@ function MaintenanceEdit() {
               <FileText className="h-5 w-5 text-primary" />{t('attachments')}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
-            {/* รวม existing files (plain object) + pending files (File object)
-                ส่งเข้า FileUploadField เหมือน pattern register/add.tsx
-                onDownloadFile ใช้ URL โดยตรง ไม่เรียก createObjectURL          */}
+          <CardContent className="p-6 space-y-4">
+
+            {/* Existing server-side files — rendered as plain list.
+                ไม่ส่งเข้า FileUploadField เพราะ component จะเรียก
+                createObjectURL กับทุก item ซึ่ง crash กับ plain object  */}
+            {existingFiles.length > 0 && (
+              <div className="space-y-1.5">
+                {existingFiles.map(f => {
+                  const downloadUrl = `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName ?? '')}`
+                  return (
+                    <div key={f.fileName}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors group">
+                      <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm flex-1 truncate text-foreground">{f.fileName}</span>
+                      {f.fileSize ? (
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {f.fileSize < 1024
+                            ? `${f.fileSize} B`
+                            : f.fileSize < 1048576
+                            ? `${(f.fileSize / 1024).toFixed(1)} KB`
+                            : `${(f.fileSize / 1048576).toFixed(1)} MB`}
+                        </span>
+                      ) : null}
+                      <button type="button"
+                        onClick={() => window.open(downloadUrl, '_blank')}
+                        className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                        title="ดาวน์โหลด">
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button type="button"
+                        onClick={() => handleDeleteExisting(f.fileName)}
+                        className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                        title="ลบ">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* FileUploadField รับแค่ pendingFiles (File objects จริงๆ)
+                ไม่มี plain object ปน → ไม่เกิด createObjectURL error        */}
             <FileUploadField
               id="attachments"
               maxFiles={10}
-              value={[
-                ...existingFiles.map(f => {
-                  // fileType จาก backend คือ extension (pdf, jpg, png ...)
-                  // FileUploadField ต้องการ MIME type — แปลงจาก extension
-                  const ext = (f.fileType || f.fileName?.split('.').pop() || '').toLowerCase()
-                  const mimeMap: Record<string, string> = {
-                    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-                    gif: 'image/gif',  webp: 'image/webp', pdf: 'application/pdf',
-                    doc: 'application/msword',
-                    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    xls: 'application/vnd.ms-excel',
-                    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                  }
-                  const mime = mimeMap[ext] ?? 'application/octet-stream'
-                  // fileUrl จาก backend คือ "/uploads/filename.ext" — ต้องใช้ download endpoint แทน
-                  const downloadUrl = `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName ?? '')}`
-                  return {
-                    name: f.fileName ?? '',
-                    size: f.fileSize ?? 0,
-                    type: mime,
-                    url:  downloadUrl,
-                  }
-                }),
-                ...pendingFiles,
-              ] as unknown as File[]}
+              value={pendingFiles}
               onChange={handleFilesChange}
-              onDownloadFile={(file: any) => {
-                const url = file?.url || (file?.name ? `${API_BASE}/api/files/download/${encodeURIComponent(file.name)}` : null)
-                if (url) window.open(url, '_blank')
-              }}
-              onDeleteUploadedFile={(fileId: any) => {
-                const name = String(fileId)
-                // ลอง existing ก่อน แล้วค่อย pending
-                const existing = existingFiles.find(f => f.fileName === name || name.includes(f.fileName))
-                if (existing) { handleDeleteExisting(existing.fileName); return }
-                handleDeletePending(fileId)
-              }}
+              onDownloadFile={() => {}}
+              onDeleteUploadedFile={handleDeletePending}
               onFileReject={(f, m) =>
                 toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })
               }
             />
+
           </CardContent>
         </Card>
 
