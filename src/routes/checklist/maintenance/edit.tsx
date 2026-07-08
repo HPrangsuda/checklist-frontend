@@ -688,25 +688,14 @@ function MaintenanceEdit() {
             {submittedChecklist ? (
               /* ── READ-ONLY ───────────────────────────────────────────── */
               <>
-                {/* Lock banner */}
-                <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-200 rounded-xl">
-                  <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                  <p className="text-sm text-amber-700">{t('checklist_locked_message')}</p>
-                </div>
-
                 {/* Summary row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-xl border border-border">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t('machine_status')}</p>
                     <p className="text-sm font-medium">{submittedChecklist.machineStatus || '—'}</p>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">{t('maintenance')}</p>
-                    <p className="text-sm font-medium">{submittedChecklist.maintenanceBy || '—'}</p>
-                  </div>
                 </div>
 
-                {/* Checklist items — read-only with answer badge */}
                 {submittedChecklist.items.length === 0 ? (
                   <p className="text-muted-foreground text-sm text-center py-6">
                     {t('no_checklist_items')}
@@ -727,7 +716,6 @@ function MaintenanceEdit() {
                               {item.questionDetail}
                             </p>
                           )}
-                          {/* Answer badge — styled like the green "READY TO USE" in the screenshot */}
                           <div className="mt-3">
                             {answer ? (
                               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
@@ -745,8 +733,6 @@ function MaintenanceEdit() {
                     })}
                   </div>
                 )}
-
-                {/* Submitted checklist attachments (if any) */}
 
               </>
             ) : (
@@ -844,7 +830,6 @@ function MaintenanceEdit() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
-            {/* Files from the submitted checklist record */}
             {submittedChecklist && (() => {
               const clFiles = parseAttachment((submittedChecklist as any).attachment)
               if (clFiles.length === 0) return null
@@ -875,8 +860,6 @@ function MaintenanceEdit() {
                 </div>
               )
             })()}
-
-            {/* Files on the maintenance record itself (editable) */}
             <FileUploadField
               id="attachments"
               maxFiles={10}

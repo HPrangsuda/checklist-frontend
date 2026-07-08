@@ -261,14 +261,6 @@ function ChecklistView({ checklist }: { checklist: ChecklistRecord }) {
           <p className="text-xs text-muted-foreground">สถานะเครื่องจักร</p>
           <p className="text-sm font-medium">{checklist.machineStatus || '—'}</p>
         </div>
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">ซ่อมบำรุงโดย</p>
-          <p className="text-sm font-medium">{checklist.maintenanceBy || '—'}</p>
-        </div>
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">วันที่ดำเนินการ</p>
-          <p className="text-sm font-medium">{formatDate(checklist.actualDate)}</p>
-        </div>
       </div>
 
       {/* Checklist items */}
@@ -490,8 +482,8 @@ function MaintenanceView() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <InfoRow label={t('due_date')}    value={formatDate(record.dueDate)} />
               <InfoRow label={t('plan_date')}   value={formatDate(record.planDate)} />
-              <InfoRow label={t('result_date')} value={formatDate(record.startDate)} />
-              <InfoRow label={t('external_calibration_date')} value={formatDate(record.actualDate)} />
+              <InfoRow label={t('start_date')} value={formatDate(record.startDate)} />
+              <InfoRow label={t('actual_date')} value={formatDate(record.actualDate)} />
               <InfoRow label={t('responsible_by')} value={record.maintenanceBy} />
               <InfoRow label={t('responsible')}    value={responsibleName} />
               <InfoRow label={t('note')}           value={record.note} className="md:col-span-2" />
@@ -505,17 +497,6 @@ function MaintenanceView() {
             <CardTitle className="flex items-center gap-2 font-semibold">
               <ClipboardList className="h-5 w-5 text-primary" />
               {t('checklist_records')}
-              {/* Badge: submitted / not yet */}
-              {record.checklistRecordId ? (
-                <span className="ml-auto flex items-center gap-1 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  {t('already_submitted') || 'บันทึกแล้ว'}
-                </span>
-              ) : (
-                <span className="ml-auto text-xs font-normal text-muted-foreground bg-muted border border-border px-2.5 py-1 rounded-full">
-                  {t('not_submitted') || 'ยังไม่ได้บันทึก'}
-                </span>
-              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
