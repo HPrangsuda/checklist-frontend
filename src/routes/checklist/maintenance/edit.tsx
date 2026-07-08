@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -6,8 +5,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { FormLayout } from '@/components/layout/form-layout'
 import type { FormStep } from '@/components/layout/form-sidebar'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
-import { FileText, ChevronDown, AlertCircle, ClipboardList, CheckCircle2, Lock, Paperclip, Download } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import {
+  FileText, ChevronDown, AlertCircle, ClipboardList,
+  CheckCircle2, Paperclip, Download, X,
+} from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import { toast } from 'sonner'
@@ -126,11 +128,6 @@ const toLocalDateString = (date?: string | Date | null | any): string | null => 
   return str
 }
 
-/**
- * Parse attachment field — supports two formats:
- *   1. JSON array  → new format
- *   2. Comma-separated string → legacy format
- */
 const parseAttachment = (raw: unknown): FileUploadResponse[] => {
   if (!raw) return []
   if (Array.isArray(raw)) return raw as FileUploadResponse[]
@@ -168,19 +165,17 @@ function MaintenanceEdit() {
   const [saving,  setSaving]  = useState(false)
 
   // ── responsible person ────────────────────────────────────────────────────
-  // responsibleId  = current value shown in the select (may be changed by user)
-  // originalResponsibleId = value loaded from server (used to detect changes)
   const [responsibleId,         setResponsibleId]         = useState<string>('')
   const [originalResponsibleId, setOriginalResponsibleId] = useState<string>('')
   const [responsibleName,       setResponsibleName]       = useState<string>('')
 
-  // ── existing uploaded files ───────────────────────────────────────────────
+  // ── files ─────────────────────────────────────────────────────────────────
+  // existingFiles : metadata from server — rendered as a plain list (NOT via
+  //                 FileUploadField) to avoid createObjectURL errors.
+  // pendingFiles  : real File objects picked by the user — passed to
+  //                 FileUploadField and sent as binary at submit time.
   const [existingFiles, setExistingFiles] = useState<FileUploadResponse[]>([])
-
-  // ── new files pending upload (sent as binary at submit time) ────────────
-  // We keep raw File objects here — no pre-upload — so the backend's
-  // fileStorageService handles the actual upload inside update().
-  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [pendingFiles,  setPendingFiles]  = useState<File[]>([])
 
   // ── checklist (editable template) ────────────────────────────────────────
   const [checklist,               setChecklist]               = useState<ChecklistItem[]>([])
@@ -189,7 +184,7 @@ function MaintenanceEdit() {
   const [maintenanceBy,           setMaintenanceBy]           = useState<'INTERNAL' | 'EXTERNAL'>('INTERNAL')
   const [responsibleMaintenance2, setResponsibleMaintenance2] = useState('')
 
-  // ── checklist ที่ submit ไปแล้ว (read-only) ───────────────────────────────
+  // ── submitted checklist (read-only) ──────────────────────────────────────
   const [submittedChecklist, setSubmittedChecklist] = useState<SubmittedChecklist | null>(null)
 
   const formSteps: FormStep[] = [
@@ -207,7 +202,6 @@ function MaintenanceEdit() {
       const data = res?.data ?? res
       setFormData(data)
 
-      // Store original responsible id to detect changes later
       const rid = data?.responsibleMaintenance ? String(data.responsibleMaintenance) : ''
       setResponsibleId(rid)
       setOriginalResponsibleId(rid)
@@ -217,9 +211,7 @@ function MaintenanceEdit() {
           const memberRes = await api.get<any>(`/api/user/${data.responsibleMaintenance}`)
           if (memberRes?.data) {
             const d = memberRes.data
-            setResponsibleName(
-              [d.firstName, d.lastName].filter(Boolean).join(' ') || rid
-            )
+            setResponsibleName([d.firstName, d.lastName].filter(Boolean).join(' ') || rid)
           }
         } catch {
           setResponsibleName(rid)
@@ -228,9 +220,11 @@ function MaintenanceEdit() {
 
       setExistingFiles(parseAttachment(data?.attachment))
 
-      // ── ใช้ /get/{maintenanceId} เสมอ (endpoint เดียวที่มีจริง)
-      // แล้วแยก read-only vs editable จาก checklistRecordId
-      await fetchChecklistByMaintenanceId(id, !!data?.checklistRecordId, data?.checklistRecordId ?? undefined)
+      await fetchChecklistByMaintenanceId(
+        id,
+        !!data?.checklistRecordId,
+        data?.checklistRecordId ?? undefined,
+      )
     } catch {
       toast.error(t('data_fetch_failed'))
     } finally {
@@ -238,24 +232,8 @@ function MaintenanceEdit() {
     }
   }
 
+  // ─── Checklist fetch ──────────────────────────────────────────────────────
 
-  /**
-   * Fetch checklist via /api/maintenance-checklist/get/{maintenanceId}
-   * — the only real endpoint available.
-   *
-   * isAlreadySubmitted = true  → the backend returned a saved/locked record
-   *                              → display read-only SubmittedChecklist view
-   * isAlreadySubmitted = false → still a template / not yet submitted
-   *                              → display editable checklist form
-   */
-  /**
-   * If checklistRecordId exists (already submitted) → fetch the saved record
-   * from /api/maintenance-checklist/{checklistRecordId} to get real answers.
-   * Fallback chain: try several URL patterns until one returns data.
-   * If all fail → fall back to the editable template from /get/{maintenanceId}.
-   *
-   * If not submitted → load editable template from /get/{maintenanceId}.
-   */
   const fetchChecklistByMaintenanceId = async (
     maintenanceId: number,
     isAlreadySubmitted: boolean,
@@ -263,46 +241,37 @@ function MaintenanceEdit() {
   ) => {
     try {
       if (isAlreadySubmitted && checklistRecordId) {
-        // ── Try to load the saved/submitted record ───────────────────────────
-        // Real endpoint: /api/checklist/{checklistRecordId}
-        // machineChecklist field is a JSON STRING that must be parsed separately
         try {
           const res  = await api.get<any>(`/api/checklist/${checklistRecordId}`)
           const body = res?.data ?? res
 
-          // machineChecklist is a JSON-encoded string of checklist items
           let rawItems: any[] = []
           if (body?.machineChecklist) {
             try {
               rawItems = typeof body.machineChecklist === 'string'
                 ? JSON.parse(body.machineChecklist)
                 : body.machineChecklist
-            } catch {
-              rawItems = []
-            }
+            } catch { rawItems = [] }
           }
 
-          const normalisedItems: SubmittedChecklistItem[] = rawItems.map((item: any) => ({
-            id:                  item.id,
-            // /api/checklist returns questionDetail only (no questionDescription)
-            questionDetail:      item.questionDetail ?? '',
-            questionDescription: item.questionDetail ?? '',  // use same field for display
-            isChoice:            item.isChoice ?? true,
-            answerChoice:        item.answerChoice ?? item.answer ?? '',
-          }))
-
           setSubmittedChecklist({
-            id:                     body?.id          ?? checklistRecordId,
-            machineCode:            body?.machineCode ?? '',
-            machineName:            body?.machineName ?? '',
+            id:                     body?.id ?? checklistRecordId,
+            machineCode:            body?.machineCode   ?? '',
+            machineName:            body?.machineName   ?? '',
             machineStatus:          body?.machineStatus ?? '',
             maintenanceBy:          body?.maintenanceBy ?? '',
             responsibleMaintenance: String(body?.responsibleMaintenance ?? ''),
-            actualDate:             body?.actualDate ?? null,
+            actualDate:             body?.actualDate    ?? null,
             submitted:              true,
-            items:                  normalisedItems,
+            items: rawItems.map((item: any) => ({
+              id:                  item.id,
+              questionDetail:      item.questionDetail ?? '',
+              questionDescription: item.questionDetail ?? '',
+              isChoice:            item.isChoice ?? true,
+              answerChoice:        item.answerChoice ?? item.answer ?? '',
+            })),
           })
-          return  // success
+          return
         } catch (err) {
           console.warn('[MaintenanceEdit] /api/checklist fetch failed, falling back:', err)
           await loadEditableTemplate(maintenanceId, true)
@@ -322,23 +291,22 @@ function MaintenanceEdit() {
       const rawItems: any[] = body?.checklistItems ?? body?.items ?? []
 
       if (asReadOnly) {
-        const normalisedItems: SubmittedChecklistItem[] = rawItems.map((item: any) => ({
-          id:                  item.id,
-          questionDetail:      item.questionDetail ?? item.question?.detail      ?? '',
-          questionDescription: item.questionDescription ?? item.question?.description ?? '',
-          isChoice:            item.isChoice ?? false,
-          answerChoice:        item.answerChoice ?? item.answer ?? item.checkAnswer ?? '',
-        }))
         setSubmittedChecklist({
-          id: maintenanceId,
-          machineCode: body?.machineCode ?? '',
-          machineName: body?.machineName ?? '',
-          machineStatus: body?.machineStatus ?? body?.status ?? '',
-          maintenanceBy: body?.maintenanceBy ?? '',
+          id:                     maintenanceId,
+          machineCode:            body?.machineCode   ?? '',
+          machineName:            body?.machineName   ?? '',
+          machineStatus:          body?.machineStatus ?? body?.status ?? '',
+          maintenanceBy:          body?.maintenanceBy ?? '',
           responsibleMaintenance: String(body?.responsibleMaintenance ?? ''),
-          actualDate: body?.actualDate ?? null,
-          submitted: true,
-          items: normalisedItems,
+          actualDate:             body?.actualDate    ?? null,
+          submitted:              true,
+          items: rawItems.map((item: any) => ({
+            id:                  item.id,
+            questionDetail:      item.questionDetail ?? item.question?.detail      ?? '',
+            questionDescription: item.questionDescription ?? item.question?.description ?? '',
+            isChoice:            item.isChoice ?? false,
+            answerChoice:        item.answerChoice ?? item.answer ?? item.checkAnswer ?? '',
+          })),
         })
       } else {
         setChecklist(rawItems.map((item: any) => ({
@@ -353,11 +321,10 @@ function MaintenanceEdit() {
     }
   }
 
-  const handleInputChange = (field: keyof MaintenanceRecord, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-  }
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
-  // ─── Fetch members ────────────────────────────────────────────────────────
+  const handleInputChange = (field: keyof MaintenanceRecord, value: any) =>
+    setFormData(prev => ({ ...prev, [field]: value }))
 
   const fetchMembers = async (keyword: string, index: number) => {
     const params: any = { index, size: 100 }
@@ -377,45 +344,28 @@ function MaintenanceEdit() {
 
   const handleResponsibleChange = (selected: any) => {
     const val = Array.isArray(selected) ? selected[0] : selected
-    // val = undefined / null / "" means user cleared the select — keep original
     setResponsibleId(val ? String(val) : '')
   }
 
-  // ─── File upload ──────────────────────────────────────────────────────────
-
-  // ── File picker — store File objects, backend uploads at submit time ────
+  // pendingFiles: store File objects — no pre-upload
   const handleFilesChange = (files: File[]) => {
     const realFiles = files.filter(f => f instanceof File)
     if (!realFiles.length) return
     setPendingFiles(prev => {
       const existing = new Set(prev.map(f => `${f.name}-${f.size}-${f.lastModified}`))
-      const toAdd = realFiles.filter(
-        f => !existing.has(`${f.name}-${f.size}-${f.lastModified}`)
-      )
-      return [...prev, ...toAdd]
+      return [
+        ...prev,
+        ...realFiles.filter(f => !existing.has(`${f.name}-${f.size}-${f.lastModified}`)),
+      ]
     })
   }
 
-  const handleDeleteFile = async (fileId: any) => {
-    const idStr = String(fileId)
+  const handleDeleteExisting = (fileName: string) =>
+    setExistingFiles(prev => prev.filter(f => f.fileName !== fileName))
 
-    // Check server-side existing files first
-    const existingFile = existingFiles.find(
-      u => u.fileName === idStr || idStr.includes(u.fileName)
-    )
-    if (existingFile) {
-      setExistingFiles(prev => prev.filter(u => u.fileName !== existingFile.fileName))
-      return
-    }
-
-    // Check pending (not yet uploaded) files — just remove from local state
-    const pendingFile = pendingFiles.find(
-      f => f.name === idStr || idStr.includes(f.name)
-    )
-    if (pendingFile) {
-      setPendingFiles(prev => prev.filter(f => f !== pendingFile))
-      return
-    }
+  const handleDeletePending = (fileId: any) => {
+    const name = String(fileId)
+    setPendingFiles(prev => prev.filter(f => f.name !== name && !name.includes(f.name)))
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────────
@@ -438,26 +388,21 @@ function MaintenanceEdit() {
 
     setSaving(true)
     try {
-      // ── existingFiles → JSON string sent in attachment field ────────────
-      // ── pendingFiles  → binary sent as multipart files (backend uploads) ──
+      // existingFiles metadata → JSON string in attachment field
+      // pendingFiles binary   → multipart files, backend uploads via fileStorageService
       const seen = new Set<string>()
-      const existingFilesDeduped = existingFiles.filter(f => {
-        if (!f.fileName || seen.has(f.fileName)) return false
-        seen.add(f.fileName)
-        return true
-      }).map(f => ({
-        fileName:   f.fileName,
-        fileUrl:    f.fileUrl,
-        fileType:   f.fileType,
-        fileSize:   f.fileSize,
-        uploadedBy: f.uploadedBy ?? null,
-      }))
+      const existingDeduped = existingFiles
+        .filter(f => f.fileName && !seen.has(f.fileName) && seen.add(f.fileName))
+        .map(f => ({
+          fileName: f.fileName, fileUrl: f.fileUrl,
+          fileType: f.fileType, fileSize: f.fileSize,
+          uploadedBy: f.uploadedBy ?? null,
+        }))
 
-      const responsibleChanged = responsibleId !== originalResponsibleId
-      const resolvedResponsible: number | undefined =
-        responsibleChanged && responsibleId.trim() !== ''
-          ? Number(responsibleId)
-          : undefined
+      const responsibleChanged  = responsibleId !== originalResponsibleId
+      const resolvedResponsible = responsibleChanged && responsibleId.trim() !== ''
+        ? Number(responsibleId)
+        : undefined
 
       const payload: Record<string, unknown> = {
         id:            formData.id,
@@ -468,32 +413,23 @@ function MaintenanceEdit() {
         status:        formData.status        || null,
         maintenanceBy: formData.maintenanceBy || null,
         note:          formData.note          || null,
-        // Send existing file metadata as JSON; backend will append new uploads
-        attachment:    existingFilesDeduped.length > 0
-          ? JSON.stringify(existingFilesDeduped)
-          : null,
+        attachment:    existingDeduped.length > 0 ? JSON.stringify(existingDeduped) : null,
       }
-
-      if (resolvedResponsible !== undefined) {
-        payload.responsibleMaintenance = resolvedResponsible
-      }
+      if (resolvedResponsible !== undefined) payload.responsibleMaintenance = resolvedResponsible
 
       const fd = new FormData()
       fd.append('request', new Blob([JSON.stringify(payload)], { type: 'application/json' }))
-      // Attach pending binary files — backend uploads via fileStorageService
       pendingFiles.forEach(f => fd.append('files', f))
+
       const res = await api.put('/api/maintenance/update', fd)
       if (!res?.success) {
         toast.error(res?.error ?? res?.message ?? t('data_fetch_failed'))
         return
       }
 
-      // Update originalResponsibleId so a second save won't re-send the field
-      if (responsibleChanged) {
-        setOriginalResponsibleId(responsibleId)
-      }
+      if (responsibleChanged) setOriginalResponsibleId(responsibleId)
 
-      // ── Save checklist only when not yet submitted ────────────────────────
+      // Save checklist only when not yet submitted
       if (!submittedChecklist && checklist.length > 0 && selectedStatus) {
         const session = sessionStore.state.session
         const request = {
@@ -529,7 +465,6 @@ function MaintenanceEdit() {
         }
       }
 
-      // Clear pending files and re-fetch so existingFiles reflects newly uploaded files
       setPendingFiles([])
       await fetchData()
       toast.success(t('maintenance_updated'))
@@ -545,14 +480,8 @@ function MaintenanceEdit() {
   const getAnswer = (item: ChecklistItem) => item.answer ?? ''
 
   const updateAnswer = (itemId: number, value: string) => {
-    setChecklist(prev =>
-      prev.map(item => item.id === itemId ? { ...item, answer: value } : item)
-    )
-    setChecklistErrors(prev => {
-      const n = { ...prev }
-      delete n[`item_${itemId}`]
-      return n
-    })
+    setChecklist(prev => prev.map(item => item.id === itemId ? { ...item, answer: value } : item))
+    setChecklistErrors(prev => { const n = { ...prev }; delete n[`item_${itemId}`]; return n })
   }
 
   // ─── Loading ──────────────────────────────────────────────────────────────
@@ -565,23 +494,6 @@ function MaintenanceEdit() {
   )
 
   const cancelLink = `/checklist/maintenance/view?id=${id}` as any
-
-  const allDisplayFiles = [
-    // Existing server-side files
-    ...existingFiles.map(f => ({
-      name: f.fileName,
-      size: f.fileSize,
-      type: f.fileType,
-      url:  f.fileUrl || `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
-    })),
-    // Pending local files (not yet uploaded — show name/size, no URL yet)
-    ...pendingFiles.map(f => ({
-      name: f.name,
-      size: f.size,
-      type: f.type,
-      url:  '',
-    })),
-  ] as unknown as File[]
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -629,11 +541,9 @@ function MaintenanceEdit() {
           <div className="space-y-2">
             <Label>{t('maintenance')}</Label>
             <div className="relative">
-              <select
-                value={formData.maintenanceBy}
+              <select value={formData.maintenanceBy}
                 onChange={e => handleInputChange('maintenanceBy', e.target.value)}
-                className="w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-border"
-              >
+                className="w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-border">
                 <option value="">-- {t('please_select')} --</option>
                 <option value="INTERNAL">INTERNAL</option>
                 <option value="EXTERNAL">EXTERNAL</option>
@@ -661,12 +571,9 @@ function MaintenanceEdit() {
         {/* Note */}
         <div className="space-y-2">
           <Label>{t('note')}</Label>
-          <Textarea
-            rows={4}
-            value={formData.note || ''}
+          <Textarea rows={4} value={formData.note || ''}
             onChange={e => handleInputChange('note', e.target.value)}
-            placeholder={t('note')}
-          />
+            placeholder={t('note')} />
         </div>
 
         {/* ── Checklist ─────────────────────────────────────────────────── */}
@@ -678,7 +585,7 @@ function MaintenanceEdit() {
               {submittedChecklist && (
                 <span className="ml-auto flex items-center gap-1 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  {t('already_submitted')}
+                  {t('already_submitted') || 'บันทึกแล้ว'}
                 </span>
               )}
             </CardTitle>
@@ -688,11 +595,14 @@ function MaintenanceEdit() {
             {submittedChecklist ? (
               /* ── READ-ONLY ───────────────────────────────────────────── */
               <>
-                {/* Summary row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-xl border border-border">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t('machine_status')}</p>
                     <p className="text-sm font-medium">{submittedChecklist.machineStatus || '—'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">{t('maintenance')}</p>
+                    <p className="text-sm font-medium">{submittedChecklist.maintenanceBy || '—'}</p>
                   </div>
                 </div>
 
@@ -706,11 +616,9 @@ function MaintenanceEdit() {
                       const answer = item.answerChoice?.trim() || ''
                       return (
                         <div key={item.id} className="p-4 rounded-xl border border-border bg-background">
-                          {/* Question description */}
                           <p className="text-sm font-medium leading-snug">
-                            {item.questionDescription || item.questionDetail || 'N/A'}
+                            {idx + 1}. {item.questionDescription || item.questionDetail || 'N/A'}
                           </p>
-                          {/* Question detail (sub-text) */}
                           {item.questionDetail && item.questionDetail !== item.questionDescription && (
                             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                               {item.questionDetail}
@@ -723,7 +631,7 @@ function MaintenanceEdit() {
                                 {answer}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
                                 —
                               </span>
                             )}
@@ -733,26 +641,21 @@ function MaintenanceEdit() {
                     })}
                   </div>
                 )}
-
               </>
             ) : (
               /* ── EDITABLE ────────────────────────────────────────────── */
               <>
                 <div className="space-y-1.5">
-                  <Label>
-                    {t('machine_status')} <span className="text-red-500">*</span>
-                  </Label>
+                  <Label>{t('machine_status')} <span className="text-red-500">*</span></Label>
                   <div className="relative">
-                    <select
-                      value={selectedStatus}
+                    <select value={selectedStatus}
                       onChange={e => {
                         setSelectedStatus(e.target.value)
                         setChecklistErrors(p => { const n = { ...p }; delete n.selectedStatus; return n })
                       }}
                       className={`w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                         checklistErrors.selectedStatus ? 'border-red-400' : 'border-border'
-                      }`}
-                    >
+                      }`}>
                       <option value="">-- {t('please_select')} --</option>
                       {MACHINE_STATUS_VALUES.map((value, idx) => (
                         <option key={value} value={value}>{t(MACHINE_STATUS_KEYS[idx])}</option>
@@ -830,49 +733,54 @@ function MaintenanceEdit() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
-            {submittedChecklist && (() => {
-              const clFiles = parseAttachment((submittedChecklist as any).attachment)
-              if (clFiles.length === 0) return null
-              return (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                    {t('checklist_attachments') || 'Checklist Files'}
-                  </p>
-                  <div className="space-y-2">
-                    {clFiles.map(f => (
-                      <div key={f.fileName}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors">
-                        <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <span className="text-sm flex-1 truncate">{f.fileName}</span>
-                        <button
-                          type="button"
-                          onClick={() => window.open(
-                            f.fileUrl || `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
-                            '_blank'
-                          )}
-                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+
+            {/* Existing server-side files — plain list, no createObjectURL */}
+            {existingFiles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                  {t('uploaded_files') || 'ไฟล์ที่อัปโหลดแล้ว'}
+                </p>
+                <div className="space-y-1.5">
+                  {existingFiles.map(f => (
+                    <div key={f.fileName}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors">
+                      <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm flex-1 truncate">{f.fileName}</span>
+                      <button type="button"
+                        onClick={() => window.open(
+                          f.fileUrl || `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
+                          '_blank'
+                        )}
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        title="ดาวน์โหลด">
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button type="button"
+                        onClick={() => handleDeleteExisting(f.fileName)}
+                        className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
+                        title="ลบ">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              )
-            })()}
+              </div>
+            )}
+
+            {/* FileUploadField — receives only real File objects (pendingFiles) */}
+            {/* This prevents createObjectURL from receiving plain objects       */}
             <FileUploadField
               id="attachments"
               maxFiles={10}
-              value={allDisplayFiles}
+              value={pendingFiles}
               onChange={handleFilesChange}
-              onDownloadFile={(file: any) =>
-                window.open(file.url ?? `${API_BASE}/api/files/download/${file.name}`, '_blank')
-              }
-              onDeleteUploadedFile={handleDeleteFile}
+              onDownloadFile={() => {}}
+              onDeleteUploadedFile={handleDeletePending}
               onFileReject={(f, m) =>
                 toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })
               }
             />
+
           </CardContent>
         </Card>
 
