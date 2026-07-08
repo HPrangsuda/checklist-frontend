@@ -609,6 +609,12 @@ function MaintenanceEdit() {
             <CardTitle className="flex items-center gap-2 font-semibold">
               <ClipboardList className="h-5 w-5 text-primary" />
               {t('checklist_records')}
+              {submittedChecklist && (
+                <span className="ml-auto flex items-center gap-1 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {t('already_submitted') || 'บันทึกแล้ว'}
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
@@ -620,6 +626,10 @@ function MaintenanceEdit() {
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t('machine_status')}</p>
                     <p className="text-sm font-medium">{submittedChecklist.machineStatus || '—'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">{t('maintenance')}</p>
+                    <p className="text-sm font-medium">{submittedChecklist.maintenanceBy || '—'}</p>
                   </div>
                 </div>
 
@@ -750,16 +760,35 @@ function MaintenanceEdit() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
+            {/* รวม existing files (plain object) + pending files (File object)
+                ส่งเข้า FileUploadField เหมือน pattern register/add.tsx
+                onDownloadFile ใช้ URL โดยตรง ไม่เรียก createObjectURL          */}
             <FileUploadField
               id="attachments"
               maxFiles={10}
               value={[
-                ...existingFiles.map(f => ({
-                  name: f.fileName,
-                  size: f.fileSize,
-                  type: f.fileType,
-                  url:  f.fileUrl || `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
-                })),
+                ...existingFiles.map(f => {
+                  // fileType จาก backend คือ extension (pdf, jpg, png ...)
+                  // FileUploadField ต้องการ MIME type — แปลงจาก extension
+                  const ext = (f.fileType || f.fileName?.split('.').pop() || '').toLowerCase()
+                  const mimeMap: Record<string, string> = {
+                    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+                    gif: 'image/gif',  webp: 'image/webp', pdf: 'application/pdf',
+                    doc: 'application/msword',
+                    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    xls: 'application/vnd.ms-excel',
+                    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  }
+                  const mime = mimeMap[ext] ?? 'application/octet-stream'
+                  // fileUrl จาก backend คือ "/uploads/filename.ext" — ต้องใช้ download endpoint แทน
+                  const downloadUrl = `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName ?? '')}`
+                  return {
+                    name: f.fileName ?? '',
+                    size: f.fileSize ?? 0,
+                    type: mime,
+                    url:  downloadUrl,
+                  }
+                }),
                 ...pendingFiles,
               ] as unknown as File[]}
               onChange={handleFilesChange}
