@@ -177,13 +177,10 @@ function MaintenanceEdit() {
   // ── existing uploaded files ───────────────────────────────────────────────
   const [existingFiles, setExistingFiles] = useState<FileUploadResponse[]>([])
 
-  // ── new file upload queue ─────────────────────────────────────────────────
-  const [uploadedFiles, setUploadedFiles] = useState<FileUploadResponse[]>([])
-  const [isUploading,   setIsUploading]   = useState(false)
-  const fileQueueRef   = useRef<Set<string>>(new Set())
-  const fileTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const uploadedRef    = useRef<FileUploadResponse[]>([])
-  useEffect(() => { uploadedRef.current = uploadedFiles }, [uploadedFiles])
+  // ── new files pending upload (sent as binary at submit time) ────────────
+  // We keep raw File objects here — no pre-upload — so the backend's
+  // fileStorageService handles the actual upload inside update().
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
 
   // ── checklist (editable template) ────────────────────────────────────────
   const [checklist,               setChecklist]               = useState<ChecklistItem[]>([])
@@ -386,66 +383,38 @@ function MaintenanceEdit() {
 
   // ─── File upload ──────────────────────────────────────────────────────────
 
-  const uploadFile = async (file: File): Promise<FileUploadResponse> => {
-    const fd = new FormData()
-    fd.append('file', file)
-    const res = await api.post<{ data: FileUploadResponse }>('/api/files/upload', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    return res.data
-  }
-
+  // ── File picker — store File objects, backend uploads at submit time ────
   const handleFilesChange = (files: File[]) => {
     const realFiles = files.filter(f => f instanceof File)
     if (!realFiles.length) return
-    if (fileTimeoutRef.current) clearTimeout(fileTimeoutRef.current)
-    fileTimeoutRef.current = setTimeout(async () => {
-      if (isUploading) return
-      const current  = uploadedRef.current
-      const toUpload = realFiles.filter(f => {
-        const key = `${f.name}-${f.size}-${f.lastModified}`
-        if (fileQueueRef.current.has(key)) return false
-        if (current.some(u => u.fileName?.includes(f.name))) return false
-        fileQueueRef.current.add(key)
-        return true
-      })
-      if (!toUpload.length) return
-      setIsUploading(true)
-      try {
-        const results: FileUploadResponse[] = []
-        for (const f of toUpload) {
-          try { results.push(await uploadFile(f)) } catch {}
-        }
-        if (results.length) {
-          setUploadedFiles(prev => [...prev, ...results])
-          toast.success(t('files_uploaded').replace('{count}', String(results.length)))
-        }
-      } catch {
-        toast.error(t('failed_to_upload_files'))
-      } finally {
-        toUpload.forEach(f =>
-          fileQueueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`)
-        )
-        setIsUploading(false)
-      }
-    }, 100)
+    setPendingFiles(prev => {
+      const existing = new Set(prev.map(f => `${f.name}-${f.size}-${f.lastModified}`))
+      const toAdd = realFiles.filter(
+        f => !existing.has(`${f.name}-${f.size}-${f.lastModified}`)
+      )
+      return [...prev, ...toAdd]
+    })
   }
 
   const handleDeleteFile = async (fileId: any) => {
     const idStr = String(fileId)
-    const existingFile = existingFiles.find(u => u.fileName === idStr || idStr.includes(u.fileName))
+
+    // Check server-side existing files first
+    const existingFile = existingFiles.find(
+      u => u.fileName === idStr || idStr.includes(u.fileName)
+    )
     if (existingFile) {
       setExistingFiles(prev => prev.filter(u => u.fileName !== existingFile.fileName))
       return
     }
-    const newFile = uploadedFiles.find(u => u.fileName === idStr || idStr.includes(u.fileName))
-    if (!newFile) return
-    try {
-      await api.delete(`/api/files/delete/${newFile.fileName}`)
-      setUploadedFiles(prev => prev.filter(u => u.fileName !== newFile.fileName))
-      toast.success(t('file_deleted'))
-    } catch {
-      toast.error(t('failed_to_delete_file'))
+
+    // Check pending (not yet uploaded) files — just remove from local state
+    const pendingFile = pendingFiles.find(
+      f => f.name === idStr || idStr.includes(f.name)
+    )
+    if (pendingFile) {
+      setPendingFiles(prev => prev.filter(f => f !== pendingFile))
+      return
     }
   }
 
@@ -469,30 +438,26 @@ function MaintenanceEdit() {
 
     setSaving(true)
     try {
-      // ── Build deduplicated file list ──────────────────────────────────────
+      // ── existingFiles → JSON string sent in attachment field ────────────
+      // ── pendingFiles  → binary sent as multipart files (backend uploads) ──
       const seen = new Set<string>()
-      const allFiles = [...existingFiles, ...uploadedFiles]
-        .filter(f => {
-          if (!f.fileName || seen.has(f.fileName)) return false
-          seen.add(f.fileName)
-          return true
-        })
-        .map(f => ({
-          fileName:   f.fileName,
-          fileUrl:    f.fileUrl,
-          fileType:   f.fileType,
-          fileSize:   f.fileSize,
-          uploadedBy: f.uploadedBy ?? null,
-        }))
+      const existingFilesDeduped = existingFiles.filter(f => {
+        if (!f.fileName || seen.has(f.fileName)) return false
+        seen.add(f.fileName)
+        return true
+      }).map(f => ({
+        fileName:   f.fileName,
+        fileUrl:    f.fileUrl,
+        fileType:   f.fileType,
+        fileSize:   f.fileSize,
+        uploadedBy: f.uploadedBy ?? null,
+      }))
 
-      // ── Decide whether responsible_maintenance should be sent ─────────────
-      // Only include it in the payload when the user actually picked a different
-      // person. If the value is unchanged (or the user never touched the field)
-      // we omit it so the backend leaves the DB column untouched.
       const responsibleChanged = responsibleId !== originalResponsibleId
-      const resolvedResponsible: number | undefined = responsibleChanged && responsibleId.trim() !== ''
-        ? Number(responsibleId)
-        : undefined   // omit from payload → backend skips update for this field
+      const resolvedResponsible: number | undefined =
+        responsibleChanged && responsibleId.trim() !== ''
+          ? Number(responsibleId)
+          : undefined
 
       const payload: Record<string, unknown> = {
         id:            formData.id,
@@ -503,16 +468,20 @@ function MaintenanceEdit() {
         status:        formData.status        || null,
         maintenanceBy: formData.maintenanceBy || null,
         note:          formData.note          || null,
-        attachment:    allFiles.length > 0 ? JSON.stringify(allFiles) : null,
+        // Send existing file metadata as JSON; backend will append new uploads
+        attachment:    existingFilesDeduped.length > 0
+          ? JSON.stringify(existingFilesDeduped)
+          : null,
       }
 
-      // Include responsible_maintenance only when changed
       if (resolvedResponsible !== undefined) {
         payload.responsibleMaintenance = resolvedResponsible
       }
 
       const fd = new FormData()
       fd.append('request', new Blob([JSON.stringify(payload)], { type: 'application/json' }))
+      // Attach pending binary files — backend uploads via fileStorageService
+      pendingFiles.forEach(f => fd.append('files', f))
       const res = await api.put('/api/maintenance/update', fd)
       if (!res?.success) {
         toast.error(res?.error ?? res?.message ?? t('data_fetch_failed'))
@@ -560,6 +529,9 @@ function MaintenanceEdit() {
         }
       }
 
+      // Clear pending files and re-fetch so existingFiles reflects newly uploaded files
+      setPendingFiles([])
+      await fetchData()
       toast.success(t('maintenance_updated'))
     } catch {
       toast.error(t('data_fetch_failed'))
@@ -595,17 +567,19 @@ function MaintenanceEdit() {
   const cancelLink = `/checklist/maintenance/view?id=${id}` as any
 
   const allDisplayFiles = [
+    // Existing server-side files
     ...existingFiles.map(f => ({
       name: f.fileName,
       size: f.fileSize,
       type: f.fileType,
       url:  f.fileUrl || `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
     })),
-    ...uploadedFiles.map(f => ({
-      name: f.fileName,
-      size: f.fileSize,
-      type: f.fileType,
-      url:  `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
+    // Pending local files (not yet uploaded — show name/size, no URL yet)
+    ...pendingFiles.map(f => ({
+      name: f.name,
+      size: f.size,
+      type: f.type,
+      url:  '',
     })),
   ] as unknown as File[]
 
@@ -773,7 +747,7 @@ function MaintenanceEdit() {
                 )}
 
                 {/* Submitted checklist attachments (if any) */}
-                {existingFiles.length > 0 || uploadedFiles.length > 0 ? null : null}
+
               </>
             ) : (
               /* ── EDITABLE ────────────────────────────────────────────── */
