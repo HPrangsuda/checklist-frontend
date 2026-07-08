@@ -7,7 +7,7 @@ import type { FormStep } from '@/components/layout/form-sidebar'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import {
   FileText, ChevronDown, AlertCircle, ClipboardList,
-  CheckCircle2, Paperclip, Download, X,
+  CheckCircle2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
@@ -609,12 +609,6 @@ function MaintenanceEdit() {
             <CardTitle className="flex items-center gap-2 font-semibold">
               <ClipboardList className="h-5 w-5 text-primary" />
               {t('checklist_records')}
-              {submittedChecklist && (
-                <span className="ml-auto flex items-center gap-1 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  {t('already_submitted') || 'บันทึกแล้ว'}
-                </span>
-              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
@@ -626,10 +620,6 @@ function MaintenanceEdit() {
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t('machine_status')}</p>
                     <p className="text-sm font-medium">{submittedChecklist.machineStatus || '—'}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">{t('maintenance')}</p>
-                    <p className="text-sm font-medium">{submittedChecklist.maintenanceBy || '—'}</p>
                   </div>
                 </div>
 
@@ -759,55 +749,35 @@ function MaintenanceEdit() {
               <FileText className="h-5 w-5 text-primary" />{t('attachments')}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6 space-y-4">
-
-            {/* Existing server-side files — plain list, no createObjectURL */}
-            {existingFiles.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                  {t('uploaded_files') || 'ไฟล์ที่อัปโหลดแล้ว'}
-                </p>
-                <div className="space-y-1.5">
-                  {existingFiles.map(f => (
-                    <div key={f.fileName}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors">
-                      <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <span className="text-sm flex-1 truncate">{f.fileName}</span>
-                      <button type="button"
-                        onClick={() => window.open(
-                          f.fileUrl || `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
-                          '_blank'
-                        )}
-                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                        title="ดาวน์โหลด">
-                        <Download className="w-4 h-4" />
-                      </button>
-                      <button type="button"
-                        onClick={() => handleDeleteExisting(f.fileName)}
-                        className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
-                        title="ลบ">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* FileUploadField — receives only real File objects (pendingFiles) */}
-            {/* This prevents createObjectURL from receiving plain objects       */}
+          <CardContent className="p-6">
             <FileUploadField
               id="attachments"
               maxFiles={10}
-              value={pendingFiles}
+              value={[
+                ...existingFiles.map(f => ({
+                  name: f.fileName,
+                  size: f.fileSize,
+                  type: f.fileType,
+                  url:  f.fileUrl || `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName)}`,
+                })),
+                ...pendingFiles,
+              ] as unknown as File[]}
               onChange={handleFilesChange}
-              onDownloadFile={() => {}}
-              onDeleteUploadedFile={handleDeletePending}
+              onDownloadFile={(file: any) => {
+                const url = file?.url || (file?.name ? `${API_BASE}/api/files/download/${encodeURIComponent(file.name)}` : null)
+                if (url) window.open(url, '_blank')
+              }}
+              onDeleteUploadedFile={(fileId: any) => {
+                const name = String(fileId)
+                // ลอง existing ก่อน แล้วค่อย pending
+                const existing = existingFiles.find(f => f.fileName === name || name.includes(f.fileName))
+                if (existing) { handleDeleteExisting(existing.fileName); return }
+                handleDeletePending(fileId)
+              }}
               onFileReject={(f, m) =>
                 toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })
               }
             />
-
           </CardContent>
         </Card>
 
