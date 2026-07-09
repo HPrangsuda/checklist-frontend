@@ -23,20 +23,20 @@ const Template: React.FC<TemplateProps> = ({
   return (
     <PermissionsProvider>
       <SidebarProvider>
-        <div className="flex h-screen w-full">
+        <div className="flex h-screen w-full overflow-hidden">
           <AppSidebar
             navItems={navItems}
             pathname={pathname}
             activeModule={activeModule}
             onNavigate={handleNavigate}
           />
-          <SidebarInset className="flex flex-col flex-1">
+          <SidebarInset className="flex flex-col flex-1 min-w-0">
             <Header
               activeModule={activeModule}
               pathname={pathname}
               onNavigate={handleNavigate}
             />
-            <main className="flex-1 overflow-auto">
+            <main className="flex-1 overflow-auto p-4 sm:p-6">
               {children}
             </main>
             <Footer />

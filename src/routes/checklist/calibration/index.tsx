@@ -281,8 +281,9 @@ function CalibrationTable() {
   const [searchValue, setSearchValue]           = useState('')
   const debouncedSearch                         = useDebounce(keyword, 500)
 
+  const currentYear = String(new Date().getFullYear())
   const [filters, setFilters] = useState<CalibrationFilters>({
-    year: '', department: '', results: '', calibrationStatus: '',
+    year: currentYear, department: '', results: '', calibrationStatus: '',
   })
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     years: [], departments: [], results: [], calibrationStatuses: [],
@@ -448,10 +449,10 @@ function CalibrationTable() {
   }, [])
 
   const handleClearFilters = useCallback(() => {
-    const empty: CalibrationFilters = { year: '', department: '', results: '', calibrationStatus: '' }
-    setFilters(empty)
+    const reset: CalibrationFilters = { year: currentYear, department: '', results: '', calibrationStatus: '' }
+    setFilters(reset)
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-    onFetchData(empty)
+    onFetchData(reset)
   }, [])
 
   const onDeleteData = async (): Promise<{ success: boolean }> => {
@@ -538,13 +539,13 @@ function CalibrationTable() {
 
 function Calibration() {
   return (
-    <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-8">
+    <div className="w-full max-w-full overflow-x-hidden bg-background">
+      <div className="flex flex-col gap-4 px-4 py-6 sm:px-6">
         <CalibrationDepartmentDashboard />
         <CalibrationKanbanCard />
         <CalibrationTable />
         <CalibrationPlanActualCard />
-      </main>
+      </div>
     </div>
   )
 }
