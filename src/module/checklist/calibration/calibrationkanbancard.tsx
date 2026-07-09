@@ -18,7 +18,7 @@ interface CalibrationDTO {
   id: number
   machineCode: string
   machineName: string
-  years: string           // ★ varchar ใน DB ไม่ใช่ Integer
+  years: string           
   dueDate: string
   startDate: string
   certificateDate: string
@@ -60,7 +60,6 @@ function diffDays(a: Date, b: Date) {
   return Math.round((a.getTime() - b.getTime()) / 86_400_000)
 }
 
-// To Do = startDate null, In Progress = startDate not null, Done = certificateDate not null
 function getColumnKey(row: CalibrationDTO): ColumnKey {
   if (row.certificateDate) return 'done'
   if (row.startDate)       return 'inprogress'
@@ -454,7 +453,7 @@ export function CalibrationKanbanCard() {
 
   return (
     <>
-      <Card className="p-0 overflow-hidden mb-6 gap-0">
+      <Card className="p-0 overflow-hidden gap-0">
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3 border-b px-5 py-4">
           <div>
             <CardTitle className="font-bold">

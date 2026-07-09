@@ -7,9 +7,15 @@ import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import {
   PencilRuler, AlertCircle, CheckCircle2, Clock,
-  TrendingUp, TrendingDown, Search, Download,
+  TrendingUp, TrendingDown, Search, Download, ChevronDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface DepartmentSummary {
   department: string
@@ -30,8 +36,14 @@ type SortField  = 'department' | 'total' | 'passRate' | 'onTimeRate' | 'complete
 type SortOrder  = 'asc' | 'desc'
 type PerfFilter = 'all' | 'excellent' | 'good' | 'needsAttention'
 
+// ปีที่แสดงใน dropdown (ปีปัจจุบัน ± 3 ปี)
+const THIS_YEAR = new Date().getFullYear()
+const YEAR_OPTIONS = Array.from({ length: 7 }, (_, i) => THIS_YEAR - 3 + i)
+
 export function CalibrationDepartmentDashboard() {
   const { t } = useTranslation('checklist')
+
+  const [selectedYear, setSelectedYear]     = useState<number>(THIS_YEAR)
   const [departmentData, setDepartmentData] = useState<DepartmentSummary[]>([])
   const [filteredData, setFilteredData]     = useState<DepartmentSummary[]>([])
   const [loading, setLoading]               = useState(true)
@@ -40,8 +52,10 @@ export function CalibrationDepartmentDashboard() {
   const [sortOrder, setSortOrder]           = useState<SortOrder>('desc')
   const [filterPerf, setFilterPerf]         = useState<PerfFilter>('all')
 
-  useEffect(() => { fetchDepartmentSummary() }, [])
+  // re-fetch เมื่อปีเปลี่ยน
+  useEffect(() => { fetchDepartmentSummary(selectedYear) }, [selectedYear])
 
+  // filter + sort client-side
   useEffect(() => {
     if (!Array.isArray(departmentData)) { setFilteredData([]); return }
     let f = [...departmentData]
@@ -61,16 +75,17 @@ export function CalibrationDepartmentDashboard() {
       })
     }
     f.sort((a, b) => {
-      const aV = a[sortField] || 0, bV = b[sortField] || 0
+      const aV = a[sortField] || 0
+      const bV = b[sortField] || 0
       return (aV > bV ? 1 : -1) * (sortOrder === 'asc' ? 1 : -1)
     })
     setFilteredData(f)
   }, [departmentData, searchTerm, sortField, sortOrder, filterPerf])
 
-  const fetchDepartmentSummary = async () => {
+  const fetchDepartmentSummary = async (year: number) => {
     try {
       setLoading(true)
-      const response = await api.get<unknown>('/api/calibration/department-summary')
+      const response = await api.get<unknown>(`/api/calibration/department-summary?year=${year}`)
       let data: DepartmentSummary[] = []
       if (Array.isArray(response)) {
         data = response as DepartmentSummary[]
@@ -117,7 +132,7 @@ export function CalibrationDepartmentDashboard() {
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url
-    a.download = `calibration-department-summary-${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `calibration-dept-${selectedYear}-${new Date().toISOString().split('T')[0]}.csv`
     a.click(); URL.revokeObjectURL(url)
   }
 
@@ -143,7 +158,7 @@ export function CalibrationDepartmentDashboard() {
   ]
 
   return (
-    <div className="space-y-4 mb-6">
+    <div className="space-y-4">
 
       {/* ── Header card ───────────────────────────────────────────────────── */}
       <Card className="p-0 overflow-hidden">
@@ -159,9 +174,33 @@ export function CalibrationDepartmentDashboard() {
               </p>
             )}
           </div>
-          <Button variant="outline" size="sm" onClick={exportToCSV}>
-            <Download className="w-4 h-4 mr-1" />{t('export')}
-          </Button>
+
+          <div className="flex items-center gap-2">
+            {/* ── Year selector ── */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 px-3 gap-1.5 font-semibold">
+                  {selectedYear}
+                  <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[80px]">
+                {YEAR_OPTIONS.map(y => (
+                  <DropdownMenuItem
+                    key={y}
+                    className={y === selectedYear ? 'font-bold text-red-600' : ''}
+                    onSelect={() => setSelectedYear(y)}
+                  >
+                    {y}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button variant="outline" size="sm" className="h-8" onClick={exportToCSV}>
+              <Download className="w-4 h-4 mr-1" />{t('export')}
+            </Button>
+          </div>
         </CardHeader>
       </Card>
 

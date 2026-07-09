@@ -639,7 +639,7 @@ export function CalibrationTbl({ machineCode }: Props) {
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <Card className="shadow-sm border-dashboard-border mt-4">
+    <Card className="shadow-sm border-dashboard-border">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b bg-dashboard-bg/50">
         <CardTitle className="font-bold">{t('calibration_lists')}</CardTitle>
       </CardHeader>
