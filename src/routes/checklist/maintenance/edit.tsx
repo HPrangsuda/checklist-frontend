@@ -100,7 +100,7 @@ const MACHINE_STATUS_KEYS = [
   'status_under_maintenance',
 ] as const
 
-const MACHINE_STATUS_VALUES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER REPAIR'] as const
+const MACHINE_STATUS_VALUES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER MAINTENANCE'] as const
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 

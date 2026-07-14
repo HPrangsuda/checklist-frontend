@@ -14,28 +14,19 @@ export interface FormStep {
 }
 
 export interface FormLayoutProps {
-  // Header props
   backLink: string
   title: string
   subtitle?: string
-
-  // Form props
   children: ReactNode
   onSubmit: (e: React.FormEvent) => void
-
-  // Sidebar props
   steps: FormStep[]
   currentStep: string
   onStepChange: (stepId: string) => void
   getStepStatus: (stepId: string) => "complete" | "error" | "incomplete" | "empty"
-
-  // Submit button props
   isSubmitting?: boolean
   isFormValid?: boolean
   submitText?: string
   cancelLink?: string
-
-  // Optional styling
   className?: string
 }
 
@@ -63,29 +54,18 @@ export function FormLayout({
   const canGoNext = currentStepIndex < steps.length - 1
   const isLastStep = currentStepIndex === steps.length - 1
 
-  const handlePrevious = () => {
-    if (canGoPrevious) {
-      onStepChange(steps[currentStepIndex - 1].id)
-    }
-  }
-
-  const handleNext = () => {
-    if (canGoNext) {
-      onStepChange(steps[currentStepIndex + 1].id)
-    }
-  }
-
-  const handleBackClick = () => {
-    router.navigate({ to: backLink })
-  }
-
-  const handleCancelClick = () => {
-    router.navigate({ to: finalCancelLink })
-  }
+  const handlePrevious = () => { if (canGoPrevious) onStepChange(steps[currentStepIndex - 1].id) }
+  const handleNext     = () => { if (canGoNext)     onStepChange(steps[currentStepIndex + 1].id) }
+  const handleBackClick   = () => router.navigate({ to: backLink })
+  const handleCancelClick = () => router.navigate({ to: finalCancelLink })
 
   return (
-    <div className="min-h-[calc(100vh-110px)] bg-gray-50">
-      <div className="flex items-center gap-3 sm:gap-4 pt-3 pb-3 pl-4 pr-4 bg-white border-b border-gray-200 fixed width-webkit z-20">
+    // FIX: ใช้ -m-4 sm:-m-6 เพื่อยกเลิก padding ของ <main> แล้ว layout เองทั้งหมด
+    // ทำให้ได้ full-height layout โดยไม่ต้องใช้ fixed
+    <div className="-m-4 sm:-m-6 flex flex-col" style={{ height: 'calc(100vh - 57px)' }}>
+
+      {/* Header — ไม่ใช้ fixed, ใช้ shrink-0 แทน ติดอยู่บนสุดของ flex column */}
+      <div className="flex items-center gap-3 sm:gap-4 pt-3 pb-3 pl-4 pr-4 bg-white border-b border-gray-200 shrink-0 z-20">
         <Button
           variant="outline"
           size="sm"
@@ -121,8 +101,11 @@ export function FormLayout({
         </div>
       </div>
 
-      <div>
-        <div className="hidden lg:block fixed top-0 bottom-0 w-75 z-10">
+      {/* Body — flex row, scroll ที่นี่ */}
+      <div className="flex flex-1 overflow-hidden bg-gray-50">
+
+        {/* Sidebar — ซ้าย, ไม่ scroll */}
+        <div className="hidden lg:flex flex-col w-75 shrink-0 overflow-y-auto border-r border-gray-100 bg-white">
           <FormSidebar
             steps={steps}
             currentStep={currentStep}
@@ -130,17 +113,18 @@ export function FormLayout({
             getStepStatus={getStepStatus}
           />
         </div>
-        <div className="lg:ml-75">
-          <form id="main-form" onSubmit={onSubmit} className="h-full top-[69px] relative">
-            <div className="p-4 h-full">
-              <div
-                className={cn(
-                  "bg-white rounded-lg border border-gray-200",
-                  "min-h-[400px]",
-                  "flex flex-col",
-                  className,
-                )}>
-                <div className="flex-1 p-4 overflow-y-auto">{children}</div>
+
+        {/* Content — ขวา, scroll ที่นี่ */}
+        <div className="flex-1 overflow-y-auto">
+          <form id="main-form" onSubmit={onSubmit}>
+            <div className="p-4">
+              <div className={cn(
+                "bg-white rounded-lg border border-gray-200",
+                "min-h-[400px]",
+                "flex flex-col",
+                className,
+              )}>
+                <div className="flex-1 p-4">{children}</div>
                 <div className="border-t border-gray-200 p-4 bg-white rounded-b-md flex-shrink-0">
                   <div className="flex items-center justify-between">
                     <Button
@@ -177,6 +161,7 @@ export function FormLayout({
             </div>
           </form>
         </div>
+
       </div>
     </div>
   )
