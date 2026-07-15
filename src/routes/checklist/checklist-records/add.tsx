@@ -39,6 +39,7 @@ interface Machine {
   id: number
   machineCode: string
   machineName: string
+  machineStatus: string
   frequency?: string
   responsiblePersonId: string
   checkStatus: string
@@ -203,7 +204,7 @@ function RouteComponent() {
   const [note, setNote] = useState('')
   const [file, setFile] = useState<File | null>(null)
 
-  // ─── i18n option arrays (re-computed on language change) ──────────────────
+  // ─── i18n option arrays ───────────────────────────────────────────────────
   const machineStatusOptions = MACHINE_STATUS_VALUES.map(value => ({
     value,
     label: t(`status_${value.toLowerCase().replace(/[\s-]/g, '_')}`),
@@ -230,8 +231,22 @@ function RouteComponent() {
   const loadMachineData = async (code: string) => {
     try {
       const machineRes = await api.get<any>(`/api/machine/machine-code/${code}`)
+
+      // backend คืน error เมื่อ machine ไม่ใช่ OPERATIONAL
+      if (!machineRes?.success) {
+        const status = machineRes?.data?.machineStatus ?? ''
+        if (status && status !== 'OPERATIONAL') {
+          toast.error(`ไม่สามารถบันทึกได้: เครื่องมีสถานะ "${status}"`)
+        } else {
+          toast.error('ไม่พบเครื่อง หรือเครื่องไม่อยู่ในสถานะ OPERATIONAL')
+        }
+        setMachine(null)
+        return
+      }
+
       const data: Machine = machineRes?.data ?? machineRes
       setMachine(data)
+
       const isResponsible = String(sessionStore.state.session?.memberId ?? '') === String(data.responsiblePersonId ?? '')
       const response = await api.get<{ data: any[]; success: boolean }>(
         isResponsible
@@ -247,7 +262,7 @@ function RouteComponent() {
         }))
       )
     } catch {
-      toast.error('Machine not found. Please try again')
+      toast.error('ไม่พบเครื่อง หรือเครื่องไม่อยู่ในสถานะ OPERATIONAL')
       setMachine(null)
     }
   }
@@ -287,7 +302,7 @@ function RouteComponent() {
       const session = sessionStore.state.session
 
       const request = {
-        machineId: machine.id,            
+        machineId: machine.id,
         machineCode: machine.machineCode,
         machineName: machine.machineName,
         machineStatus: selectedStatus,
