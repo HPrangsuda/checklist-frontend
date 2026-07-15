@@ -5,6 +5,7 @@ import { Html5Qrcode } from 'html5-qrcode'
 import { createPortal } from 'react-dom'
 import { api } from '@/core/interceptor/api.interceptor'
 import { toast } from 'sonner'
+import { useTranslation } from '@/core/contexts/language-context'
 
 const QR_READER_ID = 'qr-reader-container'
 
@@ -19,6 +20,7 @@ export function QrScanButton() {
   const trackRef = useRef<MediaStreamTrack | null>(null)
 
   const { navigate } = useRouter()
+  const { t } = useTranslation('checklist')
 
   const extractMachineCode = (decoded: string): string => {
     try {
@@ -50,11 +52,8 @@ export function QrScanButton() {
       const res = await api.get<any>(`/api/machine/machine-code/${machineCode}`)
 
       if (!res?.success) {
-        // เครื่องไม่พบหรือไม่ใช่ OPERATIONAL
-        toast.error('ไม่สามารถบันทึกได้: เครื่องไม่อยู่ในสถานะ OPERATIONAL')
-        // รีเซ็ต scanned เพื่อให้สแกนใหม่ได้
+        toast.error(t('qr_machine_not_operational'))
         setScanned(null)
-        // เปิดกล้องใหม่
         restartCamera()
         return
       }
@@ -64,7 +63,7 @@ export function QrScanButton() {
       window.location.href = `/checklist/checklist-records/add?machineCode=${encodeURIComponent(machineCode)}`
 
     } catch {
-      toast.error('ไม่สามารถตรวจสอบสถานะเครื่องได้ กรุณาลองใหม่')
+      toast.error(t('qr_check_failed'))
       setScanned(null)
       restartCamera()
     } finally {
@@ -106,7 +105,7 @@ export function QrScanButton() {
         const devices = await Html5Qrcode.getCameras()
 
         if (!devices || devices.length === 0) {
-          setError('ไม่พบกล้องบนอุปกรณ์นี้')
+          setError(t('qr_no_camera'))
           return
         }
 
@@ -140,11 +139,11 @@ export function QrScanButton() {
       } catch (e: any) {
         if (!cancelled) {
           if (e?.name === 'NotAllowedError' || String(e).includes('permission')) {
-            setError('กรุณาอนุญาตการใช้งานกล้อง')
+            setError(t('qr_camera_permission'))
           } else if (e?.name === 'NotFoundError') {
-            setError('ไม่พบกล้องบนอุปกรณ์นี้')
+            setError(t('qr_no_camera'))
           } else {
-            setError('เกิดข้อผิดพลาด: ' + (e?.message ?? 'ไม่ทราบสาเหตุ'))
+            setError(t('qr_camera_error') + ': ' + (e?.message ?? ''))
           }
         }
       }
@@ -194,7 +193,7 @@ export function QrScanButton() {
       {/* Floating Scan Button */}
       <button
         onClick={() => setOpen(true)}
-        title="สแกน QR Code"
+        title={t('qr_scan_button')}
         style={{
           position: 'fixed',
           bottom: '60px',
@@ -212,7 +211,7 @@ export function QrScanButton() {
         "
       >
         <QrCode className="w-5 h-5" />
-        <span className="hidden sm:inline">สแกน QR</span>
+        <span className="hidden sm:inline">{t('qr_scan_button')}</span>
         <span className="
           absolute inset-0 rounded-2xl
           ring-4 ring-transparent group-hover:ring-[#89090a]/30
@@ -237,7 +236,7 @@ export function QrScanButton() {
             >
               <div className="flex items-center gap-2 text-white">
                 <QrCode className="w-5 h-5" style={{ color: '#89090a' }} />
-                <span className="font-semibold">สแกน QR Code</span>
+                <span className="font-semibold">{t('qr_modal_title')}</span>
               </div>
               <button
                 onClick={closeModal}
@@ -254,7 +253,6 @@ export function QrScanButton() {
                   <p className="text-zinc-400 text-sm">{error}</p>
                 </div>
               ) : checking ? (
-                // ─── กำลังเช็ค status ───────────────────────────────────────
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-900">
                   <div
                     className="w-16 h-16 rounded-full flex items-center justify-center animate-pulse"
@@ -262,7 +260,7 @@ export function QrScanButton() {
                   >
                     <QrCode className="w-8 h-8" style={{ color: '#89090a' }} />
                   </div>
-                  <p className="text-zinc-400 text-sm">กำลังตรวจสอบสถานะเครื่อง...</p>
+                  <p className="text-zinc-400 text-sm">{t('qr_checking')}</p>
                 </div>
               ) : scanned ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center bg-zinc-900">
@@ -272,7 +270,7 @@ export function QrScanButton() {
                   >
                     <QrCode className="w-8 h-8" style={{ color: '#89090a' }} />
                   </div>
-                  <p className="font-semibold" style={{ color: '#c0393a' }}>สแกนสำเร็จ!</p>
+                  <p className="font-semibold" style={{ color: '#c0393a' }}>{t('qr_scan_success')}</p>
                   <p className="text-zinc-400 text-xs break-all max-w-xs">{scanned}</p>
                 </div>
               ) : (
@@ -305,12 +303,12 @@ export function QrScanButton() {
 
             {!error && !scanned && !checking && (
               <div className="flex items-center justify-between px-5 py-4">
-                <p className="text-zinc-500 text-xs">จ่อกล้องไปที่ QR Code</p>
+                <p className="text-zinc-500 text-xs">{t('qr_hint')}</p>
                 <button
                   onClick={toggleTorch}
                   className="p-2 rounded-xl transition-colors"
                   style={torch ? { backgroundColor: '#89090a33', color: '#c0393a' } : {}}
-                  title="ไฟฉาย"
+                  title={t('qr_torch')}
                 >
                   <Flashlight
                     className="w-5 h-5"

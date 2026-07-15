@@ -386,5 +386,16 @@
   "reason_cancel": "เหตุผล",
   "reason_cancel_placeholder": "ระบุเหตุผล เช่น ชำรุดเกินซ่อม / โอนย้าย",
   "add_machine_status": "สถานะ",
-  "has_machine":    "มีเครื่องจักรแล้ว"
+  "has_machine":    "มีเครื่องจักรแล้ว",
+  "qr_scan_button": "สแกน QR",
+  "qr_modal_title": "สแกน QR Code",
+  "qr_hint": "จ่อกล้องไปที่ QR Code บนเครื่องจักร",
+  "qr_torch": "ไฟฉาย",
+  "qr_no_camera": "ไม่พบกล้องบนอุปกรณ์นี้",
+  "qr_camera_permission": "กรุณาอนุญาตการใช้งานกล้อง",
+  "qr_camera_error": "ไม่สามารถเปิดกล้องได้",
+  "qr_scan_success": "สแกนสำเร็จ!",
+  "qr_checking": "กำลังตรวจสอบสถานะเครื่อง...",
+  "qr_machine_not_operational": "ไม่สามารถบันทึกได้: เครื่องไม่อยู่ในสถานะ OPERATIONAL",
+  "qr_check_failed": "ไม่สามารถตรวจสอบสถานะเครื่องได้ กรุณาลองใหม่"
 }

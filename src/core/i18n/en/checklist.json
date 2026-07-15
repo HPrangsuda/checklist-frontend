@@ -386,5 +386,16 @@
   "reason_cancel": "Reason",
   "reason_cancel_placeholder": "e.g. Beyond repair, transferred to another site",
   "add_machine_status": "status",
-  "has_machine":    "has machine created"
+  "has_machine":    "has machine created",
+  "qr_scan_button": "Scan QR",
+  "qr_modal_title": "Scan QR Code",
+  "qr_hint": "Point camera at the QR Code on the machine",
+  "qr_torch": "Flashlight",
+  "qr_no_camera": "No camera found on this device",
+  "qr_camera_permission": "Please allow camera access",
+  "qr_camera_error": "Unable to open camera",
+  "qr_scan_success": "Scan successful!",
+  "qr_checking": "Checking machine status...",
+  "qr_machine_not_operational": "Cannot record: machine is not OPERATIONAL",
+  "qr_check_failed": "Unable to verify machine status. Please try again."
 }
