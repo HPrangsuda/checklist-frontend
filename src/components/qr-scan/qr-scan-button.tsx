@@ -3,6 +3,8 @@ import { QrCode, X, Camera, Flashlight } from 'lucide-react'
 import { useRouter } from '@tanstack/react-router'
 import { Html5Qrcode } from 'html5-qrcode'
 import { createPortal } from 'react-dom'
+import { api } from '@/core/interceptor/api.interceptor'
+import { toast } from 'sonner'
 
 const QR_READER_ID = 'qr-reader-container'
 
@@ -11,6 +13,7 @@ export function QrScanButton() {
   const [error, setError] = useState<string | null>(null)
   const [scanned, setScanned] = useState<string | null>(null)
   const [torch, setTorch] = useState(false)
+  const [checking, setChecking] = useState(false)
 
   const readerRef = useRef<Html5Qrcode | null>(null)
   const trackRef = useRef<MediaStreamTrack | null>(null)
@@ -28,6 +31,66 @@ export function QrScanButton() {
       if (param) return param
     } catch {}
     return decoded
+  }
+
+  // ─── เช็ค machine status ก่อน navigate ───────────────────────────────────
+  const handleScanned = async (decodedText: string) => {
+    // ถ้าเป็น URL ให้ navigate ตรงเลยโดยไม่เช็ค
+    try {
+      const url = new URL(decodedText)
+      navigate({ to: url.pathname as any })
+      closeModal()
+      return
+    } catch {}
+
+    const machineCode = extractMachineCode(decodedText)
+    setChecking(true)
+
+    try {
+      const res = await api.get<any>(`/api/machine/machine-code/${machineCode}`)
+
+      if (!res?.success) {
+        // เครื่องไม่พบหรือไม่ใช่ OPERATIONAL
+        toast.error('ไม่สามารถบันทึกได้: เครื่องไม่อยู่ในสถานะ OPERATIONAL')
+        // รีเซ็ต scanned เพื่อให้สแกนใหม่ได้
+        setScanned(null)
+        // เปิดกล้องใหม่
+        restartCamera()
+        return
+      }
+
+      // OPERATIONAL → navigate ไปหน้า add
+      closeModal()
+      window.location.href = `/checklist/checklist-records/add?machineCode=${encodeURIComponent(machineCode)}`
+
+    } catch {
+      toast.error('ไม่สามารถตรวจสอบสถานะเครื่องได้ กรุณาลองใหม่')
+      setScanned(null)
+      restartCamera()
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const restartCamera = async () => {
+    if (!readerRef.current) return
+    try {
+      const devices = await Html5Qrcode.getCameras()
+      if (!devices || devices.length === 0) return
+      const backCamera =
+        devices.find(d => /back|rear|environment/i.test(d.label)) ??
+        devices[devices.length - 1]
+      await readerRef.current.start(
+        backCamera.id,
+        { fps: 10, qrbox: { width: 220, height: 220 } },
+        (decodedText) => {
+          setScanned(decodedText)
+          readerRef.current?.stop().catch(() => {})
+          setTimeout(() => handleScanned(decodedText), 600)
+        },
+        () => {}
+      )
+    } catch {}
   }
 
   useEffect(() => {
@@ -62,13 +125,7 @@ export function QrScanButton() {
             html5Qrcode.stop().catch(() => {})
             setTimeout(() => {
               if (cancelled) return
-              const machineCode = extractMachineCode(decodedText)
-              try {
-                const url = new URL(decodedText)
-                navigate({ to: url.pathname as any })
-              } catch {
-                window.location.href = `/checklist/checklist-records/add?machineCode=${encodeURIComponent(machineCode)}`
-              }
+              handleScanned(decodedText)
             }, 600)
           },
           () => {}
@@ -129,6 +186,7 @@ export function QrScanButton() {
     setError(null)
     setScanned(null)
     setTorch(false)
+    setChecking(false)
   }
 
   return createPortal(
@@ -195,6 +253,17 @@ export function QrScanButton() {
                   <Camera className="w-12 h-12 text-zinc-600" />
                   <p className="text-zinc-400 text-sm">{error}</p>
                 </div>
+              ) : checking ? (
+                // ─── กำลังเช็ค status ───────────────────────────────────────
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-900">
+                  <div
+                    className="w-16 h-16 rounded-full flex items-center justify-center animate-pulse"
+                    style={{ backgroundColor: '#89090a22' }}
+                  >
+                    <QrCode className="w-8 h-8" style={{ color: '#89090a' }} />
+                  </div>
+                  <p className="text-zinc-400 text-sm">กำลังตรวจสอบสถานะเครื่อง...</p>
+                </div>
               ) : scanned ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center bg-zinc-900">
                   <div
@@ -234,7 +303,7 @@ export function QrScanButton() {
               )}
             </div>
 
-            {!error && !scanned && (
+            {!error && !scanned && !checking && (
               <div className="flex items-center justify-between px-5 py-4">
                 <p className="text-zinc-500 text-xs">จ่อกล้องไปที่ QR Code</p>
                 <button
