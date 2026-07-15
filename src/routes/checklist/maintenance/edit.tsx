@@ -7,9 +7,9 @@ import type { FormStep } from '@/components/layout/form-sidebar'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import {
   FileText, ChevronDown, AlertCircle, ClipboardList,
-  CheckCircle2, Paperclip, Download, X,
+  CheckCircle2,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import { toast } from 'sonner'
@@ -170,12 +170,11 @@ function MaintenanceEdit() {
   const [responsibleName,       setResponsibleName]       = useState<string>('')
 
   // ── files ─────────────────────────────────────────────────────────────────
-  // existingFiles : metadata from server — rendered as a plain list (NOT via
-  //                 FileUploadField) to avoid createObjectURL errors.
-  // pendingFiles  : real File objects picked by the user — passed to
-  //                 FileUploadField and sent as binary at submit time.
-  const [existingFiles, setExistingFiles] = useState<FileUploadResponse[]>([])
-  const [pendingFiles,  setPendingFiles]  = useState<File[]>([])
+  // allFiles = existing (from server) + newly uploaded (via /api/files/upload)
+  // ทั้งหมดเก็บเป็น FileUploadResponse — อัปโหลดทันทีเมื่อเลือก, ลบทันทีเมื่อกด X
+  const [allFiles,     setAllFiles]     = useState<FileUploadResponse[]>([])
+  const [isUploading,  setIsUploading]  = useState(false)
+  const fileQueueRef = useRef<Set<string>>(new Set())
 
   // ── checklist (editable template) ────────────────────────────────────────
   const [checklist,               setChecklist]               = useState<ChecklistItem[]>([])
@@ -219,7 +218,8 @@ function MaintenanceEdit() {
         }
       }
 
-      setExistingFiles(parseAttachment(data?.attachment))
+      // โหลด existing files จาก server เข้า allFiles โดยตรง
+      setAllFiles(parseAttachment(data?.attachment))
 
       await fetchChecklistByMaintenanceId(
         id,
@@ -349,25 +349,73 @@ function MaintenanceEdit() {
     if (val) setFormErrors(prev => { const n = { ...prev }; delete n.responsible; return n })
   }
 
-  // pendingFiles: store File objects — no pre-upload
-  const handleFilesChange = (files: File[]) => {
-    const realFiles = files.filter(f => f instanceof File)
-    if (!realFiles.length) return
-    setPendingFiles(prev => {
-      const existing = new Set(prev.map(f => `${f.name}-${f.size}-${f.lastModified}`))
-      return [
-        ...prev,
-        ...realFiles.filter(f => !existing.has(`${f.name}-${f.size}-${f.lastModified}`)),
-      ]
-    })
+  // ── File upload: อัปโหลดทันทีเมื่อเลือกไฟล์ ─────────────────────────────
+
+  const uploadFileSingle = async (file: File): Promise<FileUploadResponse | null> => {
+    const fd = new FormData()
+    fd.append('file', file)
+    try {
+      const res = await api.post<{ data: FileUploadResponse }>('/api/files/upload', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return res.data ?? res
+    } catch {
+      return null
+    }
   }
 
-  const handleDeleteExisting = (fileName: string) =>
-    setExistingFiles(prev => prev.filter(f => f.fileName !== fileName))
+  const handleFilesChange = async (files: File[]) => {
+    const realFiles = files.filter(f => f instanceof File)
+    if (!realFiles.length || isUploading) return
 
-  const handleDeletePending = (fileId: any) => {
-    const name = String(fileId)
-    setPendingFiles(prev => prev.filter(f => f.name !== name && !name.includes(f.name)))
+    // กรองซ้ำด้วย queue ref
+    const toUpload = realFiles.filter(f => {
+      const key = `${f.name}-${f.size}-${f.lastModified}`
+      if (fileQueueRef.current.has(key)) return false
+      if (allFiles.some(u => u.fileName === f.name || u.fileName?.includes(f.name))) return false
+      fileQueueRef.current.add(key)
+      return true
+    })
+    if (!toUpload.length) return
+
+    setIsUploading(true)
+    try {
+      const results: FileUploadResponse[] = []
+      for (const f of toUpload) {
+        const result = await uploadFileSingle(f)
+        if (result) results.push(result)
+      }
+      if (results.length) {
+        setAllFiles(prev => [...prev, ...results])
+        toast.success(t('files_uploaded')?.replace('{count}', String(results.length)) ?? `อัปโหลดสำเร็จ ${results.length} ไฟล์`)
+      }
+    } catch {
+      toast.error(t('failed_to_upload_files') ?? 'อัปโหลดไฟล์ล้มเหลว')
+    } finally {
+      toUpload.forEach(f => fileQueueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`))
+      setIsUploading(false)
+    }
+  }
+
+  // ── File delete: ลบจาก server ทันทีเมื่อกด X ────────────────────────────
+
+  const handleDeleteFile = async (fileId: any) => {
+    const idStr = String(fileId)
+    const target = allFiles.find(f => f.fileName === idStr || idStr.includes(f.fileName ?? ''))
+    if (!target) return
+
+    // ลบออกจาก UI ก่อน (optimistic)
+    setAllFiles(prev => prev.filter(f => f.fileName !== target.fileName))
+
+    // ลบจาก server (ถ้า fileUrl มีค่า = เคยอัปโหลดจริง)
+    if (target.fileName) {
+      try {
+        await api.delete(`/api/files/delete/${encodeURIComponent(target.fileName)}`)
+      } catch {
+        // ไม่ต้อง rollback — ไฟล์อาจลบได้จาก server แต่ response fail
+        // หรือเป็น existing file ที่ไม่มี endpoint delete ก็ยังคือ remove จาก attachment ได้
+      }
+    }
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────────
@@ -375,7 +423,7 @@ function MaintenanceEdit() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validate required fields (checklist + responsible)
+    // Validate required fields
     const fErrs: Record<string, string> = {}
     if (!responsibleId.trim()) fErrs.responsible = t('responsible_required') || 'กรุณาเลือกผู้รับผิดชอบ'
     setFormErrors(fErrs)
@@ -399,24 +447,22 @@ function MaintenanceEdit() {
 
     setSaving(true)
     try {
-      // existingFiles metadata → JSON string in attachment field
-      // pendingFiles binary   → multipart files, backend uploads via fileStorageService
+      // dedup allFiles → JSON string ส่งใน attachment
       const seen = new Set<string>()
-      const existingDeduped = existingFiles
+      const deduped = allFiles
         .filter(f => f.fileName && !seen.has(f.fileName) && seen.add(f.fileName))
         .map(f => ({
-          fileName: f.fileName, fileUrl: f.fileUrl,
-          fileType: f.fileType, fileSize: f.fileSize,
+          fileName:   f.fileName,
+          fileUrl:    f.fileUrl    || `/api/files/download/${f.fileName}`,
+          fileType:   f.fileType   || '',
+          fileSize:   f.fileSize   || 0,
           uploadedBy: f.uploadedBy ?? null,
         }))
 
-      // อัปเดต responsible เฉพาะเมื่อ:
-      // 1. ค่าเปลี่ยนจากเดิม (responsibleId !== originalResponsibleId)
-      // 2. ค่าใหม่ไม่ใช่ null/empty (user เลือกคนจริงๆ ไม่ใช่ clear ออก)
       const responsibleChanged  = responsibleId !== originalResponsibleId
       const resolvedResponsible = (responsibleChanged && responsibleId.trim() !== '')
         ? Number(responsibleId)
-        : undefined   // ไม่ส่ง → backend ไม่แตะ column นี้
+        : undefined
 
       const payload: Record<string, unknown> = {
         id:            formData.id,
@@ -427,15 +473,16 @@ function MaintenanceEdit() {
         status:        formData.status        || null,
         maintenanceBy: formData.maintenanceBy || null,
         note:          formData.note          || null,
-        attachment:    existingDeduped.length > 0 ? JSON.stringify(existingDeduped) : null,
+        // ส่ง attachment เป็น JSON string (ไม่มี multipart files อีกต่อไป)
+        attachment:    deduped.length > 0 ? JSON.stringify(deduped) : undefined,
       }
       if (resolvedResponsible !== undefined) payload.responsibleMaintenance = resolvedResponsible
 
-      const fd = new FormData()
-      fd.append('request', new Blob([JSON.stringify(payload)], { type: 'application/json' }))
-      pendingFiles.forEach(f => fd.append('files', f))
+      // ─── PUT แบบ JSON ล้วน (ไม่มี multipart) ─────────────────────────────
+      const res = await api.put('/api/maintenance/update', payload, {
+        headers: { 'Content-Type': 'application/json' },
+      })
 
-      const res = await api.put('/api/maintenance/update', fd)
       if (!res?.success) {
         toast.error(res?.error ?? res?.message ?? t('data_fetch_failed'))
         return
@@ -479,15 +526,6 @@ function MaintenanceEdit() {
         }
       }
 
-      // Reload only the attachment data so existingFiles reflects newly uploaded files.
-      // We do NOT call fetchData() here to avoid resetting responsibleId/name state
-      // which would clear the responsible person if backend stored null.
-      try {
-        const refreshed = await api.get<any>(`/api/maintenance/${formData.id}`)
-        const refreshedData = refreshed?.data ?? refreshed
-        setExistingFiles(parseAttachment(refreshedData?.attachment))
-      } catch { /* ignore — existingFiles may be slightly stale but not critical */ }
-      setPendingFiles([])
       toast.success(t('maintenance_updated'))
     } catch {
       toast.error(t('data_fetch_failed'))
@@ -756,59 +794,30 @@ function MaintenanceEdit() {
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 font-semibold">
-              <FileText className="h-5 w-5 text-primary" />{t('attachments')}
+              <FileText className="h-5 w-5 text-primary" />
+              {t('attachments')}
+              {isUploading && (
+                <span className="ml-auto text-xs font-normal text-muted-foreground animate-pulse">
+                  {t('uploading') || 'กำลังอัปโหลด...'}
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
 
-            {/* Existing server-side files — rendered as plain list.
-                ไม่ส่งเข้า FileUploadField เพราะ component จะเรียก
-                createObjectURL กับทุก item ซึ่ง crash กับ plain object  */}
-            {existingFiles.length > 0 && (
-              <div className="space-y-1.5">
-                {existingFiles.map(f => {
-                  const downloadUrl = `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName ?? '')}`
-                  return (
-                    <div key={f.fileName}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors group">
-                      <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <span className="text-sm flex-1 truncate text-foreground">{f.fileName}</span>
-                      {f.fileSize ? (
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {f.fileSize < 1024
-                            ? `${f.fileSize} B`
-                            : f.fileSize < 1048576
-                            ? `${(f.fileSize / 1024).toFixed(1)} KB`
-                            : `${(f.fileSize / 1048576).toFixed(1)} MB`}
-                        </span>
-                      ) : null}
-                      <button type="button"
-                        onClick={() => window.open(downloadUrl, '_blank')}
-                        className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-                        title="ดาวน์โหลด">
-                        <Download className="w-4 h-4" />
-                      </button>
-                      <button type="button"
-                        onClick={() => handleDeleteExisting(f.fileName)}
-                        className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                        title="ลบ">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* FileUploadField รับแค่ pendingFiles (File objects จริงๆ)
-                ไม่มี plain object ปน → ไม่เกิด createObjectURL error        */}
+            {/* ใช้ FileUploadField เดียว — ส่ง allFiles map เป็น { name, size, type, url } เหมือน machine */}
             <FileUploadField
               id="attachments"
               maxFiles={10}
-              value={pendingFiles}
+              value={allFiles.map(f => ({
+                name: f.fileName,
+                size: f.fileSize,
+                type: f.fileType,
+                url:  `${API_BASE}/api/files/download/${encodeURIComponent(f.fileName ?? '')}`,
+              })) as unknown as File[]}
               onChange={handleFilesChange}
-              onDownloadFile={() => {}}
-              onDeleteUploadedFile={handleDeletePending}
+              onDownloadFile={(f: any) => window.open(f.url ?? f.name, '_blank')}
+              onDeleteUploadedFile={(f: any) => handleDeleteFile(f.name ?? f)}
               onFileReject={(f, m) =>
                 toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })
               }
