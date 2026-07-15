@@ -227,24 +227,11 @@ function RouteComponent() {
     else setShowQr(true)
   }, [qrCode])
 
-  // ─── Load machine + checklist ─────────────────────────────────────────────
   const loadMachineData = async (code: string) => {
     try {
       const machineRes = await api.get<any>(`/api/machine/machine-code/${code}`)
-
-      // backend คืน error เมื่อ machine ไม่ใช่ OPERATIONAL
-      if (!machineRes?.success) {
-        const status = machineRes?.data?.machineStatus ?? ''
-        if (status && status !== 'OPERATIONAL') {
-          toast.error(`ไม่สามารถบันทึกได้: เครื่องมีสถานะ "${status}"`)
-        } else {
-          toast.error('ไม่พบเครื่อง หรือเครื่องไม่อยู่ในสถานะ OPERATIONAL')
-        }
-        setMachine(null)
-        return
-      }
-
       const data: Machine = machineRes?.data ?? machineRes
+
       setMachine(data)
 
       const isResponsible = String(sessionStore.state.session?.memberId ?? '') === String(data.responsiblePersonId ?? '')
@@ -262,7 +249,7 @@ function RouteComponent() {
         }))
       )
     } catch {
-      toast.error('ไม่พบเครื่อง หรือเครื่องไม่อยู่ในสถานะ OPERATIONAL')
+      toast.error(t('machine_not_found'))
       setMachine(null)
     }
   }
