@@ -60,20 +60,46 @@ interface MachineImageFile {
   fileSize: number
 }
 
-function parseMachineImage(raw: string | undefined | null): string | null {
+/** Parse JSON image field → first fileUrl (relative path) */
+function parseMachineImagePath(raw: string | undefined | null): string | null {
   if (!raw) return null
   try {
     const files: MachineImageFile[] = JSON.parse(raw)
-    const first = files[0]
-    if (!first?.fileUrl) return null
-    // fileUrl คือ relative path เช่น /api/files/download/xxx.JPEG
-    // ต่อกับ origin ของ browser โดยตรง
-    return `${window.location.origin}${first.fileUrl}`
+    return files[0]?.fileUrl ?? null
   } catch {
     return null
   }
 }
 
+/**
+ * Fetch a protected image via the api interceptor (sends Authorization header),
+ * convert to an object URL so <img> can display it without 401.
+ * Revokes the URL on unmount or when path changes.
+ */
+function useAuthImage(path: string | null): { src: string | null; loading: boolean } {
+  const [src, setSrc]         = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!path) { setSrc(null); return }
+    let objectUrl: string | null = null
+    setLoading(true)
+    api
+      .get(path, { responseType: 'blob' })
+      .then((blob: Blob) => {
+        objectUrl = URL.createObjectURL(blob)
+        setSrc(objectUrl)
+      })
+      .catch(() => setSrc(null))
+      .finally(() => setLoading(false))
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [path])
+
+  return { src, loading }
+}
 
 
 const EDITABLE_ROLES = ['SUPERVISOR', 'MANAGER', 'ADMIN'] as const
@@ -93,6 +119,9 @@ function MachineDetailDrawer({
   const { role } = useAuth()
 
   const canEdit = EDITABLE_ROLES.includes(role as typeof EDITABLE_ROLES[number])
+
+  const imagePath = parseMachineImagePath(machine?.image)
+  const { src: imageSrc, loading: imageLoading } = useAuthImage(imagePath)
 
   // close on outside click
   useEffect(() => {
@@ -185,12 +214,13 @@ function MachineDetailDrawer({
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
             {/* รูปเครื่อง */}
             {(() => {
-              const imgUrl = parseMachineImage(machine.image)
               return (
                 <div className="rounded-lg border overflow-hidden bg-muted/30 flex items-center justify-center h-40">
-                  {imgUrl
-                    ? <img src={imgUrl} alt={machine.machineCode} className="h-full w-full object-contain" />
-                    : <Drill className="w-12 h-12 text-muted-foreground/30" />
+                  {imageLoading
+                    ? <div className="w-8 h-8 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
+                    : imageSrc
+                      ? <img src={imageSrc} alt={machine.machineCode} className="h-full w-full object-contain" />
+                      : <Drill className="w-12 h-12 text-muted-foreground/30" />
                   }
                 </div>
               )
