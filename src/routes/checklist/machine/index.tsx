@@ -12,7 +12,7 @@ import { getStatusColor } from '@/utils/status.untils'
 import {
   CheckCircle2, AlertCircle, TrendingUp, TrendingDown,
   Search, Download, Drill, Wrench, XCircle, FileCheck, QrCode,
-  X, Eye, Pencil, Building2, User, ShieldCheck,
+  X, Eye, Pencil, Building2, User, ShieldCheck, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { exportMachineQrPdf } from '@/utils/exportMachineQrPdf'
 import {
@@ -60,22 +60,18 @@ interface MachineImageFile {
   fileSize: number
 }
 
-/** Parse JSON image field → first fileUrl (relative path) */
-function parseMachineImagePath(raw: string | undefined | null): string | null {
-  if (!raw) return null
+/** Parse JSON image field → all fileUrls */
+function parseMachineImagePaths(raw: string | undefined | null): string[] {
+  if (!raw) return []
   try {
     const files: MachineImageFile[] = JSON.parse(raw)
-    return files[0]?.fileUrl ?? null
+    return files.map(f => f.fileUrl).filter(Boolean)
   } catch {
-    return null
+    return []
   }
 }
 
-/**
- * Fetch a protected image via the api interceptor (sends Authorization header),
- * convert to an object URL so <img> can display it without 401.
- * Revokes the URL on unmount or when path changes.
- */
+/** Fetch one protected image → blob URL */
 function useAuthImage(path: string | null): { src: string | null; loading: boolean } {
   const [src, setSrc]         = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -86,29 +82,15 @@ function useAuthImage(path: string | null): { src: string | null; loading: boole
     let cancelled = false
     setLoading(true)
     setSrc(null)
-
-    // ดึง token จาก localStorage/sessionStorage ตามที่ project ใช้
-    const token =
-      localStorage.getItem('token') ??
-      sessionStorage.getItem('token') ??
-      localStorage.getItem('access_token') ??
-      sessionStorage.getItem('access_token') ?? ''
-
-    fetch(path, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    api.getInstance()
+      .get(path, { responseType: 'blob' })
       .then(res => {
-        if (!res.ok) throw new Error(`${res.status}`)
-        return res.blob()
-      })
-      .then(blob => {
         if (cancelled) return
-        objectUrl = URL.createObjectURL(blob)
+        objectUrl = URL.createObjectURL(res.data)
         setSrc(objectUrl)
       })
       .catch(() => { if (!cancelled) setSrc(null) })
       .finally(() => { if (!cancelled) setLoading(false) })
-
     return () => {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
@@ -116,6 +98,88 @@ function useAuthImage(path: string | null): { src: string | null; loading: boole
   }, [path])
 
   return { src, loading }
+}
+
+/** Single slide — fetches its own blob URL */
+function CarouselSlide({ path, alt }: { path: string; alt: string }) {
+  const { src, loading } = useAuthImage(path)
+  if (loading) return (
+    <div className="flex-shrink-0 w-full h-full flex items-center justify-center">
+      <div className="w-7 h-7 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
+    </div>
+  )
+  if (!src) return (
+    <div className="flex-shrink-0 w-full h-full flex items-center justify-center">
+      <Drill className="w-10 h-10 text-muted-foreground/20" />
+    </div>
+  )
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className="flex-shrink-0 w-full h-full object-contain"
+    />
+  )
+}
+
+/** Carousel wrapper for multiple images */
+function MachineImageCarousel({ paths, alt }: { paths: string[]; alt: string }) {
+  const [index, setIndex] = useState(0)
+
+  if (paths.length === 0) return (
+    <div className="rounded-lg border bg-muted/30 flex items-center justify-center h-40">
+      <Drill className="w-12 h-12 text-muted-foreground/20" />
+    </div>
+  )
+
+  const prev = () => setIndex(i => (i - 1 + paths.length) % paths.length)
+  const next = () => setIndex(i => (i + 1) % paths.length)
+
+  return (
+    <div className="rounded-lg border overflow-hidden bg-muted/30 relative h-40 select-none">
+      {/* slides — only render current ±1 to save memory */}
+      <div className="w-full h-full">
+        <CarouselSlide key={paths[index]} path={paths[index]} alt={`${alt} ${index + 1}`} />
+      </div>
+
+      {/* nav buttons — only show when > 1 image */}
+      {paths.length > 1 && (
+        <>
+          <button
+            onClick={prev}
+            className="absolute left-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-colors"
+            aria-label="Previous image"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={next}
+            className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-colors"
+            aria-label="Next image"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          {/* dot indicators */}
+          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
+            {paths.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setIndex(i)}
+                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                  i === index ? 'bg-white' : 'bg-white/40'
+                }`}
+                aria-label={`Image ${i + 1}`}
+              />
+            ))}
+          </div>
+          {/* counter */}
+          <span className="absolute top-1.5 right-2 text-[10px] text-white/80 bg-black/30 rounded px-1.5 py-0.5">
+            {index + 1}/{paths.length}
+          </span>
+        </>
+      )}
+    </div>
+  )
 }
 
 
@@ -137,8 +201,7 @@ function MachineDetailDrawer({
 
   const canEdit = EDITABLE_ROLES.includes(role as typeof EDITABLE_ROLES[number])
 
-  const imagePath = parseMachineImagePath(machine?.image)
-  const { src: imageSrc, loading: imageLoading } = useAuthImage(imagePath)
+  const imagePaths = parseMachineImagePaths(machine?.image)
 
   // close on outside click
   useEffect(() => {
@@ -229,19 +292,8 @@ function MachineDetailDrawer({
         {/* Body */}
         {machine && (
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
-            {/* รูปเครื่อง */}
-            {(() => {
-              return (
-                <div className="rounded-lg border overflow-hidden bg-muted/30 flex items-center justify-center h-40">
-                  {imageLoading
-                    ? <div className="w-8 h-8 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
-                    : imageSrc
-                      ? <img src={imageSrc} alt={machine.machineCode} className="h-full w-full object-contain" />
-                      : <Drill className="w-12 h-12 text-muted-foreground/30" />
-                  }
-                </div>
-              )
-            })()}
+            {/* รูปเครื่อง — carousel */}
+            <MachineImageCarousel paths={imagePaths} alt={machine.machineCode} />
 
             {/* Identity card */}
             <div className="rounded-lg border px-4 py-3 bg-white dark:bg-muted/20 border-slate-200">
