@@ -10,7 +10,6 @@ import { DataTableSkeleton } from '@/components/data-table/data-table-skeleton'
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar'
 import type { PageResponse, ResponseDTO } from '@/core/types/common'
 import { useTranslation } from '@/core/contexts/language-context'
-import { DeleteDialog } from '@/components/dialog/delete-dialog'
 import { TblContainer } from '@/components/layout/tbl-container'
 import { DataTable } from '@/components/data-table/data-table'
 import { api } from '@/core/interceptor/api.interceptor'
@@ -62,6 +61,8 @@ export interface MachineDTO {
   responsiblePersonName: string
   qrCode?: string
   qr_code?: string
+  image?: string
+  hasWarranty?: string
 }
 
 interface MachineFilters {
@@ -305,7 +306,6 @@ export function MachineTbl({
   const isManagerOrSupervisor = role === 'MANAGER' || role === 'SUPERVISOR'
 
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [data, setData] = useState<MachineDTO[]>([])
   const [loading, setLoading] = useState(false)
@@ -435,7 +435,7 @@ export function MachineTbl({
     {
       accessorKey: 'machineCode',
       header: t('machine_code'),
-      cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div>,
+      cell: ({ row }) => <div className="text-sm font-medium">{row.original.machineCode}</div>,
     },
     {
       accessorKey: 'machineName',
@@ -485,28 +485,6 @@ export function MachineTbl({
     },
   ]
 
-  // ─── Delete ───────────────────────────────────────────────────────────────
-
-  const onDeleteData = async (): Promise<{ success: boolean }> => {
-    if (selectedIds.length === 0) return { success: false }
-    try {
-      const response = await api.delete<ResponseDTO<void>>('/api/machine/delete', {
-        headers: { 'Content-Type': 'application/json' },
-        data: selectedIds,
-      })
-      if (response.success) {
-        toast.success(response.message)
-        return { success: true }
-      } else {
-        toast.error(response.message)
-        return { success: false }
-      }
-    } catch {
-      toast.error(t('data_delete_failed'))
-      return { success: false }
-    }
-  }
-
   // ─── Filter / search handlers ─────────────────────────────────────────────
 
   const handleFilterChange = useCallback((key: keyof MachineFilters, value: string) => {
@@ -531,14 +509,6 @@ export function MachineTbl({
   const handleViewModeChange = (value: string) => {
     setViewMode(value as ViewMode)
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-  }
-
-  const handleSelectDelete = () => {
-    if (selectedIds.length === 0) {
-      toast.warning(t('please_select_at_least_one'))
-      return
-    }
-    setShowDeleteDialog(true)
   }
 
   const handleAdd = () => router.navigate({ to: '/checklist/machine/add', search: { refId: undefined } })
@@ -591,9 +561,7 @@ export function MachineTbl({
             table={table}
             isSync={false}
             isAdd={true}
-            isDelete={selectedIds.length > 0}
             onSearch={handleSearch}
-            onDelete={handleSelectDelete}
             onAdd={handleAdd}
             isServerSide={true}
             searchValue={keyword}
@@ -641,20 +609,6 @@ export function MachineTbl({
               />
             )}
           </div>
-
-          <DeleteDialog
-            isOpen={showDeleteDialog}
-            onClose={() => setShowDeleteDialog(false)}
-            title={t('delete_machines')}
-            confirmText="DELETE"
-            isAlert={false}
-            variant="destructive"
-            onConfirm={onDeleteData}
-            onSuccess={() => {
-              onFetchData(filters)
-              setSelectedIds([])
-            }}
-          />
         </TblContainer>
       </CardContent>
     </Card>

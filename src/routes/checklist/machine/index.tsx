@@ -12,7 +12,7 @@ import { getStatusColor } from '@/utils/status.untils'
 import {
   CheckCircle2, AlertCircle, TrendingUp, TrendingDown,
   Search, Download, Drill, Wrench, XCircle, FileCheck, QrCode,
-  X, Eye, Pencil, Building2, User,
+  X, Eye, Pencil, Building2, User, ShieldCheck,
 } from 'lucide-react'
 import { exportMachineQrPdf } from '@/utils/exportMachineQrPdf'
 import {
@@ -160,9 +160,17 @@ function MachineDetailDrawer({
         {/* Body */}
         {machine && (
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+            {/* รูปเครื่อง */}
+            <div className="rounded-lg border overflow-hidden bg-muted/30 flex items-center justify-center h-40">
+              {machine.image
+                ? <img src={machine.image} alt={machine.machineCode} className="h-full w-full object-contain" />
+                : <Drill className="w-12 h-12 text-muted-foreground/30" />
+              }
+            </div>
+
             {/* Identity card */}
             <div className="rounded-lg border px-4 py-3 bg-white dark:bg-muted/20 border-slate-200">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
                 {t('machine_code') ?? 'Machine Code'}
               </p>
               <p className="text-base font-semibold leading-tight">{machine.machineCode}</p>
@@ -176,7 +184,7 @@ function MachineDetailDrawer({
                   <Building2 className="w-3.5 h-3.5" />
                   {t('department') ?? 'Department'}
                 </div>
-                <span className="text-xs text-foreground">
+                <span className="text-xs font-medium text-foreground text-right">
                   {machine.departmentName || machine.department || '-'}
                 </span>
               </div>
@@ -185,7 +193,7 @@ function MachineDetailDrawer({
                   <User className="w-3.5 h-3.5" />
                   {t('responsible') ?? 'Responsible'}
                 </div>
-                <span className="text-xs text-foreground">
+                <span className="text-xs font-medium text-foreground text-right">
                   {machine.responsiblePersonName || '-'}
                 </span>
               </div>
@@ -206,6 +214,17 @@ function MachineDetailDrawer({
                 {machine.checkStatus
                   ? <Badge className={getStatusColor(machine.checkStatus)}>{machine.checkStatus}</Badge>
                   : <span className="text-xs text-muted-foreground">-</span>}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  {t('warranty') ?? 'Warranty'}
+                </div>
+                {machine.hasWarranty === 'YES'
+                  ? <Badge className="bg-emerald-100 text-emerald-700">{t('yes') ?? 'Yes'}</Badge>
+                  : machine.hasWarranty === 'NO'
+                    ? <Badge className="bg-slate-100 text-slate-500">{t('no') ?? 'No'}</Badge>
+                    : <span className="text-xs text-muted-foreground">-</span>}
               </div>
             </div>
           </div>
