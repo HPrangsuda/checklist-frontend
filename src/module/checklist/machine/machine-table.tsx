@@ -19,7 +19,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDebounce } from '@/core/hooks/use-debounce'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
-import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -52,7 +51,7 @@ import { cn } from '@/core/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface MachineDTO {
+export interface MachineDTO {
   id: number
   machineCode: string
   machineName: string
@@ -61,6 +60,8 @@ interface MachineDTO {
   machineStatus: string
   checkStatus: string
   responsiblePersonName: string
+  qrCode?: string
+  qr_code?: string
 }
 
 interface MachineFilters {
@@ -94,12 +95,13 @@ type ViewMode = 'overview' | 'mine'
 interface MachineTblProps {
   onSelectionChange?: (ids: number[]) => void
   onSearchChange?: (keyword: string) => void
+  /** Called with the full row when a table row is clicked */
+  onRowClick?: (machine: MachineDTO) => void
+  /** Highlights the row whose id matches */
+  selectedRowId?: number | null
 }
 
 // ─── LazySearchSelect ─────────────────────────────────────────────────────────
-// Dropdown ที่มี search + lazy load ทีละ PAGE_SIZE items
-// ใช้ onScroll บน CommandList แทน IntersectionObserver เพราะ scroll container
-// อยู่ภายใน Popover ซึ่ง IntersectionObserver จะ observe viewport แทน
 
 const PAGE_SIZE = 10
 
@@ -128,19 +130,14 @@ function LazySearchSelect<T>({
   const listRef = useRef<HTMLDivElement>(null)
   const debouncedSearch = useDebounce(search, 200)
 
-  // กรองด้วย search
   const filtered = items.filter(item =>
     getLabel(item).toLowerCase().includes(debouncedSearch.toLowerCase())
   )
-
-  // lazy slice
   const visible = filtered.slice(0, page * PAGE_SIZE)
   const hasMore = visible.length < filtered.length
 
-  // reset page เมื่อ search เปลี่ยน
   useEffect(() => { setPage(1) }, [debouncedSearch])
 
-  // scroll handler — เมื่อ scroll ถึงก้นของ list โหลดหน้าถัดไป
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     if (!hasMore) return
     const el = e.currentTarget
@@ -148,7 +145,6 @@ function LazySearchSelect<T>({
     if (nearBottom) setPage(p => p + 1)
   }, [hasMore])
 
-  // label ของ item ที่เลือก
   const selectedLabel = value
     ? (items.find(i => getKey(i) === value) ? getLabel(items.find(i => getKey(i) === value)!) : value)
     : ''
@@ -156,11 +152,7 @@ function LazySearchSelect<T>({
   return (
     <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) { setSearch(''); setPage(1) } }}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          className="h-9 w-full justify-between text-sm font-normal"
-        >
+        <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">
           <span className={cn('truncate', !value && 'text-muted-foreground')}>
             {value ? selectedLabel : placeholder}
           </span>
@@ -169,45 +161,23 @@ function LazySearchSelect<T>({
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0" align="start">
         <Command shouldFilter={false}>
-          <CommandInput
-            placeholder={placeholder}
-            value={search}
-            onValueChange={setSearch}
-          />
-          {/* ✅ ref + onScroll บน CommandList โดยตรง */}
-          <CommandList
-            ref={listRef}
-            className="max-h-52 overflow-y-auto"
-            onScroll={handleScroll}
-          >
+          <CommandInput placeholder={placeholder} value={search} onValueChange={setSearch} />
+          <CommandList ref={listRef} className="max-h-52 overflow-y-auto" onScroll={handleScroll}>
             <CommandEmpty>-</CommandEmpty>
             <CommandGroup>
-              {/* All option */}
-              <CommandItem
-                value="__ALL__"
-                onSelect={() => { onSelect(''); setOpen(false); setSearch('') }}
-              >
+              <CommandItem value="__ALL__" onSelect={() => { onSelect(''); setOpen(false); setSearch('') }}>
                 <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
                 {allLabel}
               </CommandItem>
-
-              {/* Lazy items */}
               {visible.map(item => {
                 const key = getKey(item)
-                const label = getLabel(item)
                 return (
-                  <CommandItem
-                    key={key}
-                    value={key}
-                    onSelect={() => { onSelect(key); setOpen(false); setSearch('') }}
-                  >
+                  <CommandItem key={key} value={key} onSelect={() => { onSelect(key); setOpen(false); setSearch('') }}>
                     <Check className={cn('mr-2 h-4 w-4', value === key ? 'opacity-100' : 'opacity-0')} />
-                    {label}
+                    {getLabel(item)}
                   </CommandItem>
                 )
               })}
-
-              {/* Loading indicator */}
               {hasMore && (
                 <div className="py-2 text-center text-xs text-muted-foreground select-none">
                   ↓ scroll to load more ({filtered.length - visible.length} remaining)
@@ -224,12 +194,7 @@ function LazySearchSelect<T>({
 // ─── MachineFilterPanel ───────────────────────────────────────────────────────
 
 function MachineFilterPanel({
-  filters,
-  options,
-  onChange,
-  onClear,
-  activeCount,
-  t,
+  filters, options, onChange, onClear, activeCount, t,
 }: {
   filters: MachineFilters
   options: FilterOptions
@@ -255,8 +220,6 @@ function MachineFilterPanel({
       </SheetTrigger>
 
       <SheetContent side="right" className="w-80 flex flex-col gap-0 p-0">
-
-        {/* Header */}
         <SheetHeader className="px-6 py-4 border-b">
           <div className="flex items-center justify-between">
             <SheetTitle className="flex items-center gap-2 text-base">
@@ -264,99 +227,54 @@ function MachineFilterPanel({
               {t('filter_by')}
             </SheetTitle>
             {activeCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-                onClick={onClear}
-              >
-                <X className="w-3 h-3 mr-1" />
-                {t('clear_all')}
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive" onClick={onClear}>
+                <X className="w-3 h-3 mr-1" />{t('clear_all')}
               </Button>
             )}
           </div>
           {activeCount > 0 && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {activeCount} {t('active_filters')}
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{activeCount} {t('active_filters')}</p>
           )}
         </SheetHeader>
 
-        {/* Filter fields */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-
-          {/* Department */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t('department')}
-            </label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('department')}</label>
             <LazySearchSelect<DepartmentOption>
-              value={filters.department}
-              placeholder={t('all')}
-              allLabel={t('all')}
-              items={options.departments}
-              getKey={d => d.code}
-              getLabel={d => d.name}
+              value={filters.department} placeholder={t('all')} allLabel={t('all')}
+              items={options.departments} getKey={d => d.code} getLabel={d => d.name}
               onSelect={v => onChange('department', v)}
             />
           </div>
-
           <Separator />
-
-          {/* Machine Status */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t('machine_status')}
-            </label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('machine_status')}</label>
             <LazySearchSelect<string>
-              value={filters.machineStatus}
-              placeholder={t('all')}
-              allLabel={t('all')}
-              items={options.machineStatuses}
-              getKey={s => s}
-              getLabel={s => s}
+              value={filters.machineStatus} placeholder={t('all')} allLabel={t('all')}
+              items={options.machineStatuses} getKey={s => s} getLabel={s => s}
               onSelect={v => onChange('machineStatus', v)}
             />
           </div>
-
           <Separator />
-
-          {/* Check Status */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t('check_status')}
-            </label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('check_status')}</label>
             <LazySearchSelect<string>
-              value={filters.checkStatus}
-              placeholder={t('all')}
-              allLabel={t('all')}
-              items={options.checkStatuses}
-              getKey={s => s}
-              getLabel={s => s}
+              value={filters.checkStatus} placeholder={t('all')} allLabel={t('all')}
+              items={options.checkStatuses} getKey={s => s} getLabel={s => s}
               onSelect={v => onChange('checkStatus', v)}
             />
           </div>
-
           <Separator />
-
-          {/* Responsible Person */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t('responsible')}
-            </label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('responsible')}</label>
             <LazySearchSelect<string>
-              value={filters.responsiblePersonName}
-              placeholder={t('all')}
-              allLabel={t('all')}
-              items={options.responsiblePersons}
-              getKey={p => p}
-              getLabel={p => p}
+              value={filters.responsiblePersonName} placeholder={t('all')} allLabel={t('all')}
+              items={options.responsiblePersons} getKey={p => p} getLabel={p => p}
               onSelect={v => onChange('responsiblePersonName', v)}
             />
           </div>
         </div>
 
-        {/* Footer — clear all */}
         {activeCount > 0 && (
           <div className="border-t px-6 py-4">
             <Button
@@ -364,8 +282,7 @@ function MachineFilterPanel({
               className="w-full h-9 text-sm text-destructive border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
               onClick={() => { onClear(); setOpen(false) }}
             >
-              <X className="w-3.5 h-3.5 mr-1.5" />
-              {t('clear_all')}
+              <X className="w-3.5 h-3.5 mr-1.5" />{t('clear_all')}
             </Button>
           </div>
         )}
@@ -376,7 +293,12 @@ function MachineFilterPanel({
 
 // ─── MachineTbl ───────────────────────────────────────────────────────────────
 
-export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProps) {
+export function MachineTbl({
+  onSelectionChange,
+  onSearchChange,
+  onRowClick,
+  selectedRowId,
+}: MachineTblProps) {
   const { t } = useTranslation('checklist')
   const router = useRouter()
   const { role } = useAuth()
@@ -408,7 +330,7 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
   })
 
   const paginationRef = useRef(pagination)
-  const viewModeRef = useRef(viewMode)
+  const viewModeRef   = useRef(viewMode)
   const searchValueRef = useRef(searchValue)
 
   useEffect(() => { paginationRef.current = pagination }, [pagination])
@@ -417,24 +339,11 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length
 
-  // ─── Emit to parent ───────────────────────────────────────────────────────
-
   useEffect(() => { onSelectionChange?.(selectedIds) }, [selectedIds])
   useEffect(() => { onSearchChange?.(keyword) }, [keyword])
-
-  // ─── Sync debounced search → fetch ───────────────────────────────────────
-
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
-
-  // ─── Fetch on search / pagination / viewMode change ──────────────────────
-
   useEffect(() => { onFetchData(filters) }, [searchValue, pagination.pageIndex, pagination.pageSize, viewMode])
-
-  // ─── Fetch filter options ครั้งเดียวตอน mount ────────────────────────────
-
   useEffect(() => { fetchFilterOptions() }, [])
-
-  // ─── Core fetch ───────────────────────────────────────────────────────────
 
   const onFetchData = async (currentFilters: MachineFilters) => {
     try {
@@ -470,8 +379,6 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     }
   }
 
-  // ─── Filter options — ดึงทั้งหมดจาก backend ครั้งเดียว ──────────────────
-
   const fetchFilterOptions = async () => {
     try {
       const response = await api.get<ResponseDTO<FilterOptionsResponse>>('/api/machine/filter-options')
@@ -489,15 +396,13 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     }
   }
 
-  // ─── Status label (i18n) ──────────────────────────────────────────────────
-
   const getStatusLabel = (status: string) => {
     const key = status.toLowerCase().replace(/\s+/g, '_')
     const translated = t(`status_${key}`)
     return translated !== `status_${key}` ? translated : status
   }
 
-  // ─── Columns ──────────────────────────────────────────────────────────────
+  // ─── Columns — ลบ action column ออก, เพิ่ม row click แทน ─────────────────
 
   const columns: ColumnDef<MachineDTO>[] = [
     {
@@ -510,6 +415,7 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
         />
       ),
       cell: ({ row }) => (
+        // stopPropagation ป้องกันไม่ให้ checkbox click ไปเปิด sidebar
         <div onClick={e => e.stopPropagation()}>
           <Checkbox
             checked={selectedIds.includes(row.original.id)}
@@ -527,19 +433,6 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
       size: 32,
     },
     {
-      id: 'action',
-      header: t('action'),
-      cell: ({ row }) => (
-        <TblAction
-          view edit delete
-          onView={() => handleView(row.original.id)}
-          onEdit={() => handleEdit(row.original.id)}
-          onDelete={() => handleDelete(row.original.id)}
-        />
-      ),
-      size: 80,
-    },
-    {
       accessorKey: 'machineCode',
       header: t('machine_code'),
       cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div>,
@@ -553,9 +446,7 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
       accessorKey: 'department',
       header: t('department'),
       cell: ({ row }) => (
-        <div className="text-sm">
-          {row.original.departmentName || row.original.department || '-'}
-        </div>
+        <div className="text-sm">{row.original.departmentName || row.original.department || '-'}</div>
       ),
     },
     {
@@ -616,7 +507,7 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     }
   }
 
-  // ─── Filter handlers ──────────────────────────────────────────────────────
+  // ─── Filter / search handlers ─────────────────────────────────────────────
 
   const handleFilterChange = useCallback((key: keyof MachineFilters, value: string) => {
     const newFilters = { ...filters, [key]: value }
@@ -631,8 +522,6 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
     onFetchData(empty)
   }, [searchValue, pagination, viewMode])
-
-  // ─── Other handlers ───────────────────────────────────────────────────────
 
   const handleSearch = useCallback((value: string) => {
     setKeyword(value || '')
@@ -652,10 +541,7 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
     setShowDeleteDialog(true)
   }
 
-  const handleAdd    = () => router.navigate({ to: '/checklist/machine/add', search: { refId: undefined } })
-  const handleView   = (id: number) => router.navigate({ to: '/checklist/machine/view', search: { id } })
-  const handleEdit   = (id: number) => router.navigate({ to: '/checklist/machine/edit', search: { id } })
-  const handleDelete = (id: number) => { setSelectedIds([id]); setShowDeleteDialog(true) }
+  const handleAdd = () => router.navigate({ to: '/checklist/machine/add', search: { refId: undefined } })
 
   // ─── Table instance ───────────────────────────────────────────────────────
 
@@ -688,16 +574,10 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
         {isManagerOrSupervisor && (
           <Tabs value={viewMode} onValueChange={handleViewModeChange}>
             <TabsList>
-              <TabsTrigger
-                value="mine"
-                className="data-[state=active]:bg-red-700 data-[state=active]:text-white"
-              >
+              <TabsTrigger value="mine" className="data-[state=active]:bg-red-700 data-[state=active]:text-white">
                 {t('view_mine')}
               </TabsTrigger>
-              <TabsTrigger
-                value="overview"
-                className="data-[state=active]:bg-red-700 data-[state=active]:text-white"
-              >
+              <TabsTrigger value="overview" className="data-[state=active]:bg-red-700 data-[state=active]:text-white">
                 {t('view_overview')}
               </TabsTrigger>
             </TabsList>
@@ -742,7 +622,23 @@ export function MachineTbl({ onSelectionChange, onSearchChange }: MachineTblProp
                 className="w-full"
               />
             ) : (
-              <DataTable table={table} emptyText={t('no_result')} />
+              /*
+               * ส่ง onRowClick + getRowClassName ให้ DataTable
+               * เพื่อให้ทุก <tr> clickable และ highlight แถวที่เลือก
+               */
+              <DataTable
+                table={table}
+                emptyText={t('no_result')}
+                onRowClick={onRowClick}
+                getRowClassName={(row) =>
+                  cn(
+                    'cursor-pointer transition-colors',
+                    selectedRowId === row.original.id
+                      ? 'bg-primary/5 border-l-2 border-l-primary'
+                      : 'hover:bg-muted/50'
+                  )
+                }
+              />
             )}
           </div>
 

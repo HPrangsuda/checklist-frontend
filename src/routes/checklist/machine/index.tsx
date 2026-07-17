@@ -1,16 +1,18 @@
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { MachineTbl } from '@/module/checklist/machine/machine-table'
+import { MachineTbl, type MachineDTO } from '@/module/checklist/machine/machine-table'
+import { getStatusColor } from '@/utils/status.untils'
 import {
   CheckCircle2, AlertCircle, TrendingUp, TrendingDown,
   Search, Download, Drill, Wrench, XCircle, FileCheck, QrCode,
+  X, Eye, Pencil, Building2, User,
 } from 'lucide-react'
 import { exportMachineQrPdf } from '@/utils/exportMachineQrPdf'
 import {
@@ -22,20 +24,14 @@ import {
 } from '@/components/ui/dialog'
 import type { PageResponse } from '@/core/types/common'
 import { PendingCard } from '@/module/checklist/machine/machine-pending'
+import { useRouter } from '@tanstack/react-router'
+import { useAuth } from '@/core/contexts/auth-context'
 
 export const Route = createFileRoute('/checklist/machine/')({
   component: DataTbl,
 })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface MachineDTO {
-  id: number
-  machineCode: string
-  machineName: string
-  qrCode?: string
-  qr_code?: string
-}
 
 interface DepartmentSummary {
   department: string
@@ -54,6 +50,170 @@ interface DepartmentSummary {
 
 type SortField = 'department' | 'total' | 'readyRate' | 'completedRate' | 'approveRate'
 type SortOrder = 'asc' | 'desc'
+
+// ─── Roles that may edit ───────────────────────────────────────────────────────
+
+const EDITABLE_ROLES = ['SUPERVISOR', 'MANAGER', 'ADMIN'] as const
+
+// ─── Machine Detail Drawer ────────────────────────────────────────────────────
+
+function MachineDetailDrawer({
+  machine,
+  onClose,
+}: {
+  machine: MachineDTO | null
+  onClose: () => void
+}) {
+  const { t }  = useTranslation('checklist')
+  const router = useRouter()
+  const ref    = useRef<HTMLDivElement>(null)
+  const { role } = useAuth()
+
+  const canEdit = EDITABLE_ROLES.includes(role as typeof EDITABLE_ROLES[number])
+
+  // close on outside click
+  useEffect(() => {
+    if (!machine) return
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [machine, onClose])
+
+  // close on Escape
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [onClose])
+
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 z-40 bg-black/20 transition-opacity duration-200 ${
+          machine ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        aria-hidden="true"
+      />
+
+      {/* Drawer */}
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('machine_details') ?? 'Machine Details'}
+        className={`fixed top-0 right-0 z-50 h-full w-80 bg-background border-l border-border shadow-xl flex flex-col transition-transform duration-200 ease-in-out ${
+          machine ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
+          <div className="flex items-center gap-2">
+            <Drill className="w-4 h-4 text-red-600" />
+            <span className="text-sm font-medium">{t('machine_details') ?? 'Machine Details'}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {machine && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() =>
+                    router.navigate({ to: '/checklist/machine/view', search: { id: machine.id } })
+                  }
+                  aria-label={t('view_document') ?? 'View'}
+                >
+                  <Eye className="w-4 h-4" />
+                </Button>
+
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() =>
+                      router.navigate({ to: '/checklist/machine/edit', search: { id: machine.id } })
+                    }
+                    aria-label={t('edit') ?? 'Edit'}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                )}
+              </>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onClose}
+              aria-label={t('back_to_list') ?? 'Close'}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Body */}
+        {machine && (
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+            {/* Identity card */}
+            <div className="rounded-lg border px-4 py-3 bg-white dark:bg-muted/20 border-slate-200">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                {t('machine_code') ?? 'Machine Code'}
+              </p>
+              <p className="text-base font-semibold leading-tight">{machine.machineCode}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{machine.machineName}</p>
+            </div>
+
+            {/* Fields */}
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <Building2 className="w-3.5 h-3.5" />
+                  {t('department') ?? 'Department'}
+                </div>
+                <span className="text-xs text-foreground">
+                  {machine.departmentName || machine.department || '-'}
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <User className="w-3.5 h-3.5" />
+                  {t('responsible') ?? 'Responsible'}
+                </div>
+                <span className="text-xs text-foreground">
+                  {machine.responsiblePersonName || '-'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <Wrench className="w-3.5 h-3.5" />
+                  {t('machine_status') ?? 'Machine Status'}
+                </div>
+                {machine.machineStatus
+                  ? <Badge className={getStatusColor(machine.machineStatus)}>{machine.machineStatus}</Badge>
+                  : <span className="text-xs text-muted-foreground">-</span>}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {t('check_status') ?? 'Check Status'}
+                </div>
+                {machine.checkStatus
+                  ? <Badge className={getStatusColor(machine.checkStatus)}>{machine.checkStatus}</Badge>
+                  : <span className="text-xs text-muted-foreground">-</span>}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
 
 // ─── MachineDepartmentDashboard ───────────────────────────────────────────────
 
@@ -130,7 +290,8 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: MachineDepa
     else { setSortField(field); setSortOrder('desc') }
   }
 
-  const getRateColor  = (rate: number) => rate >= 80 ? 'text-green-600' : rate >= 60 ? 'text-yellow-600' : 'text-red-600'
+  const getRateColor = (rate: number) =>
+    rate >= 80 ? 'text-green-600' : rate >= 60 ? 'text-yellow-600' : 'text-red-600'
 
   const getPerformanceBadge = (rate: number) => {
     if (rate >= 80) return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">{t('excellent')}</Badge>
@@ -314,46 +475,39 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: MachineDepa
 
 function DataTbl() {
   const { t } = useTranslation('checklist')
-  const [showQrDialog, setShowQrDialog] = useState(false)
-  const [exportingQr, setExportingQr]   = useState(false)
-  const [searchValue, setSearchValue]   = useState('')
-  // ✅ FIX: state เก็บ id ที่ถูกเลือกจาก MachineTbl
-  const [selectedIds, setSelectedIds]   = useState<number[]>([])
+  const [showQrDialog, setShowQrDialog]   = useState(false)
+  const [exportingQr, setExportingQr]     = useState(false)
+  const [searchValue, setSearchValue]     = useState('')
+  const [selectedIds, setSelectedIds]     = useState<number[]>([])
+  // ── sidebar state ──
+  const [selectedMachine, setSelectedMachine] = useState<MachineDTO | null>(null)
 
   const handleExportQr = async (mode: 'all' | 'selected') => {
-  try {
-    setShowQrDialog(false)
-    setExportingQr(true)
-    toast.info(t('preparing_qr_codes'))
+    try {
+      setShowQrDialog(false)
+      setExportingQr(true)
+      toast.info(t('preparing_qr_codes'))
 
-    let machines: MachineDTO[] = []
+      let machines: MachineDTO[] = []
 
-    if (mode === 'selected') {
-      if (selectedIds.length === 0) {
-        toast.warning(t('no_items_selected'))
-        setExportingQr(false)
-        return
+      if (mode === 'selected') {
+        if (selectedIds.length === 0) {
+          toast.warning(t('no_items_selected'))
+          setExportingQr(false)
+          return
+        }
+        const params = new URLSearchParams({ index: '0', size: '9999' })
+        if (searchValue.trim()) params.set('keyword', searchValue.trim())
+        const res = await api.get<PageResponse<MachineDTO>>('/api/machine/get/page', { params })
+        if (res?.success) machines = res.data.filter(m => selectedIds.includes(m.id))
+      } else {
+        const params = new URLSearchParams({ index: '0', size: '9999' })
+        if (searchValue.trim()) params.set('keyword', searchValue.trim())
+        const res = await api.get<PageResponse<MachineDTO>>('/api/machine/get/page', { params })
+        if (res?.success) machines = res.data
       }
-      const params = new URLSearchParams({ index: '0', size: '9999' })
-      if (searchValue.trim()) params.set('keyword', searchValue.trim())
-      const res = await api.get<PageResponse<MachineDTO>>('/api/machine/get/page', { params })
-      if (res?.success) {
-        machines = res.data.filter(m => selectedIds.includes(m.id))
-      }
-    } else {
-      const params = new URLSearchParams({ index: '0', size: '9999' })
-      if (searchValue.trim()) params.set('keyword', searchValue.trim())
-      const res = await api.get<PageResponse<MachineDTO>>('/api/machine/get/page', { params })
-      if (res?.success) machines = res.data
-    }
 
-    // ── Debug: ดูว่า API คืน field อะไรบ้าง ──
-    console.log('machines sample:', machines.slice(0, 3))
-    console.log('fields:', machines[0] ? Object.keys(machines[0]) : 'empty')
-
-    const withQr = machines.filter(m => m.qrCode || m.qr_code)
-      console.log(`total: ${machines.length}, withQr: ${withQr.length}`)
-
+      const withQr = machines.filter(m => m.qrCode || m.qr_code)
       if (withQr.length === 0) { toast.warning(t('no_qr_found')); return }
 
       await exportMachineQrPdf(
@@ -385,8 +539,6 @@ function DataTbl() {
               <ShadcnDialogDescription>{t('select_export_format')}</ShadcnDialogDescription>
             </ShadcnDialogHeader>
             <div className="flex flex-col gap-3 py-2">
-
-              {/* ✅ FIX: ปุ่ม export selected — แสดงจำนวนที่เลือก, disable ถ้าไม่มี */}
               <Button
                 variant="outline"
                 className="justify-start h-14 px-4"
@@ -409,8 +561,6 @@ function DataTbl() {
                   </span>
                 </div>
               </Button>
-
-              {/* ปุ่ม export all */}
               <Button
                 variant="outline"
                 className="justify-start h-14 px-4"
@@ -425,12 +575,31 @@ function DataTbl() {
           </ShadcnDialogContent>
         </ShadcnDialog>
 
-        {/* ✅ FIX: ส่ง onSelectionChange ให้ MachineTbl เพื่อรับ id ที่เลือก */}
+        {/*
+          MachineTbl
+          - onRowClick    → opens the detail sidebar
+          - onSelectionChange → tracks checked ids for QR export
+          - onSearchChange    → tracks search keyword for QR export
+          NOTE: remove any per-row action buttons inside MachineTbl;
+                row click is the only interaction now.
+        */}
         <MachineTbl
+          onRowClick={(machine: MachineDTO) =>
+            setSelectedMachine(prev =>
+              prev?.id === machine.id ? null : machine
+            )
+          }
+          selectedRowId={selectedMachine?.id ?? null}
           onSelectionChange={setSelectedIds}
           onSearchChange={setSearchValue}
         />
       </main>
+
+      {/* Machine detail sidebar */}
+      <MachineDetailDrawer
+        machine={selectedMachine}
+        onClose={() => setSelectedMachine(null)}
+      />
     </div>
   )
 }

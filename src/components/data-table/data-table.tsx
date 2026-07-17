@@ -1,4 +1,4 @@
-import { type Table as TanstackTable, flexRender } from "@tanstack/react-table";
+import { type Row, type Table as TanstackTable, flexRender } from "@tanstack/react-table";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import {
   Table,
@@ -14,13 +14,17 @@ interface DataTableProps<TData> extends React.ComponentProps<"div"> {
   table: TanstackTable<TData>;
   actionBar?: React.ReactNode;
   emptyText?: string;
+  onRowClick?: (row: TData) => void;
   onRowDoubleClick?: (row: TData) => void;
+  getRowClassName?: (row: Row<TData>) => string;
 }
 
 export function DataTable<TData>({
   table,
   actionBar,
+  onRowClick,
   onRowDoubleClick,
+  getRowClassName,
   children,
   emptyText,
   className,
@@ -29,7 +33,8 @@ export function DataTable<TData>({
   return (
     <div
       className={cn("flex w-full flex-col gap-2.5 overflow-auto", className)}
-      {...props}>
+      {...props}
+    >
       {children}
       <div className="overflow-hidden rounded-md border">
         <Table>
@@ -40,15 +45,11 @@ export function DataTable<TData>({
                   <TableHead
                     key={header.id}
                     colSpan={header.colSpan}
-                    style={{
-                      ...getCommonPinningStyles({ column: header.column }),
-                    }}>
+                    style={{ ...getCommonPinningStyles({ column: header.column }) }}
+                  >
                     {header.isPlaceholder
                       ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
+                      : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
               </TableRow>
@@ -59,18 +60,19 @@ export function DataTable<TData>({
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
+                  onClick={() => onRowClick?.(row.original)}
                   onDoubleClick={() => onRowDoubleClick?.(row.original)}
-                  className="cursor-pointer">
+                  className={cn(
+                    onRowClick && "cursor-pointer",
+                    getRowClassName?.(row),
+                  )}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
-                      style={{
-                        ...getCommonPinningStyles({ column: cell.column }),
-                      }}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
+                      style={{ ...getCommonPinningStyles({ column: cell.column }) }}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -79,7 +81,8 @@ export function DataTable<TData>({
               <TableRow>
                 <TableCell
                   colSpan={table.getAllColumns().length}
-                  className="h-24 text-center">
+                  className="h-24 text-center"
+                >
                   {emptyText}
                 </TableCell>
               </TableRow>
