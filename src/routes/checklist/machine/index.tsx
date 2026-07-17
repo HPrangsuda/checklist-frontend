@@ -51,7 +51,30 @@ interface DepartmentSummary {
 type SortField = 'department' | 'total' | 'readyRate' | 'completedRate' | 'approveRate'
 type SortOrder = 'asc' | 'desc'
 
-// ─── Roles that may edit ───────────────────────────────────────────────────────
+// ─── Image helpers ────────────────────────────────────────────────────────────
+
+interface MachineImageFile {
+  fileName: string
+  fileUrl: string
+  fileType: string
+  fileSize: number
+}
+
+function parseMachineImage(raw: string | undefined | null): string | null {
+  if (!raw) return null
+  try {
+    const files: MachineImageFile[] = JSON.parse(raw)
+    const first = files[0]
+    if (!first?.fileUrl) return null
+    // fileUrl คือ relative path เช่น /api/files/download/xxx.JPEG
+    // ต่อกับ origin ของ browser โดยตรง
+    return `${window.location.origin}${first.fileUrl}`
+  } catch {
+    return null
+  }
+}
+
+
 
 const EDITABLE_ROLES = ['SUPERVISOR', 'MANAGER', 'ADMIN'] as const
 
@@ -161,12 +184,17 @@ function MachineDetailDrawer({
         {machine && (
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
             {/* รูปเครื่อง */}
-            <div className="rounded-lg border overflow-hidden bg-muted/30 flex items-center justify-center h-40">
-              {machine.image
-                ? <img src={machine.image} alt={machine.machineCode} className="h-full w-full object-contain" />
-                : <Drill className="w-12 h-12 text-muted-foreground/30" />
-              }
-            </div>
+            {(() => {
+              const imgUrl = parseMachineImage(machine.image)
+              return (
+                <div className="rounded-lg border overflow-hidden bg-muted/30 flex items-center justify-center h-40">
+                  {imgUrl
+                    ? <img src={imgUrl} alt={machine.machineCode} className="h-full w-full object-contain" />
+                    : <Drill className="w-12 h-12 text-muted-foreground/30" />
+                  }
+                </div>
+              )
+            })()}
 
             {/* Identity card */}
             <div className="rounded-lg border px-4 py-3 bg-white dark:bg-muted/20 border-slate-200">
@@ -184,7 +212,7 @@ function MachineDetailDrawer({
                   <Building2 className="w-3.5 h-3.5" />
                   {t('department') ?? 'Department'}
                 </div>
-                <span className="text-xs font-medium text-foreground text-right">
+                <span className="text-xs text-foreground text-right">
                   {machine.departmentName || machine.department || '-'}
                 </span>
               </div>
@@ -193,7 +221,7 @@ function MachineDetailDrawer({
                   <User className="w-3.5 h-3.5" />
                   {t('responsible') ?? 'Responsible'}
                 </div>
-                <span className="text-xs font-medium text-foreground text-right">
+                <span className="text-xs text-foreground text-right">
                   {machine.responsiblePersonName || '-'}
                 </span>
               </div>
