@@ -83,17 +83,34 @@ function useAuthImage(path: string | null): { src: string | null; loading: boole
   useEffect(() => {
     if (!path) { setSrc(null); return }
     let objectUrl: string | null = null
+    let cancelled = false
     setLoading(true)
-    api
-      .get(path, { responseType: 'blob' })
-      .then((blob: Blob) => {
+    setSrc(null)
+
+    // ดึง token จาก localStorage/sessionStorage ตามที่ project ใช้
+    const token =
+      localStorage.getItem('token') ??
+      sessionStorage.getItem('token') ??
+      localStorage.getItem('access_token') ??
+      sessionStorage.getItem('access_token') ?? ''
+
+    fetch(path, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`${res.status}`)
+        return res.blob()
+      })
+      .then(blob => {
+        if (cancelled) return
         objectUrl = URL.createObjectURL(blob)
         setSrc(objectUrl)
       })
-      .catch(() => setSrc(null))
-      .finally(() => setLoading(false))
+      .catch(() => { if (!cancelled) setSrc(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
 
     return () => {
+      cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [path])
