@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { FormLayout } from '@/components/layout/form-layout'
 import type { FormStep } from '@/components/layout/form-sidebar'
 import { AlertCircle } from 'lucide-react'
+import { useTranslation } from '@/core/contexts/language-context'
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -14,12 +15,6 @@ export const Route = createFileRoute('/checklist/question/edit')({
   }),
   component: RouteComponent,
 })
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const formSteps: FormStep[] = [
-  { id: 'form', title: 'Question Info', description: 'Edit question details', required: true },
-]
 
 // ─── Field Components ─────────────────────────────────────────────────────────
 
@@ -52,9 +47,15 @@ function FieldWrapper({ label, required, error, hint, children }: {
 function RouteComponent() {
   const navigate = useNavigate()
   const { id }   = Route.useSearch()
+  const { t }    = useTranslation('checklist')
+
+  const formSteps: FormStep[] = [
+    { id: 'form', title: t('question_info'), description: t('question_info_edit_desc'), required: true },
+  ]
 
   const [detail,       setDetail]       = useState('')
   const [description,  setDescription]  = useState('')
+  const [isChoice,     setIsChoice]     = useState(true)
   const [errors,       setErrors]       = useState<{ detail?: string }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading,    setIsLoading]    = useState(true)
@@ -63,7 +64,7 @@ function RouteComponent() {
 
   useEffect(() => {
     if (!id) {
-      toast.error('Invalid id')
+      toast.error(t('invalid_id'))
       navigate({ to: '/checklist/question' })
       return
     }
@@ -74,10 +75,11 @@ function RouteComponent() {
         const axiosRes = await api.getInstance().get<any>(`/api/question/${id}`)
         const res = axiosRes.data
 
-        setDetail(res.detail ?? '')
+        setDetail(res.detail           ?? '')
         setDescription(res.description ?? '')
+        setIsChoice(res.isChoice       ?? true)
       } catch {
-        toast.error('Failed to load question')
+        toast.error(t('question_load_failed'))
         navigate({ to: '/checklist/question' })
       } finally {
         setIsLoading(false)
@@ -105,8 +107,8 @@ function RouteComponent() {
     e.preventDefault()
 
     if (!detail.trim()) {
-      setErrors({ detail: 'Question detail is required' })
-      toast.error('Please fill in all required fields')
+      setErrors({ detail: t('question_detail_required') })
+      toast.error(t('fill_required_fields'))
       return
     }
 
@@ -114,24 +116,25 @@ function RouteComponent() {
     try {
       const response = await api.put<any>('/api/question/update', {
         id,
-        detail: detail.trim(),
+        detail:      detail.trim(),
         description: description.trim() || null,
+        isChoice,
       })
 
       if (!response?.success) {
-        toast.error('Update failed', { description: response?.message ?? 'Failed to update question' })
+        toast.error(t('question_update_failed'), { description: response?.message ?? '' })
         return
       }
 
-      toast.success('Question updated successfully')
+      toast.success(t('question_updated'))
       setTimeout(() => navigate({ to: '/checklist/question' }), 800)
     } catch (error: any) {
       const errorMessage: string =
         error?.response?.data?.detail  ??
         error?.response?.data?.message ??
         error?.message                 ??
-        'Failed to update question'
-      toast.error('Update failed', { description: errorMessage })
+        t('question_update_failed')
+      toast.error(t('question_update_failed'), { description: errorMessage })
     } finally {
       setIsSubmitting(false)
     }
@@ -142,8 +145,8 @@ function RouteComponent() {
   return (
     <FormLayout
       backLink="/checklist/question"
-      title="Edit Question"
-      subtitle={detail ? detail.slice(0, 60) + (detail.length > 60 ? '...' : '') : 'Edit question'}
+      title={t('edit_question')}
+      subtitle={detail ? detail.slice(0, 60) + (detail.length > 60 ? '...' : '') : t('edit_question')}
       onSubmit={handleSubmit}
       steps={formSteps}
       currentStep="form"
@@ -151,12 +154,12 @@ function RouteComponent() {
       getStepStatus={getStepStatus}
       isSubmitting={isSubmitting}
       isFormValid={isFormValid()}
-      submitText="Save Changes"
+      submitText={t('save_changes')}
       cancelLink="/checklist/question"
     >
       <div className="px-2 pt-2 space-y-4">
 
-        <FieldWrapper label="Detail" required error={errors.detail}>
+        <FieldWrapper label={t('question_detail')} required error={errors.detail}>
           <textarea
             rows={4}
             value={detail}
@@ -164,20 +167,40 @@ function RouteComponent() {
               setDetail(e.target.value)
               if (errors.detail) setErrors({})
             }}
-            placeholder="Enter question detail..."
+            placeholder={t('question_detail_placeholder')}
             className={inputClass(!!errors.detail)}
           />
         </FieldWrapper>
 
-        <FieldWrapper label="Description" hint="Optional additional information">
+        <FieldWrapper label={t('question_description')} hint={t('question_description_hint')}>
           <textarea
             rows={3}
             value={description}
             onChange={e => setDescription(e.target.value)}
-            placeholder="Enter description (optional)..."
+            placeholder={t('question_description_placeholder')}
             className={inputClass(false)}
           />
         </FieldWrapper>
+
+        {/* ─── Is Choice Toggle ─────────────────────────────────────────── */}
+        <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">{t('question_is_choice')}</p>
+            <p className="text-xs text-muted-foreground">{t('question_is_choice_hint')}</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isChoice}
+            onClick={() => setIsChoice(v => !v)}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+              ${isChoice ? 'bg-blue-600' : 'bg-gray-200'}`}
+          >
+            <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200
+              ${isChoice ? 'translate-x-5' : 'translate-x-0'}`}
+            />
+          </button>
+        </div>
 
       </div>
     </FormLayout>

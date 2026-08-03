@@ -30,10 +30,17 @@ interface MemberForm {
   confirmPassword: string
   departmentId:    string
   roleType:        RoleType | ''
+  supervisor:      string
+  manager:         string
   languages:       string
 }
 
 interface DepartmentOption {
+  label: string
+  value: string
+}
+
+interface MemberOption {
   label: string
   value: string
 }
@@ -63,6 +70,8 @@ const INITIAL_FORM: MemberForm = {
   confirmPassword: '',
   departmentId:    '',
   roleType:        '',
+  supervisor:      '',
+  manager:         '',
   languages:       'en',
 }
 
@@ -102,11 +111,139 @@ function FieldWrapper({ label, required, error, hint, children }: {
   )
 }
 
+// ─── MemberDropdown ───────────────────────────────────────────────────────────
+
+function MemberDropdown({
+  label,
+  value,
+  onChange,
+  error,
+  placeholder = 'Select member (optional)',
+}: {
+  label:        string
+  value:        string
+  onChange:     (v: string) => void
+  error?:       string
+  placeholder?: string
+}) {
+  const [members, setMembers] = useState<MemberOption[]>([])
+  const [keyword, setKeyword] = useState('')
+  const [page,    setPage]    = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [open,    setOpen]    = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const fetchMembers = useCallback(async (kw: string, idx: number, replace = false) => {
+    setLoading(true)
+    try {
+      const params: any = { index: idx, size: 10, status: 'ACTIVE' }
+      if (kw.trim()) params.keyword = kw.trim()
+      const res = await api.get<any>('/api/user/get/list', { params })
+      const items: any[] = res?.data ?? []
+      const opts: MemberOption[] = items.map(m => ({
+        label: `${m.firstName} ${m.lastName}`.trim(),
+        value: String(m.id),
+      }))
+      setMembers(prev => replace ? opts : [...prev, ...opts])
+      setHasMore(res?.hasMore ?? false)
+    } catch {
+      toast.error('Member fetch failed')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchMembers('', 0, true) }, [])
+  useEffect(() => { setPage(0); fetchMembers(keyword, 0, true) }, [keyword])
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const selected = members.find(m => m.value === value)
+
+  return (
+    <FieldWrapper label={label} error={error}>
+      <div className="relative" ref={ref}>
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          className={`w-full flex items-center justify-between border rounded-lg px-3 py-2.5 bg-background text-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500
+            ${error ? 'border-red-400' : 'border-border'}`}
+        >
+          <span className={selected ? 'text-foreground' : 'text-muted-foreground'}>
+            {selected ? selected.label : placeholder}
+          </span>
+          <div className="flex items-center gap-1">
+            {value && (
+              <span
+                onClick={e => { e.stopPropagation(); onChange('') }}
+                className="p-0.5 rounded hover:bg-muted transition cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5 text-muted-foreground" />
+              </span>
+            )}
+            <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+          </div>
+        </button>
+
+        {open && (
+          <div className="absolute z-50 mt-1 w-full bg-background border border-border rounded-xl shadow-lg overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+              <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                value={keyword}
+                onChange={e => setKeyword(e.target.value)}
+                placeholder="Search member..."
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+            <ul className="max-h-48 overflow-y-auto">
+              {members.length === 0 && !loading && (
+                <li className="px-3 py-3 text-sm text-muted-foreground text-center">
+                  No members found
+                </li>
+              )}
+              {members.map(m => (
+                <li
+                  key={m.value}
+                  onClick={() => { onChange(m.value); setOpen(false) }}
+                  className={`px-3 py-2.5 text-sm cursor-pointer transition
+                    ${value === m.value ? 'bg-blue-50/10 text-blue-500' : 'hover:bg-muted'}`}
+                >
+                  {m.label}
+                </li>
+              ))}
+              {loading && (
+                <li className="px-3 py-2 text-xs text-muted-foreground text-center">Loading...</li>
+              )}
+              {hasMore && !loading && (
+                <li
+                  onClick={() => { const next = page + 1; setPage(next); fetchMembers(keyword, next) }}
+                  className="px-3 py-2 text-xs text-blue-500 text-center cursor-pointer hover:bg-muted transition"
+                >
+                  Load more
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+      </div>
+    </FieldWrapper>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function RouteComponent() {
-  const navigate    = useNavigate()
-  const { id }      = Route.useSearch()
+  const navigate = useNavigate()
+  const { id }   = Route.useSearch()
 
   const [form,         setForm]         = useState<MemberForm>(INITIAL_FORM)
   const [errors,       setErrors]       = useState<Partial<Record<keyof MemberForm, string>>>({})
@@ -115,7 +252,6 @@ function RouteComponent() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm,  setShowConfirm]  = useState(false)
 
-  // Department dropdown state
   const [departments, setDepartments] = useState<DepartmentOption[]>([])
   const [deptKeyword, setDeptKeyword] = useState('')
   const [deptPage,    setDeptPage]    = useState(0)
@@ -132,27 +268,25 @@ function RouteComponent() {
       navigate({ to: '/checklist/members' })
       return
     }
-
     const fetchMember = async () => {
       try {
         setIsLoading(true)
-        // ใช้ getInstance() เพื่อป้องกัน api.get() spread { ...res.data, status: httpCode }
-        // ทับ field "status" หรือ field อื่นของ DTO
         const axiosRes = await api.getInstance().get<any>(`/api/user/${id}`)
         const res = axiosRes.data?.data ?? axiosRes.data
-
         setForm({
-          employeeId:      res.employeeId      ?? '',
-          firstName:       res.firstName       ?? '',
-          lastName:        res.lastName        ?? '',
-          email:           res.email           ?? '',
-          mobiles:         res.mobiles         ?? '',
-          userName:        res.userName        ?? '',
+          employeeId:      res.employeeId   ?? '',
+          firstName:       res.firstName    ?? '',
+          lastName:        res.lastName     ?? '',
+          email:           res.email        ?? '',
+          mobiles:         res.mobiles      ?? '',
+          userName:        res.userName     ?? '',
           password:        '',
           confirmPassword: '',
-          departmentId:    res.departmentId    ?? '',
-          roleType:        res.roleType        ?? '',
-          languages:       res.languages       ?? 'en',
+          departmentId:    res.departmentId ?? '',
+          roleType:        res.roleType     ?? '',
+          supervisor:      res.supervisor != null ? String(res.supervisor) : '',
+          manager:         res.manager     != null ? String(res.manager)   : '',
+          languages:       res.languages   ?? 'en',
         })
       } catch {
         toast.error('Failed to load member')
@@ -161,22 +295,16 @@ function RouteComponent() {
         setIsLoading(false)
       }
     }
-
     fetchMember()
   }, [id])
 
   // ─── Fetch departments ───────────────────────────────────────────────────
 
-  const fetchDepartments = useCallback(async (
-    keyword: string,
-    index: number,
-    replace = false
-  ) => {
+  const fetchDepartments = useCallback(async (keyword: string, index: number, replace = false) => {
     setDeptLoading(true)
     try {
       const params: any = { index, size: 10 }
       if (keyword.trim()) params.keyword = keyword.trim()
-
       const response = await api.get<any>('/api/department/get/list', { params })
       const items: any[] = response?.data ?? []
       const transformed: DepartmentOption[] = items.map(dep => ({
@@ -185,7 +313,6 @@ function RouteComponent() {
           : dep.department,
         value: dep.departmentCode,
       }))
-
       setDepartments(prev => replace ? transformed : [...prev, ...transformed])
       setDeptHasMore(response?.hasMore ?? false)
     } catch {
@@ -196,17 +323,10 @@ function RouteComponent() {
   }, [])
 
   useEffect(() => { fetchDepartments('', 0, true) }, [])
-
-  useEffect(() => {
-    setDeptPage(0)
-    fetchDepartments(deptKeyword, 0, true)
-  }, [deptKeyword])
-
+  useEffect(() => { setDeptPage(0); fetchDepartments(deptKeyword, 0, true) }, [deptKeyword])
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (deptRef.current && !deptRef.current.contains(e.target as Node)) {
-        setDeptOpen(false)
-      }
+      if (deptRef.current && !deptRef.current.contains(e.target as Node)) setDeptOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -241,7 +361,6 @@ function RouteComponent() {
     if (form.email && !isValidEmail(form.email))     e.email           = 'Invalid email format'
     if (!form.mobiles.trim())                        e.mobiles         = 'Mobile number is required'
     if (!form.userName.trim())                       e.userName        = 'Username is required'
-    // password optional on edit — validate only if filled
     if (form.password) {
       if (form.password.length < 8)                  e.password        = 'Password must be at least 8 characters'
       if (!form.confirmPassword)                     e.confirmPassword = 'Please confirm your password'
@@ -274,21 +393,22 @@ function RouteComponent() {
 
     setIsSubmitting(true)
     try {
-      const { confirmPassword, ...rest } = form
-
-      // ส่ง password เฉพาะตอนที่กรอกมา
-      const payload: any = { id, ...rest }
+      const { confirmPassword, supervisor, manager, ...rest } = form
+      const payload: any = {
+        id,
+        ...rest,
+        supervisor: supervisor ? Number(supervisor) : null,
+        manager:    manager    ? Number(manager)    : null,
+      }
       if (!payload.password) delete payload.password
 
       const response = await api.put<any>('/api/user/update', payload)
-
       if (!response?.success) {
         toast.error('Update failed', {
           description: response?.message ?? 'Failed to update member',
         })
         return
       }
-
       toast.success('Member updated successfully')
       setTimeout(() => navigate({ to: '/checklist/members' }), 800)
     } catch (error: any) {
@@ -381,7 +501,7 @@ function RouteComponent() {
             />
           </FieldWrapper>
 
-          {/* Department dropdown */}
+          {/* Department */}
           <FieldWrapper label="Department" error={errors.departmentId}>
             <div className="relative" ref={deptRef}>
               <button
@@ -455,6 +575,20 @@ function RouteComponent() {
               )}
             </div>
           </FieldWrapper>
+
+          {/* Supervisor & Manager */}
+          <MemberDropdown
+            label="Supervisor"
+            value={form.supervisor}
+            onChange={v => setField('supervisor', v)}
+            placeholder="Select supervisor (optional)"
+          />
+          <MemberDropdown
+            label="Manager"
+            value={form.manager}
+            onChange={v => setField('manager', v)}
+            placeholder="Select manager (optional)"
+          />
         </section>
 
         <hr className="border-border" />
@@ -500,7 +634,6 @@ function RouteComponent() {
             </div>
           </FieldWrapper>
 
-          {/* Confirm password — แสดงเฉพาะเมื่อกรอก password */}
           {form.password && (
             <FieldWrapper label="Confirm Password" required error={errors.confirmPassword}>
               <div className="relative">

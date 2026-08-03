@@ -435,7 +435,7 @@ export function MachineTbl({
     {
       accessorKey: 'machineCode',
       header: t('machine_code'),
-      cell: ({ row }) => <div className="text-sm font-medium">{row.original.machineCode}</div>,
+      cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div>,
     },
     {
       accessorKey: 'machineName',

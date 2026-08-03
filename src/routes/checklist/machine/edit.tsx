@@ -37,7 +37,7 @@ interface ChecklistQuestion {
   detail:      string
   description: string
   resetTime:   string
-  isChoice:    boolean
+  isChoice:    boolean  // มาจาก question แล้ว ไม่ต้องระบุตอนเพิ่ม
   checkStatus: boolean
 }
 
@@ -45,6 +45,7 @@ interface QuestionOption {
   id:          number
   detail:      string
   description: string
+  isChoice:    boolean  // เพิ่ม — แสดง badge ใน picker
 }
 
 type MachineEditSearch = { id: number }
@@ -138,40 +139,78 @@ function QuestionPicker({ onAdd, existingQuestionIds }: {
       const params: Record<string, unknown> = { index: 0, size: 50 }
       if (kw.trim()) params.keyword = kw.trim()
       const res = await api.getInstance().get<any>('/api/question/get/page', { params })
-      setItems((res.data?.data ?? []).map((q: any) => ({ id: q.id, detail: q.detail, description: q.description ?? '' })))
+      setItems(
+        (res.data?.data ?? []).map((q: any) => ({
+          id:          q.id,
+          detail:      q.detail,
+          description: q.description ?? '',
+          isChoice:    q.isChoice ?? false,   // รับมาจาก question โดยตรง
+        }))
+      )
     } catch { toast.error('Failed to fetch questions') }
     finally { setLoading(false) }
   }
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-dashed border-primary text-primary hover:bg-primary/5 transition">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-dashed border-primary text-primary hover:bg-primary/5 transition"
+      >
         <Plus className="h-4 w-4" /> Add Question
       </button>
+
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-[420px] rounded-xl border bg-background shadow-lg overflow-hidden">
+        <div className="absolute left-0 top-full mt-1 z-50 w-[440px] rounded-xl border bg-background shadow-lg overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2 border-b">
             <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <input autoFocus value={keyword} onChange={e => setKeyword(e.target.value)}
+            <input
+              autoFocus
+              value={keyword}
+              onChange={e => setKeyword(e.target.value)}
               placeholder="Search question..."
-              className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground" />
+              className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+            />
           </div>
+
           <div className="max-h-64 overflow-y-auto divide-y">
-            {loading && <div className="px-3 py-3 text-sm text-muted-foreground text-center">Loading...</div>}
-            {!loading && items.length === 0 && <div className="px-3 py-3 text-sm text-muted-foreground text-center">No results</div>}
+            {loading && (
+              <div className="px-3 py-3 text-sm text-muted-foreground text-center">Loading...</div>
+            )}
+            {!loading && items.length === 0 && (
+              <div className="px-3 py-3 text-sm text-muted-foreground text-center">No results</div>
+            )}
             {!loading && items.map(q => {
               const already = existingQuestionIds.includes(q.id)
               return (
-                <button key={q.id} type="button" disabled={already}
+                <button
+                  key={q.id}
+                  type="button"
+                  disabled={already}
                   onClick={() => { if (!already) { onAdd(q); setOpen(false) } }}
-                  className={`w-full text-left px-3 py-2.5 transition ${already ? 'opacity-40 cursor-not-allowed' : 'hover:bg-muted cursor-pointer'}`}>
+                  className={`w-full text-left px-3 py-2.5 transition ${
+                    already ? 'opacity-40 cursor-not-allowed' : 'hover:bg-muted cursor-pointer'
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-medium line-clamp-1">{q.detail}</p>
-                      {q.description && <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{q.description}</p>}
+                      {q.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{q.description}</p>
+                      )}
                     </div>
-                    {already && <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />}
+                    <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                      {/* badge แสดงประเภทคำถามจาก question entity */}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                        q.isChoice
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {q.isChoice ? 'Choice' : 'Text'}
+                      </span>
+                      {already && <Check className="h-4 w-4 text-emerald-500" />}
+                    </div>
                   </div>
                 </button>
               )
@@ -256,7 +295,6 @@ function MachineEdit() {
 
   // ── Load machine data ─────────────────────────────────────────────────────
   useEffect(() => {
-    // reset scroll ทุกครั้งที่โหลดหน้า เพื่อให้ sticky header แสดงถูกต้อง
     window.scrollTo(0, 0)
   }, [])
 
@@ -354,11 +392,17 @@ function MachineEdit() {
       const res = await api.getInstance().get<any>(`/api/machine-checklist/by-machine`, {
         params: { machineCode: machineData.machineCode },
       })
-      setChecklists((res.data?.data ?? []).map((item: any) => ({
-        id: item.id, questionId: item.questionId,
-        detail: item.question?.detail ?? '', description: item.question?.description ?? '',
-        resetTime: item.resetTime ?? '', isChoice: item.isChoice ?? false, checkStatus: item.checkStatus ?? false,
-      })))
+      setChecklists(
+        (res.data?.data ?? []).map((item: any) => ({
+          id:          item.id,
+          questionId:  item.questionId,
+          detail:      item.question?.detail      ?? '',
+          description: item.question?.description ?? '',
+          resetTime:   item.resetTime             ?? '',
+          isChoice:    item.question?.isChoice    ?? item.isChoice ?? false,  // มาจาก question
+          checkStatus: item.checkStatus           ?? false,
+        }))
+      )
     } catch { toast.error('Failed to load checklist') }
     finally { setChecklistLoading(false) }
   }
@@ -366,7 +410,11 @@ function MachineEdit() {
   const handleAddQuestion = async (q: QuestionOption) => {
     try {
       await api.getInstance().post('/api/machine-checklist', {
-        machineCode: machineData.machineCode, questionId: q.id, isChoice: false, checkStatus: false, resetTime: '0 0 0 * * 1',
+        machineCode: machineData.machineCode,
+        questionId:  q.id,
+        // ลบ isChoice ออก — backend ดึงจาก question entity แทน
+        checkStatus: false,
+        resetTime:   '0 0 0 * * 1',
       })
       toast.success('Question added')
       fetchChecklist()
@@ -397,11 +445,17 @@ function MachineEdit() {
         params: { machineCode: formData.machineCode },
       })
       const list = Array.isArray(res.data) ? res.data : []
-      setMaintChecklists(list.map((item: any) => ({
-        id: item.id, questionId: item.questionId,
-        detail: item.question?.detail ?? '', description: item.question?.description ?? '',
-        resetTime: item.resetTime ?? '', isChoice: item.isChoice ?? false, checkStatus: item.checkStatus ?? false,
-      })))
+      setMaintChecklists(
+        list.map((item: any) => ({
+          id:          item.id,
+          questionId:  item.questionId,
+          detail:      item.question?.detail      ?? '',
+          description: item.question?.description ?? '',
+          resetTime:   item.resetTime             ?? '',
+          isChoice:    item.question?.isChoice    ?? item.isChoice ?? false,  // มาจาก question
+          checkStatus: item.checkStatus           ?? false,
+        }))
+      )
     } catch { toast.error('Failed to load maintenance checklist') }
     finally { setMaintChecklistLoading(false) }
   }
@@ -409,7 +463,11 @@ function MachineEdit() {
   const handleAddMaintQuestion = async (q: QuestionOption) => {
     try {
       await api.getInstance().post('/api/maintenance-checklist', {
-        machineCode: formData.machineCode, questionId: q.id, isChoice: false, checkStatus: false, resetTime: '0 0 0 * * 1',
+        machineCode: formData.machineCode,
+        questionId:  q.id,
+        // ลบ isChoice ออก — backend ดึงจาก question entity แทน
+        checkStatus: false,
+        resetTime:   '0 0 0 * * 1',
       })
       toast.success('Question added')
       fetchMaintChecklist()
@@ -474,9 +532,6 @@ function MachineEdit() {
   }
 
   const handleImagesChange = (files: File[]) => {
-    // FIX: กรองเฉพาะ File object จริง
-    // เงื่อนไข: instanceof File + size > 0 + มี lastModified (property เฉพาะ File จริง)
-    // ป้องกัน FileUploadField ส่ง plain object ที่ toUploadedFiles() สร้างมา
     const realFiles = files.filter(f => f instanceof File && f.size > 0 && f.lastModified > 0)
     if (imageTimeoutRef.current) clearTimeout(imageTimeoutRef.current)
     imageTimeoutRef.current = setTimeout(() => {
@@ -496,8 +551,6 @@ function MachineEdit() {
 
   /**
    * SOFT-DELETE: mark ไฟล์ว่าจะลบ แต่ยังไม่ลบจริง
-   * ไฟล์จะหายออกจาก UI ทันที (activeFiles filter) แต่ยังอยู่ใน state
-   * จะลบจากดิสก์ + อัปเดต DB พร้อมกันตอน handleSubmit
    */
   const markForDelete = (
     fileId:   string,
@@ -520,11 +573,6 @@ function MachineEdit() {
 
   // ─── FileUploadField value mapper ─────────────────────────────────────────
 
-  /**
-   * FIX: แปลง FileEntry[] → format สำหรับ prop "uploadedFiles" ของ FileUploadField
-   * - ส่งผ่าน uploadedFiles (ไฟล์ที่ upload แล้ว) ไม่ใช่ value (ไฟล์ใหม่ที่กำลัง drop)
-   * - id = fileName เพื่อให้ onDeleteUploadedFile ได้รับ fileName ตรงๆ
-   */
   const toUploadedFiles = (files: FileEntry[]) =>
     activeFiles(files).map(f => ({
       id:   f.fileName,
@@ -555,19 +603,16 @@ function MachineEdit() {
   // ─── Build DTO ─────────────────────────────────────────────────────────────
 
   const buildMachineDTO = (resolvedImages: FileEntry[], resolvedInstrs: FileEntry[]) => {
-    /**
-     * FIX: ส่ง empty string แทน null เมื่อไม่มีไฟล์
-     * เหตุผล: backend ใช้ addIfNotNull() ซึ่งจะ skip field ถ้า value เป็น null
-     *         ทำให้ DB ไม่อัปเดตเมื่อลบไฟล์ทั้งหมด
-     *         การส่ง "" บอก backend ให้เขียนทับค่าเดิมใน DB ด้วย null/empty
-     */
     const toFileJson = (files: FileEntry[]): string =>
       files.length
         ? JSON.stringify(files.map(f => ({
-            fileName: f.fileName, fileUrl: f.fileUrl ?? toDisplayUrl(f),
-            fileType: f.fileType, fileSize: f.fileSize, uploadedBy: f.uploadedBy ?? null,
+            fileName:   f.fileName,
+            fileUrl:    f.fileUrl ?? toDisplayUrl(f),
+            fileType:   f.fileType,
+            fileSize:   f.fileSize,
+            uploadedBy: f.uploadedBy ?? null,
           })))
-        : ''  // empty string = "ล้างไฟล์ทั้งหมด" — backend จะเขียน null ลง DB
+        : ''
 
     const nonActive  = isNonActiveStatus(formData.machineStatus)
     const cancelDate = nonActive ? new Date().toISOString() : null
@@ -597,7 +642,6 @@ function MachineEdit() {
       resetPeriod:           formData.resetPeriod       || null,
       maintenancePeriod:     formData.maintenancePeriod || null,
       note:                  formData.note              || null,
-      // ส่งเฉพาะ active files (ที่ไม่ถูก mark ลบ) ไปบันทึกใน DB
       image:           toFileJson(resolvedImages),
       workInstruction: toFileJson(resolvedInstrs),
     }
@@ -614,14 +658,11 @@ function MachineEdit() {
     }
     setIsSubmitting(true)
     try {
-      // 1. แยกไฟล์ที่จะลบออกจากไฟล์ที่จะเก็บ
       const imagesToDelete = imageFiles.filter(f => f._markedForDelete)
       const instrsToDelete = instrFiles.filter(f => f._markedForDelete)
       const activeImages   = activeFiles(imageFiles)
       const activeInstrs   = activeFiles(instrFiles)
 
-      // 2. ลบไฟล์จากดิสก์ทั้งหมดพร้อมกัน (parallel)
-      //    ถ้าลบไม่สำเร็จก็ log ไว้แต่ไม่ block การ save
       const deleteResults = await Promise.allSettled([
         ...imagesToDelete.map(f =>
           api.delete(`/api/files/delete/${encodeURIComponent(f.fileName)}`)
@@ -634,15 +675,9 @@ function MachineEdit() {
       ])
 
       const failedDeletes = deleteResults.filter(r => r.status === 'rejected').length
-      if (failedDeletes > 0) {
-        console.warn(`${failedDeletes} file(s) could not be deleted from disk`)
-      }
+      if (failedDeletes > 0) console.warn(`${failedDeletes} file(s) could not be deleted from disk`)
 
-      // 3. PUT machine — ส่งเฉพาะ active files ใน DTO
-      //    DB จะได้รับ JSON ที่ไม่มีไฟล์ที่ถูก mark ลบแล้ว
       await api.put('/api/machine/update', buildMachineDTO(activeImages, activeInstrs))
-
-      // 4. Sync to Lark
       await api.post(`/api/machine/${id}/sync-to-lark`)
 
       toast.success(t('machine_updated'))
@@ -670,9 +705,14 @@ function MachineEdit() {
     if (keyword.trim()) params.keyword = keyword.trim()
     const res = await api.get<ListResponse<MemberListDTO>>('/api/user/get/list', { params })
     const all = res.data.map((m: any) => ({
-      label: `${m.firstName} ${m.lastName}`, value: String(m.id || ''), fullName: `${m.firstName} ${m.lastName}`,
+      label:    `${m.firstName} ${m.lastName}`,
+      value:    String(m.id || ''),
+      fullName: `${m.firstName} ${m.lastName}`,
     }))
-    if (keyword.trim()) { const kw = keyword.trim().toLowerCase(); return all.filter(m => m.label.toLowerCase().includes(kw)) }
+    if (keyword.trim()) {
+      const kw = keyword.trim().toLowerCase()
+      return all.filter(m => m.label.toLowerCase().includes(kw))
+    }
     return all
   }
 
@@ -692,11 +732,21 @@ function MachineEdit() {
   const handleResponsibleChange = async (selected: any) => {
     const val = Array.isArray(selected) ? selected[0] : selected
     if (!val) {
-      setFormData(prev => ({ ...prev, responsible: '', responsibleName: '', supervisor: '', supervisorName: '', manager: '', managerName: '' }))
+      setFormData(prev => ({
+        ...prev,
+        responsible: '', responsibleName: '',
+        supervisor: '', supervisorName: '',
+        manager: '', managerName: '',
+      }))
       return
     }
     const found = cachedResponsible.find(r => String(r.value) === String(val))
-    setFormData(prev => ({ ...prev, responsible: val, responsibleName: found?.fullName ?? prev.responsibleName, supervisor: '', supervisorName: '', manager: '', managerName: '' }))
+    setFormData(prev => ({
+      ...prev,
+      responsible: val, responsibleName: found?.fullName ?? prev.responsibleName,
+      supervisor: '', supervisorName: '',
+      manager: '', managerName: '',
+    }))
     try {
       const res    = await api.get<any>(`/api/user/${val}`)
       const member = res.data
@@ -708,17 +758,101 @@ function MachineEdit() {
       if (!mgrMembers.length) { const r = await fetchManager('', 0); mgrMembers = r.data }
       setFormData(prev => ({
         ...prev,
-        supervisor: supId, supervisorName: supMembers.find(m => String(m.value) === supId)?.fullName ?? '',
-        manager:    mgrId, managerName:    mgrMembers.find(m => String(m.value) === mgrId)?.fullName ?? '',
+        supervisor:     supId,
+        supervisorName: supMembers.find(m => String(m.value) === supId)?.fullName ?? '',
+        manager:        mgrId,
+        managerName:    mgrMembers.find(m => String(m.value) === mgrId)?.fullName ?? '',
       }))
     } catch {}
   }
+
+  // ─── Checklist table (shared) ──────────────────────────────────────────────
+
+  const renderChecklistTable = (
+    items:      ChecklistQuestion[],
+    loading:    boolean,
+    deleting:   number[],
+    onDelete:   (id: number) => void,
+    onAdd:      (q: QuestionOption) => void,
+  ) => (
+    <div className="space-y-4">
+      {loading ? (
+        <div className="text-sm text-muted-foreground py-8 text-center">{t('loading')}</div>
+      ) : items.length === 0 ? (
+        <div className="text-sm text-muted-foreground py-8 text-center border rounded-lg border-dashed">
+          {t('no_result')}
+        </div>
+      ) : (
+        <div className="rounded-md border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 border-b">
+              <tr>
+                <th className="text-left px-4 py-3 font-medium">Detail</th>
+                <th className="text-left px-4 py-3 font-medium w-[22%]">Description</th>
+                <th className="text-left px-4 py-3 font-medium w-[14%]">Reset Time</th>
+                <th className="text-left px-4 py-3 font-medium w-[10%]">Type</th>
+                <th className="px-4 py-3 w-10" />
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {items.map(item => (
+                <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-3 font-medium">
+                    <span className="line-clamp-2">{item.detail}</span>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    <span className="line-clamp-2">{item.description || '-'}</span>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                    {item.resetTime || '-'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {/* badge แสดง isChoice จาก question */}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      item.isChoice
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {item.isChoice ? 'Choice' : 'Text'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      disabled={deleting.includes(item.id)}
+                      onClick={() => onDelete(item.id)}
+                      className="p-1 rounded hover:bg-red-50 hover:text-red-500 text-muted-foreground transition disabled:opacity-40"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="flex items-center gap-3 pt-1">
+        <QuestionPicker
+          onAdd={onAdd}
+          existingQuestionIds={items.map(c => c.questionId)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {items.length} question{items.length !== 1 ? 's' : ''}
+        </p>
+      </div>
+    </div>
+  )
 
   // ─── Step content ──────────────────────────────────────────────────────────
 
   const renderStepContent = () => {
     if (isLoading)
-      return <div className="flex items-center justify-center h-64"><p className="text-muted-foreground">{t('loading')}</p></div>
+      return (
+        <div className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">{t('loading')}</p>
+        </div>
+      )
 
     switch (currentStep) {
       case 'general':
@@ -735,97 +869,92 @@ function MachineEdit() {
               <ReadOnlyField label={t('department')}    value={formData.department} />
               <ServerSingleSelect
                 key={`resp-${formData.responsible || 'e'}`}
-                id="responsible" title={t('responsible')} label={t('responsible')}
-                placeholder={t('select_responsible')} value={formData.responsible}
-                initialLabel={formData.responsibleName} onChange={handleResponsibleChange}
-                fetchOptions={fetchResponsible} error={errors.responsible} required />
+                id="responsible"
+                title={t('responsible')}
+                label={t('responsible')}
+                placeholder={t('select_responsible')}
+                value={formData.responsible}
+                initialLabel={formData.responsibleName}
+                onChange={handleResponsibleChange}
+                fetchOptions={fetchResponsible}
+                error={errors.responsible}
+                required
+              />
               <ReadOnlyField label={t('supervisor')} value={formData.supervisorName} />
               <ReadOnlyField label={t('manager')}    value={formData.managerName} />
             </div>
 
             <SingleSelectField
               key={`status-${formData.machineStatus || 'empty'}`}
-              id="machineStatus" label={t('machine_status')}
+              id="machineStatus"
+              label={t('machine_status')}
               value={formData.machineStatus ? [formData.machineStatus] : []}
               onChange={v => setField('machineStatus', v[0] || '')}
-              options={machineStatusOptions} error={errors.machineStatus} required />
+              options={machineStatusOptions}
+              error={errors.machineStatus}
+              required
+            />
 
             {isNonActiveStatus(formData.machineStatus) && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">{t('reason_cancel') || 'เหตุผล'}</label>
-                <input type="text" value={formData.reasonCancel}
+                <input
+                  type="text"
+                  value={formData.reasonCancel}
                   onChange={e => setField('reasonCancel', e.target.value)}
                   placeholder={t('reason_cancel_placeholder') || 'ระบุเหตุผล...'}
-                  className="w-full border border-border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
             )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">{t('note')}</label>
-              <textarea value={formData.note} onChange={e => setField('note', e.target.value)}
-                rows={3} placeholder={t('note')}
-                className="w-full border border-border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+              <textarea
+                value={formData.note}
+                onChange={e => setField('note', e.target.value)}
+                rows={3}
+                placeholder={t('note')}
+                className="w-full border border-border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
             </div>
 
-            <FileUploadField id="machine-images" label={t('images')} maxFiles={10}
+            <FileUploadField
+              id="machine-images"
+              label={t('images')}
+              maxFiles={10}
               value={[]}
               uploadedFiles={toUploadedFiles(imageFiles)}
               onChange={handleImagesChange}
               onDownloadFile={handleDownloadFile}
               onDeleteUploadedFile={handleDeleteImage}
-              onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
+              onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+            />
 
-            <FileUploadField id="machine-instructions" label={t('work_instructions')} maxFiles={10}
+            <FileUploadField
+              id="machine-instructions"
+              label={t('work_instructions')}
+              maxFiles={10}
               value={[]}
               uploadedFiles={toUploadedFiles(instrFiles)}
               onChange={handleInstructionsChange}
               onDownloadFile={handleDownloadFile}
               onDeleteUploadedFile={handleDeleteInstruction}
-              onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
+              onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+            />
           </div>
         )
 
       case 'checklist':
         return (
-          <div className="px-2 pt-2 space-y-4">
-            {checklistLoading ? (
-              <div className="text-sm text-muted-foreground py-8 text-center">{t('loading')}</div>
-            ) : checklists.length === 0 ? (
-              <div className="text-sm text-muted-foreground py-8 text-center border rounded-lg border-dashed">{t('no_result')}</div>
-            ) : (
-              <div className="rounded-md border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 border-b">
-                    <tr>
-                      <th className="text-left px-4 py-3 font-medium">Detail</th>
-                      <th className="text-left px-4 py-3 font-medium w-[25%]">Description</th>
-                      <th className="text-left px-4 py-3 font-medium w-[16%]">Reset Time</th>
-                      <th className="px-4 py-3 w-10" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {checklists.map(item => (
-                      <tr key={item.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 font-medium"><span className="line-clamp-2">{item.detail}</span></td>
-                        <td className="px-4 py-3 text-muted-foreground"><span className="line-clamp-2">{item.description || '-'}</span></td>
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{item.resetTime || '-'}</td>
-                        <td className="px-4 py-3">
-                          <button type="button" disabled={deletingIds.includes(item.id)}
-                            onClick={() => handleDeleteChecklist(item.id)}
-                            className="p-1 rounded hover:bg-red-50 hover:text-red-500 text-muted-foreground transition disabled:opacity-40">
-                            <X className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div className="px-2 pt-2">
+            {renderChecklistTable(
+              checklists,
+              checklistLoading,
+              deletingIds,
+              handleDeleteChecklist,
+              handleAddQuestion,
             )}
-            <div className="flex items-center gap-3 pt-1">
-              <QuestionPicker onAdd={handleAddQuestion} existingQuestionIds={checklists.map(c => c.questionId)} />
-              <p className="text-xs text-muted-foreground">{checklists.length} question{checklists.length !== 1 ? 's' : ''}</p>
-            </div>
           </div>
         )
 
@@ -840,44 +969,13 @@ function MachineEdit() {
               <ReadOnlyField label={t('round_4')} value={formData.maintenance4 ? new Date(formData.maintenance4).toLocaleDateString('th-TH') : '-'} />
             </div>
             <hr className="border-t pt-2" />
-            {maintChecklistLoading ? (
-              <div className="text-sm text-muted-foreground py-8 text-center">{t('loading')}</div>
-            ) : maintChecklists.length === 0 ? (
-              <div className="text-sm text-muted-foreground py-8 text-center border rounded-lg border-dashed">{t('no_result')}</div>
-            ) : (
-              <div className="rounded-md border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 border-b">
-                    <tr>
-                      <th className="text-left px-4 py-3 font-medium">Detail</th>
-                      <th className="text-left px-4 py-3 font-medium w-[25%]">Description</th>
-                      <th className="text-left px-4 py-3 font-medium w-[16%]">Reset Time</th>
-                      <th className="px-4 py-3 w-10" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {maintChecklists.map(item => (
-                      <tr key={item.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 font-medium"><span className="line-clamp-2">{item.detail}</span></td>
-                        <td className="px-4 py-3 text-muted-foreground"><span className="line-clamp-2">{item.description || '-'}</span></td>
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{item.resetTime || '-'}</td>
-                        <td className="px-4 py-3">
-                          <button type="button" disabled={maintDeletingIds.includes(item.id)}
-                            onClick={() => handleDeleteMaintChecklist(item.id)}
-                            className="p-1 rounded hover:bg-red-50 hover:text-red-500 text-muted-foreground transition disabled:opacity-40">
-                            <X className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            {renderChecklistTable(
+              maintChecklists,
+              maintChecklistLoading,
+              maintDeletingIds,
+              handleDeleteMaintChecklist,
+              handleAddMaintQuestion,
             )}
-            <div className="flex items-center gap-3 pt-1">
-              <QuestionPicker onAdd={handleAddMaintQuestion} existingQuestionIds={maintChecklists.map(c => c.questionId)} />
-              <p className="text-xs text-muted-foreground">{maintChecklists.length} question{maintChecklists.length !== 1 ? 's' : ''}</p>
-            </div>
           </div>
         )
 
@@ -907,10 +1005,16 @@ function MachineEdit() {
       backLink="/checklist/machine"
       title={t('edit_machine')}
       subtitle={`${t('edit_machine')}: ${formData.name || formData.machineCode}`}
-      onSubmit={handleSubmit} steps={formSteps} currentStep={currentStep}
-      onStepChange={setCurrentStep} getStepStatus={getStepStatus}
-      isSubmitting={isSubmitting} isFormValid={isFormValid()}
-      submitText={t('update')} cancelLink="/checklist/machine">
+      onSubmit={handleSubmit}
+      steps={formSteps}
+      currentStep={currentStep}
+      onStepChange={setCurrentStep}
+      getStepStatus={getStepStatus}
+      isSubmitting={isSubmitting}
+      isFormValid={isFormValid()}
+      submitText={t('update')}
+      cancelLink="/checklist/machine"
+    >
       {renderStepContent()}
     </FormLayout>
   )
