@@ -1,5 +1,7 @@
+import { DatePickerField } from '@/components/form/DatePickerField'
 import { FileUploadField } from '@/components/form/FileUploadField'
 import { SingleSelectField } from '@/components/form/SingleSelectField'
+import { TextField } from '@/components/form/TextField'
 import { FormLayout } from '@/components/layout/form-layout'
 import type { FormStep } from '@/components/layout/form-sidebar'
 import { ServerSingleSelect } from '@/components/select/server-single-select'
@@ -37,7 +39,7 @@ interface ChecklistQuestion {
   detail:      string
   description: string
   resetTime:   string
-  isChoice:    boolean  // มาจาก question แล้ว ไม่ต้องระบุตอนเพิ่ม
+  isChoice:    boolean
   checkStatus: boolean
 }
 
@@ -45,7 +47,7 @@ interface QuestionOption {
   id:          number
   detail:      string
   description: string
-  isChoice:    boolean  // เพิ่ม — แสดง badge ใน picker
+  isChoice:    boolean
 }
 
 type MachineEditSearch = { id: number }
@@ -53,6 +55,54 @@ type MachineEditSearch = { id: number }
 const ACTIVE_STATUSES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER MAINTENANCE'] as const
 const isNonActiveStatus = (status: string): boolean =>
   !!status && !(ACTIVE_STATUSES as readonly string[]).includes(status)
+
+// ─── Date helpers ──────────────────────────────────────────────────────────────
+/**
+ * แปลงค่าวันที่ (string, number[], Date, หรืออื่นๆ) เป็น "YYYY-MM-DD"
+ * รองรับ:
+ *   - "2024-03-15"                  → "2024-03-15"
+ *   - "2024-03-15T00:00:00.000Z"    → "2024-03-15"
+ *   - [2024, 3, 15]  (Java LocalDate array) → "2024-03-15"
+ *   - Date object                   → "2024-03-15"
+ */
+function toDateString(val: unknown): string {
+  if (!val) return ''
+
+  // Java LocalDate ถูก serialize เป็น array [year, month, day]
+  if (Array.isArray(val)) {
+    const [y, m, d] = val as number[]
+    if (!y || !m || !d) return ''
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  }
+
+  // Date object — ใช้ local date parts แทน toISOString() ซึ่งเป็น UTC
+  if (val instanceof Date) {
+    const y = val.getFullYear()
+    const m = String(val.getMonth() + 1).padStart(2, '0')
+    const d = String(val.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  // string
+  const str = String(val)
+  if (!str) return ''
+  if (str.includes('T')) return str.split('T')[0]
+  return str
+}
+
+/**
+ * แปลงค่าวันที่ → "YYYY-MM-DD" สำหรับส่งไป backend
+ *
+ * ส่งเป็น date-only string แทน ISO timestamp เพื่อไม่ให้ Jackson
+ * parse แบบ UTC แล้ว shift วันที่
+ * (เช่น "2026-08-05T17:00:00Z" → backend เห็นเป็น 2026-08-04)
+ *
+ * Spring Boot + Jackson จะ parse "2026-08-05" เป็น LocalDate ได้ตรงๆ
+ * โดยไม่มี timezone conversion
+ */
+function toISOPreservingDate(val: unknown): string | null {
+  return toDateString(val) || null
+}
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -144,7 +194,7 @@ function QuestionPicker({ onAdd, existingQuestionIds }: {
           id:          q.id,
           detail:      q.detail,
           description: q.description ?? '',
-          isChoice:    q.isChoice ?? false,   // รับมาจาก question โดยตรง
+          isChoice:    q.isChoice ?? false,
         }))
       )
     } catch { toast.error('Failed to fetch questions') }
@@ -201,7 +251,6 @@ function QuestionPicker({ onAdd, existingQuestionIds }: {
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
-                      {/* badge แสดงประเภทคำถามจาก question entity */}
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                         q.isChoice
                           ? 'bg-blue-50 text-blue-600'
@@ -243,6 +292,10 @@ function MachineEdit() {
     ] : []),
   ]
 
+  const maintenanceOptions       = [{ name: '6 MONTH' }, { name: '3 MONTH' }]
+  const resultOptions            = [{ name: 'PASS' }, { name: 'FAIL' }]
+  const calibrationStatusOptions = [{ name: 'ON TIME' }, { name: 'OVERDUE' }]
+
   // ── State ─────────────────────────────────────────────────────────────────
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentStep,  setCurrentStep]  = useState('general')
@@ -260,11 +313,9 @@ function MachineEdit() {
   const [maintChecklistLoading, setMaintChecklistLoading] = useState(false)
   const [maintDeletingIds,      setMaintDeletingIds]      = useState<number[]>([])
 
-  /**
-   * SOFT-DELETE: เก็บไฟล์ทั้งหมดใน state รวมกัน
-   * ไฟล์ที่กด "ลบ" จะถูก set _markedForDelete=true แทนการลบทันที
-   * ตอน Save: ลบไฟล์ที่ mark แล้วส่ง active files ไปใน DTO
-   */
+  // calibration record id (สำหรับ PUT แทน POST ถ้ามีอยู่แล้ว)
+  const [calibrationId, setCalibrationId] = useState<number | null>(null)
+
   const [imageFiles, setImageFiles]  = useState<FileEntry[]>([])
   const [instrFiles, setInstrFiles]  = useState<FileEntry[]>([])
   const [isUploadingImages, setIsUploadingImages] = useState(false)
@@ -284,7 +335,7 @@ function MachineEdit() {
     machineGroup: '', machineGroupId: '', machineType: '', machineTypeId: '',
     department: '', maintenancePeriod: '',
     maintenance1: '', maintenance2: '', maintenance3: '', maintenance4: '',
-    externalCalibration: '', calibrationDueDate: '', certificateDate: '',
+    calibrationDueDate: '', certificateDate: '',
     results: '', criteria: '', measuringRange: '', accuracy: '', calibrationRange: '',
     responsible: '', responsibleName: '',
     supervisor:  '', supervisorName:  '',
@@ -294,9 +345,7 @@ function MachineEdit() {
   })
 
   // ── Load machine data ─────────────────────────────────────────────────────
-  useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [])
+  useEffect(() => { window.scrollTo(0, 0) }, [])
 
   useEffect(() => {
     if (!machineData) return
@@ -310,11 +359,17 @@ function MachineEdit() {
       if (Array.isArray(maintList)) {
         ;[...maintList]
           .sort((a: any, b: any) => (a.round ?? 0) - (b.round ?? 0))
-          .forEach((m: any, i: number) => { if (m.dueDate) maintenanceData[`maintenance${i + 1}`] = m.dueDate })
+          .forEach((m: any, i: number) => {
+            // FIX: ใช้ toDateString เพื่อให้ได้ YYYY-MM-DD ตรงๆ ไม่ shift timezone
+            if (m.dueDate) maintenanceData[`maintenance${i + 1}`] = toDateString(m.dueDate)
+          })
       }
 
       const calList = machineData.calibrationRecords ?? machineData.calibration ?? []
       const cal = Array.isArray(calList) ? (calList[0] ?? {}) : (calList ?? {})
+
+      // เก็บ calibration record id ไว้ใช้ตอน update
+      if (cal?.id) setCalibrationId(cal.id)
 
       setFormData({
         name:              machineData.machineName           ?? '',
@@ -328,13 +383,13 @@ function MachineEdit() {
         machineTypeId:     machineData.machineTypeId         ?? '',
         department:        machineData.departmentName ?? machineData.department ?? '',
         maintenancePeriod: machineData.maintenancePeriod     ?? '',
-        maintenance1:      maintenanceData.maintenance1      ?? '',
-        maintenance2:      maintenanceData.maintenance2      ?? '',
-        maintenance3:      maintenanceData.maintenance3      ?? '',
-        maintenance4:      maintenanceData.maintenance4      ?? '',
-        externalCalibration: cal.externalCalibrationDate     ?? '',
-        calibrationDueDate:  cal.calibrationDueDate ?? cal.dueDate ?? '',
-        certificateDate:     cal.certificateDate             ?? '',
+        // FIX: ใช้ toDateString แทน raw value
+        maintenance1:      toDateString(maintenanceData.maintenance1),
+        maintenance2:      toDateString(maintenanceData.maintenance2),
+        maintenance3:      toDateString(maintenanceData.maintenance3),
+        maintenance4:      toDateString(maintenanceData.maintenance4),
+        calibrationDueDate:  toDateString(cal.calibrationDueDate ?? cal.dueDate),
+        certificateDate:     toDateString(cal.certificateDate),
         results:             cal.results                     ?? '',
         criteria:            cal.criteria                    ?? '',
         measuringRange:      cal.measuringRange              ?? '',
@@ -350,7 +405,7 @@ function MachineEdit() {
         resetPeriod:      machineData.resetPeriod            ?? '',
         note:             machineData.note                   ?? '',
         calibrationStatus: cal.calibrationStatus             ?? '',
-        cancelDate:       machineData.cancelDate             ?? '',
+        cancelDate:       toDateString(machineData.cancelDate),
         reasonCancel:     machineData.reasonCancel           ?? '',
       })
     } catch (e) {
@@ -399,7 +454,7 @@ function MachineEdit() {
           detail:      item.question?.detail      ?? '',
           description: item.question?.description ?? '',
           resetTime:   item.resetTime             ?? '',
-          isChoice:    item.question?.isChoice    ?? item.isChoice ?? false,  // มาจาก question
+          isChoice:    item.question?.isChoice    ?? item.isChoice ?? false,
           checkStatus: item.checkStatus           ?? false,
         }))
       )
@@ -412,7 +467,6 @@ function MachineEdit() {
       await api.getInstance().post('/api/machine-checklist', {
         machineCode: machineData.machineCode,
         questionId:  q.id,
-        // ลบ isChoice ออก — backend ดึงจาก question entity แทน
         checkStatus: false,
         resetTime:   '0 0 0 * * 1',
       })
@@ -452,7 +506,7 @@ function MachineEdit() {
           detail:      item.question?.detail      ?? '',
           description: item.question?.description ?? '',
           resetTime:   item.resetTime             ?? '',
-          isChoice:    item.question?.isChoice    ?? item.isChoice ?? false,  // มาจาก question
+          isChoice:    item.question?.isChoice    ?? item.isChoice ?? false,
           checkStatus: item.checkStatus           ?? false,
         }))
       )
@@ -465,7 +519,6 @@ function MachineEdit() {
       await api.getInstance().post('/api/maintenance-checklist', {
         machineCode: formData.machineCode,
         questionId:  q.id,
-        // ลบ isChoice ออก — backend ดึงจาก question entity แทน
         checkStatus: false,
         resetTime:   '0 0 0 * * 1',
       })
@@ -549,9 +602,6 @@ function MachineEdit() {
     }, 100)
   }
 
-  /**
-   * SOFT-DELETE: mark ไฟล์ว่าจะลบ แต่ยังไม่ลบจริง
-   */
   const markForDelete = (
     fileId:   string,
     setFiles: React.Dispatch<React.SetStateAction<FileEntry[]>>,
@@ -617,6 +667,40 @@ function MachineEdit() {
     const nonActive  = isNonActiveStatus(formData.machineStatus)
     const cancelDate = nonActive ? new Date().toISOString() : null
 
+    // ─── Maintenance list ──────────────────────────────────────────────────
+    const rounds = formData.maintenancePeriod === '3 MONTH' ? 4 : formData.maintenancePeriod === '6 MONTH' ? 2 : 0
+    const maintenanceList: any[] = []
+    for (let i = 1; i <= rounds; i++) {
+      const dateValue = (formData as any)[`maintenance${i}`] as string
+      if (!dateValue) continue
+      // FIX: ใช้ toISOPreservingDate แทน new Date(str).toISOString()
+      const iso = toISOPreservingDate(dateValue)
+      if (!iso) continue
+      const d = new Date(iso)
+      maintenanceList.push({
+        machineName: formData.name,
+        years:       d.getFullYear().toString(),
+        round:       i,
+        dueDate:     iso,
+        status:      'On Time',
+        planDate:    null, resultDate: null, maintenanceBy: null, note: null, attachment: null,
+      })
+    }
+
+    // ─── Calibration ──────────────────────────────────────────────────────
+    const calibrationDTO = formData.calibrationDueDate ? {
+      ...(calibrationId ? { id: calibrationId } : {}),
+      machineName:       formData.name,
+      dueDate:           toISOPreservingDate(formData.calibrationDueDate),
+      certificateDate:   toISOPreservingDate(formData.certificateDate),
+      results:           formData.results           || null,
+      criteria:          formData.criteria          || null,
+      measuringRange:    formData.measuringRange    || null,
+      accuracy:          formData.accuracy          || null,
+      calibrationRange:  formData.calibrationRange  || null,
+      calibrationStatus: formData.calibrationStatus || null,
+    } : null
+
     return {
       id,
       machineName:           formData.name,
@@ -644,6 +728,9 @@ function MachineEdit() {
       note:                  formData.note              || null,
       image:           toFileJson(resolvedImages),
       workInstruction: toFileJson(resolvedInstrs),
+      // ส่ง maintenance และ calibration ที่แก้ไขแล้ว
+      maintenanceList:  maintenanceList.length ? maintenanceList : null,
+      calibration:      calibrationDTO,
     }
   }
 
@@ -807,7 +894,6 @@ function MachineEdit() {
                     {item.resetTime || '-'}
                   </td>
                   <td className="px-4 py-3">
-                    {/* badge แสดง isChoice จาก question */}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                       item.isChoice
                         ? 'bg-blue-50 text-blue-600'
@@ -958,17 +1044,56 @@ function MachineEdit() {
           </div>
         )
 
+      // ─── MAINTENANCE — now fully editable ─────────────────────────────────
       case 'maintenance':
         return (
           <div className="px-2 pt-2 space-y-4">
-            <ReadOnlyField label={t('maintenance_period')} value={formData.maintenancePeriod} />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-2">
-              <ReadOnlyField label={t('round_1')} value={formData.maintenance1 ? new Date(formData.maintenance1).toLocaleDateString('th-TH') : '-'} />
-              <ReadOnlyField label={t('round_2')} value={formData.maintenance2 ? new Date(formData.maintenance2).toLocaleDateString('th-TH') : '-'} />
-              <ReadOnlyField label={t('round_3')} value={formData.maintenance3 ? new Date(formData.maintenance3).toLocaleDateString('th-TH') : '-'} />
-              <ReadOnlyField label={t('round_4')} value={formData.maintenance4 ? new Date(formData.maintenance4).toLocaleDateString('th-TH') : '-'} />
+            {/* maintenance period dropdown */}
+            <SingleSelectField
+              id="maintenancePeriod"
+              label={t('maintenance_period')}
+              value={[formData.maintenancePeriod]}
+              onChange={v => setField('maintenancePeriod', v[0] || '')}
+              options={maintenanceOptions.map(m => ({ value: m.name, label: m.name }))}
+            />
+
+            {/* Round 1 & 2 always shown */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <DatePickerField
+                id="maintenance1"
+                label={t('round_1')}
+                value={formData.maintenance1}
+                onChange={d => setField('maintenance1', d)}
+              />
+              <DatePickerField
+                id="maintenance2"
+                label={t('round_2')}
+                value={formData.maintenance2}
+                onChange={d => setField('maintenance2', d)}
+              />
             </div>
+
+            {/* Round 3 & 4 only for 3-month period */}
+            {formData.maintenancePeriod === '3 MONTH' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <DatePickerField
+                  id="maintenance3"
+                  label={t('round_3')}
+                  value={formData.maintenance3}
+                  onChange={d => setField('maintenance3', d)}
+                />
+                <DatePickerField
+                  id="maintenance4"
+                  label={t('round_4')}
+                  value={formData.maintenance4}
+                  onChange={d => setField('maintenance4', d)}
+                />
+              </div>
+            )}
+
             <hr className="border-t pt-2" />
+
+            {/* Maintenance checklist */}
             {renderChecklistTable(
               maintChecklists,
               maintChecklistLoading,
@@ -979,19 +1104,61 @@ function MachineEdit() {
           </div>
         )
 
+      // ─── CALIBRATION — now fully editable ────────────────────────────────
       case 'calibration':
         return (
           <div className="px-2 pt-2 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <ReadOnlyField label={t('external_calibration_date')} value={formData.externalCalibration ? new Date(formData.externalCalibration).toLocaleDateString('th-TH') : '-'} />
-              <ReadOnlyField label={t('calibration_due_date')}      value={formData.calibrationDueDate  ? new Date(formData.calibrationDueDate).toLocaleDateString('th-TH')  : '-'} />
-              <ReadOnlyField label={t('certificate_date')}          value={formData.certificateDate     ? new Date(formData.certificateDate).toLocaleDateString('th-TH')     : '-'} />
-              <ReadOnlyField label={t('results')}            value={formData.results} />
-              <ReadOnlyField label={t('criteria')}           value={formData.criteria} />
-              <ReadOnlyField label={t('measuring_range')}    value={formData.measuringRange} />
-              <ReadOnlyField label={t('calibration_range')}  value={formData.calibrationRange} />
-              <ReadOnlyField label={t('accuracy')}           value={formData.accuracy} />
-              <ReadOnlyField label={t('calibration_status')} value={formData.calibrationStatus} />
+              <DatePickerField
+                id="calibrationDueDate"
+                label={t('calibration_due_date')}
+                value={formData.calibrationDueDate}
+                onChange={d => setField('calibrationDueDate', d)}
+              />
+              <DatePickerField
+                id="certificateDate"
+                label={t('certificate_date')}
+                value={formData.certificateDate}
+                onChange={d => setField('certificateDate', d)}
+              />
+              <SingleSelectField
+                id="results"
+                label={t('results')}
+                value={[formData.results]}
+                onChange={v => setField('results', v[0] || '')}
+                options={resultOptions.map(r => ({ value: r.name, label: r.name }))}
+              />
+              <TextField
+                id="criteria"
+                label={t('criteria')}
+                value={formData.criteria}
+                onChange={v => setField('criteria', v)}
+              />
+              <TextField
+                id="measuringRange"
+                label={t('measuring_range')}
+                value={formData.measuringRange}
+                onChange={v => setField('measuringRange', v)}
+              />
+              <TextField
+                id="calibrationRange"
+                label={t('calibration_range')}
+                value={formData.calibrationRange}
+                onChange={v => setField('calibrationRange', v)}
+              />
+              <TextField
+                id="accuracy"
+                label={t('accuracy')}
+                value={formData.accuracy}
+                onChange={v => setField('accuracy', v)}
+              />
+              <SingleSelectField
+                id="calibrationStatus"
+                label={t('calibration_status')}
+                value={[formData.calibrationStatus]}
+                onChange={v => setField('calibrationStatus', v[0] || '')}
+                options={calibrationStatusOptions.map(cs => ({ value: cs.name, label: cs.name }))}
+              />
             </div>
           </div>
         )

@@ -413,7 +413,7 @@ function MaintenanceTable() {
   })
 
   return (
-    <Card className="p-0 overflow-hidden">
+    <Card className="p-0 overflow-hidden mb-6">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b px-5 py-4">
         <CardTitle className="font-bold">
           <Wrench className="w-5 h-5 text-red-600 inline mr-2" />
