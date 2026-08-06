@@ -11,7 +11,7 @@ import type { ListResponse, MemberListDTO } from '@/core/types/common'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { X, Plus, Search, Check } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Download, FileText, Plus, Search, X } from 'lucide-react'
 import { useAuth } from '@/core/contexts/auth-context'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -24,11 +24,6 @@ interface FileUploadResponse {
   uploadedBy?: string | null
 }
 
-/**
- * SOFT-DELETE: เพิ่ม _markedForDelete flag ใน state
- * - true  = ผู้ใช้กดลบ → ซ่อนใน UI, รอลบจริงตอน Save
- * - false/undefined = ปกติ
- */
 interface FileEntry extends FileUploadResponse {
   _markedForDelete?: boolean
 }
@@ -56,50 +51,32 @@ const ACTIVE_STATUSES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER MAINTENANCE'] 
 const isNonActiveStatus = (status: string): boolean =>
   !!status && !(ACTIVE_STATUSES as readonly string[]).includes(status)
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+const API_BASE   = import.meta.env.VITE_API_URL ?? ''
+
 // ─── Date helpers ──────────────────────────────────────────────────────────────
-/**
- * แปลงค่าวันที่ (string, number[], Date, หรืออื่นๆ) เป็น "YYYY-MM-DD"
- * รองรับ:
- *   - "2024-03-15"                  → "2024-03-15"
- *   - "2024-03-15T00:00:00.000Z"    → "2024-03-15"
- *   - [2024, 3, 15]  (Java LocalDate array) → "2024-03-15"
- *   - Date object                   → "2024-03-15"
- */
+
 function toDateString(val: unknown): string {
   if (!val) return ''
-
-  // Java LocalDate ถูก serialize เป็น array [year, month, day]
   if (Array.isArray(val)) {
     const [y, m, d] = val as number[]
     if (!y || !m || !d) return ''
     return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
   }
-
-  // Date object — ใช้ local date parts แทน toISOString() ซึ่งเป็น UTC
   if (val instanceof Date) {
     const y = val.getFullYear()
     const m = String(val.getMonth() + 1).padStart(2, '0')
     const d = String(val.getDate()).padStart(2, '0')
     return `${y}-${m}-${d}`
   }
-
-  // string
   const str = String(val)
   if (!str) return ''
   if (str.includes('T')) return str.split('T')[0]
   return str
 }
 
-/**
- * แปลงค่าวันที่ → "YYYY-MM-DD" สำหรับส่งไป backend
- *
- * ส่งเป็น date-only string แทน ISO timestamp เพื่อไม่ให้ Jackson
- * parse แบบ UTC แล้ว shift วันที่
- * (เช่น "2026-08-05T17:00:00Z" → backend เห็นเป็น 2026-08-04)
- *
- * Spring Boot + Jackson จะ parse "2026-08-05" เป็น LocalDate ได้ตรงๆ
- * โดยไม่มี timezone conversion
- */
 function toISOPreservingDate(val: unknown): string | null {
   return toDateString(val) || null
 }
@@ -147,8 +124,304 @@ function toDisplayUrl(f: FileEntry): string {
   return f.fileUrl || `/api/files/download/${encodeURIComponent(f.fileName)}`
 }
 
-/** ไฟล์ที่ยังไม่ถูก mark ลบ — ใช้แสดงใน UI และส่งไป backend */
 const activeFiles = (files: FileEntry[]) => files.filter(f => !f._markedForDelete)
+
+const isImageFile = (fileName: string) =>
+  IMAGE_EXTS.has(fileName.split('.').pop()?.toLowerCase() ?? '')
+
+const toFileUrl = (fileUrl: string) => {
+  const filename = fileUrl.split('/').pop() ?? fileUrl
+  return `${API_BASE}/api/files/download/${encodeURIComponent(filename)}`
+}
+
+// ─── AuthImage ────────────────────────────────────────────────────────────────
+
+function AuthImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [failed,  setFailed]  = useState(false)
+
+  useEffect(() => {
+    let url = ''
+    api.getInstance().get(src, { responseType: 'blob' })
+      .then((res: any) => { url = URL.createObjectURL(res.data); setBlobUrl(url) })
+      .catch(() => setFailed(true))
+    return () => { if (url) URL.revokeObjectURL(url) }
+  }, [src])
+
+  if (failed)   return null
+  if (!blobUrl) return <div className="w-full h-full animate-pulse bg-muted rounded" />
+  return <img src={blobUrl} alt={alt} className={className} />
+}
+
+// ─── ImageGalleryDialog ───────────────────────────────────────────────────────
+
+function ImageGalleryDialog({
+  files,
+  initialIndex,
+  open,
+  onClose,
+}: {
+  files: FileEntry[]
+  initialIndex: number
+  open: boolean
+  onClose: () => void
+}) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex)
+  const [blobUrls, setBlobUrls] = useState<Record<number, string>>({})
+  const [loading, setLoading] = useState(false)
+  const blobUrlsRef = useRef<Record<number, string>>({})
+
+  const imageFiles = files.filter(f => isImageFile(f.fileName))
+
+  useEffect(() => {
+    if (open) setCurrentIndex(initialIndex)
+  }, [open, initialIndex])
+
+  useEffect(() => {
+    if (!open || imageFiles.length === 0) return
+    const idx = currentIndex
+    if (blobUrlsRef.current[idx]) return
+    setLoading(true)
+    const src = toFileUrl(imageFiles[idx]?.fileUrl ?? '')
+    api.getInstance().get(src, { responseType: 'blob' })
+      .then((res: any) => {
+        const url = URL.createObjectURL(res.data)
+        blobUrlsRef.current[idx] = url
+        setBlobUrls(prev => ({ ...prev, [idx]: url }))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [open, currentIndex, imageFiles.length])
+
+  useEffect(() => {
+    if (!open) return
+    const preload = (idx: number) => {
+      if (idx < 0 || idx >= imageFiles.length || blobUrlsRef.current[idx]) return
+      const src = toFileUrl(imageFiles[idx]?.fileUrl ?? '')
+      api.getInstance().get(src, { responseType: 'blob' })
+        .then((res: any) => {
+          const url = URL.createObjectURL(res.data)
+          blobUrlsRef.current[idx] = url
+          setBlobUrls(prev => ({ ...prev, [idx]: url }))
+        })
+        .catch(() => {})
+    }
+    preload(currentIndex - 1)
+    preload(currentIndex + 1)
+  }, [open, currentIndex, imageFiles.length])
+
+  useEffect(() => {
+    return () => { Object.values(blobUrlsRef.current).forEach(url => URL.revokeObjectURL(url)) }
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft')  setCurrentIndex(i => Math.max(0, i - 1))
+      if (e.key === 'ArrowRight') setCurrentIndex(i => Math.min(imageFiles.length - 1, i + 1))
+    }
+    window.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
+  }, [open, imageFiles.length, onClose])
+
+  if (!open || imageFiles.length === 0) return null
+
+  const currentFile    = imageFiles[currentIndex]
+  const currentBlobUrl = blobUrls[currentIndex]
+  const hasPrev        = currentIndex > 0
+  const hasNext        = currentIndex < imageFiles.length - 1
+
+  const goPrev = (e: React.MouseEvent) => { e.stopPropagation(); setCurrentIndex(i => Math.max(0, i - 1)) }
+  const goNext = (e: React.MouseEvent) => { e.stopPropagation(); setCurrentIndex(i => Math.min(imageFiles.length - 1, i + 1)) }
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm" onClick={onClose}>
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-3 bg-black/60 shrink-0" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 min-w-0">
+          <p className="text-white text-sm truncate max-w-[50vw]">{currentFile?.fileName}</p>
+          {imageFiles.length > 1 && (
+            <span className="text-white/50 text-sm shrink-0">{currentIndex + 1} / {imageFiles.length}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {currentBlobUrl && (
+            <a href={currentBlobUrl} download={currentFile?.fileName}
+              className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors"
+              onClick={e => e.stopPropagation()}>
+              <Download className="h-4 w-4" /> ดาวน์โหลด
+            </a>
+          )}
+          <button onClick={onClose}
+            className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
+            <X className="h-4 w-4" /> ปิด
+          </button>
+        </div>
+      </div>
+
+      {/* Main image */}
+      <div className="flex flex-1 items-center justify-center relative overflow-hidden">
+        {hasPrev && (
+          <button onClick={goPrev}
+            className="absolute left-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg"
+            aria-label="ก่อนหน้า">
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+        )}
+        <div className="relative flex items-center justify-center w-full h-full px-16" onClick={e => e.stopPropagation()}>
+          {loading || !currentBlobUrl ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-10 w-10 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <p className="text-white/60 text-sm">กำลังโหลด...</p>
+            </div>
+          ) : (
+            <img key={currentIndex} src={currentBlobUrl} alt={currentFile?.fileName}
+              className="max-h-[80vh] max-w-full object-contain rounded-lg shadow-2xl select-none"
+              draggable={false} />
+          )}
+        </div>
+        {hasNext && (
+          <button onClick={goNext}
+            className="absolute right-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg"
+            aria-label="ถัดไป">
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        )}
+      </div>
+
+      {/* Thumbnail strip */}
+      {imageFiles.length > 1 && (
+        <div className="flex justify-center gap-2 px-4 py-3 bg-black/60 shrink-0 overflow-x-auto" onClick={e => e.stopPropagation()}>
+          {imageFiles.map((f, i) => (
+            <button key={i} onClick={() => setCurrentIndex(i)}
+              className={`shrink-0 w-14 h-14 rounded-md overflow-hidden border-2 transition-all ${
+                i === currentIndex ? 'border-white scale-105' : 'border-white/20 opacity-50 hover:opacity-90 hover:border-white/50'
+              }`}>
+              {blobUrls[i]
+                ? <img src={blobUrls[i]} alt={f.fileName} className="w-full h-full object-cover" />
+                : <div className="w-full h-full bg-white/10 animate-pulse" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── FilePreviewItem ──────────────────────────────────────────────────────────
+
+function FilePreviewItem({
+  file,
+  onOpenGallery,
+  galleryIndex,
+  onDelete,
+}: {
+  file: FileEntry
+  onOpenGallery?: (index: number) => void
+  galleryIndex?: number
+  onDelete: (fileName: string) => void
+}) {
+  const isImage = isImageFile(file.fileName)
+  const src     = toFileUrl(file.fileUrl)
+  const [loading, setLoading] = useState(false)
+
+  const handleClick = async () => {
+    if (isImage && onOpenGallery && galleryIndex !== undefined) {
+      onOpenGallery(galleryIndex)
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await api.getInstance().get(src, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch { toast.error('โหลดไฟล์ไม่สำเร็จ') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div className="group relative">
+      <div onClick={handleClick} title={file.fileName}
+        className="relative flex flex-col items-center justify-center w-20 h-20 rounded-lg border border-border bg-muted hover:border-primary transition-all overflow-hidden shrink-0 cursor-pointer">
+        {isImage ? (
+          <>
+            <AuthImage src={src} alt={file.fileName} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+              {loading
+                ? <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <p className="text-[10px] text-white text-center px-1">🔍 ดูเต็มจอ</p>}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-1 p-1 w-full h-full">
+            <FileText className="h-7 w-7 text-muted-foreground group-hover:text-primary transition-colors" />
+            <span className="text-[10px] text-muted-foreground text-center leading-tight line-clamp-2 break-all px-1">
+              {file.fileName}
+            </span>
+          </div>
+        )}
+      </div>
+      {/* Delete button */}
+      <button
+        onClick={e => { e.stopPropagation(); onDelete(file.fileName) }}
+        className="absolute -top-1.5 -right-1.5 z-10 w-5 h-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:scale-110"
+        title="ลบไฟล์">
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
+// ─── FilePreviewGrid ──────────────────────────────────────────────────────────
+
+function FilePreviewGrid({
+  files,
+  onDelete,
+}: {
+  files: FileEntry[]
+  onDelete: (fileName: string) => void
+}) {
+  const [galleryOpen,  setGalleryOpen]  = useState(false)
+  const [galleryStart, setGalleryStart] = useState(0)
+
+  const visibleFiles = activeFiles(files)
+  if (visibleFiles.length === 0) return null
+
+  const imageFiles = visibleFiles.filter(f => isImageFile(f.fileName))
+
+  let imgCursor = 0
+  const mapped = visibleFiles.map(f => {
+    if (isImageFile(f.fileName)) return { file: f, galleryIndex: imgCursor++ }
+    return { file: f, galleryIndex: null }
+  })
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-3 mt-2">
+        {mapped.map(({ file, galleryIndex }, i) => (
+          <FilePreviewItem
+            key={file.fileName + i}
+            file={file}
+            galleryIndex={galleryIndex ?? undefined}
+            onOpenGallery={galleryIndex !== null ? (idx) => { setGalleryStart(idx); setGalleryOpen(true) } : undefined}
+            onDelete={onDelete}
+          />
+        ))}
+      </div>
+      {imageFiles.length > 0 && (
+        <ImageGalleryDialog
+          files={imageFiles}
+          initialIndex={galleryStart}
+          open={galleryOpen}
+          onClose={() => setGalleryOpen(false)}
+        />
+      )}
+    </>
+  )
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -252,9 +525,7 @@ function QuestionPicker({ onAdd, existingQuestionIds }: {
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                        q.isChoice
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'bg-gray-100 text-gray-500'
+                        q.isChoice ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'
                       }`}>
                         {q.isChoice ? 'Choice' : 'Text'}
                       </span>
@@ -280,6 +551,7 @@ function MachineEdit() {
   const { t }           = useTranslation('checklist')
   const { role }        = useAuth()
 
+  // ── i18n options — value = API string, label = translated ─────────────────
   const machineStatusOptions = [
     { value: 'OPERATIONAL',       label: t('status_operational')       },
     { value: 'NON-OPERATIONAL',   label: t('status_non_operational')   },
@@ -291,10 +563,18 @@ function MachineEdit() {
       { value: 'NOT FOUND', label: t('status_not_found') },
     ] : []),
   ]
-
-  const maintenanceOptions       = [{ name: '6 MONTH' }, { name: '3 MONTH' }]
-  const resultOptions            = [{ name: 'PASS' }, { name: 'FAIL' }]
-  const calibrationStatusOptions = [{ name: 'ON TIME' }, { name: 'OVERDUE' }]
+  const maintenanceOptions = [
+    { value: '6 MONTH', label: t('maintenance_6_month') },
+    { value: '3 MONTH', label: t('maintenance_3_month') },
+  ]
+  const resultOptions = [
+    { value: 'PASS', label: t('status_pass')     },
+    { value: 'FAIL', label: t('status_not_pass') },
+  ]
+  const calibrationStatusOptions = [
+    { value: 'ON TIME', label: t('status_on_time') },
+    { value: 'OVERDUE', label: t('status_overdue') },
+  ]
 
   // ── State ─────────────────────────────────────────────────────────────────
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -313,11 +593,10 @@ function MachineEdit() {
   const [maintChecklistLoading, setMaintChecklistLoading] = useState(false)
   const [maintDeletingIds,      setMaintDeletingIds]      = useState<number[]>([])
 
-  // calibration record id (สำหรับ PUT แทน POST ถ้ามีอยู่แล้ว)
   const [calibrationId, setCalibrationId] = useState<number | null>(null)
 
-  const [imageFiles, setImageFiles]  = useState<FileEntry[]>([])
-  const [instrFiles, setInstrFiles]  = useState<FileEntry[]>([])
+  const [imageFiles, setImageFiles] = useState<FileEntry[]>([])
+  const [instrFiles, setInstrFiles] = useState<FileEntry[]>([])
   const [isUploadingImages, setIsUploadingImages] = useState(false)
   const [isUploadingInstr,  setIsUploadingInstr]  = useState(false)
 
@@ -360,15 +639,12 @@ function MachineEdit() {
         ;[...maintList]
           .sort((a: any, b: any) => (a.round ?? 0) - (b.round ?? 0))
           .forEach((m: any, i: number) => {
-            // FIX: ใช้ toDateString เพื่อให้ได้ YYYY-MM-DD ตรงๆ ไม่ shift timezone
             if (m.dueDate) maintenanceData[`maintenance${i + 1}`] = toDateString(m.dueDate)
           })
       }
 
       const calList = machineData.calibrationRecords ?? machineData.calibration ?? []
       const cal = Array.isArray(calList) ? (calList[0] ?? {}) : (calList ?? {})
-
-      // เก็บ calibration record id ไว้ใช้ตอน update
       if (cal?.id) setCalibrationId(cal.id)
 
       setFormData({
@@ -383,7 +659,6 @@ function MachineEdit() {
         machineTypeId:     machineData.machineTypeId         ?? '',
         department:        machineData.departmentName ?? machineData.department ?? '',
         maintenancePeriod: machineData.maintenancePeriod     ?? '',
-        // FIX: ใช้ toDateString แทน raw value
         maintenance1:      toDateString(maintenanceData.maintenance1),
         maintenance2:      toDateString(maintenanceData.maintenance2),
         maintenance3:      toDateString(maintenanceData.maintenance3),
@@ -621,17 +896,6 @@ function MachineEdit() {
     window.open(`${import.meta.env.VITE_API_URL}${url}`, '_blank')
   }
 
-  // ─── FileUploadField value mapper ─────────────────────────────────────────
-
-  const toUploadedFiles = (files: FileEntry[]) =>
-    activeFiles(files).map(f => ({
-      id:   f.fileName,
-      name: f.fileName,
-      size: f.fileSize,
-      type: f.fileType,
-      url:  toDisplayUrl(f),
-    }))
-
   // ─── Form validation ───────────────────────────────────────────────────────
 
   const validateRequiredFields = () => {
@@ -667,13 +931,11 @@ function MachineEdit() {
     const nonActive  = isNonActiveStatus(formData.machineStatus)
     const cancelDate = nonActive ? new Date().toISOString() : null
 
-    // ─── Maintenance list ──────────────────────────────────────────────────
     const rounds = formData.maintenancePeriod === '3 MONTH' ? 4 : formData.maintenancePeriod === '6 MONTH' ? 2 : 0
     const maintenanceList: any[] = []
     for (let i = 1; i <= rounds; i++) {
       const dateValue = (formData as any)[`maintenance${i}`] as string
       if (!dateValue) continue
-      // FIX: ใช้ toISOPreservingDate แทน new Date(str).toISOString()
       const iso = toISOPreservingDate(dateValue)
       if (!iso) continue
       const d = new Date(iso)
@@ -687,7 +949,6 @@ function MachineEdit() {
       })
     }
 
-    // ─── Calibration ──────────────────────────────────────────────────────
     const calibrationDTO = formData.calibrationDueDate ? {
       ...(calibrationId ? { id: calibrationId } : {}),
       machineName:       formData.name,
@@ -728,7 +989,6 @@ function MachineEdit() {
       note:                  formData.note              || null,
       image:           toFileJson(resolvedImages),
       workInstruction: toFileJson(resolvedInstrs),
-      // ส่ง maintenance และ calibration ที่แก้ไขแล้ว
       maintenanceList:  maintenanceList.length ? maintenanceList : null,
       calibration:      calibrationDTO,
     }
@@ -856,11 +1116,11 @@ function MachineEdit() {
   // ─── Checklist table (shared) ──────────────────────────────────────────────
 
   const renderChecklistTable = (
-    items:      ChecklistQuestion[],
-    loading:    boolean,
-    deleting:   number[],
-    onDelete:   (id: number) => void,
-    onAdd:      (q: QuestionOption) => void,
+    items:    ChecklistQuestion[],
+    loading:  boolean,
+    deleting: number[],
+    onDelete: (id: number) => void,
+    onAdd:    (q: QuestionOption) => void,
   ) => (
     <div className="space-y-4">
       {loading ? (
@@ -895,9 +1155,7 @@ function MachineEdit() {
                   </td>
                   <td className="px-4 py-3">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                      item.isChoice
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'bg-gray-100 text-gray-500'
+                      item.isChoice ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'
                     }`}>
                       {item.isChoice ? 'Choice' : 'Text'}
                     </span>
@@ -919,10 +1177,7 @@ function MachineEdit() {
         </div>
       )}
       <div className="flex items-center gap-3 pt-1">
-        <QuestionPicker
-          onAdd={onAdd}
-          existingQuestionIds={items.map(c => c.questionId)}
-        />
+        <QuestionPicker onAdd={onAdd} existingQuestionIds={items.map(c => c.questionId)} />
         <p className="text-xs text-muted-foreground">
           {items.length} question{items.length !== 1 ? 's' : ''}
         </p>
@@ -983,12 +1238,12 @@ function MachineEdit() {
 
             {isNonActiveStatus(formData.machineStatus) && (
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">{t('reason_cancel') || 'เหตุผล'}</label>
+                <label className="text-sm font-medium">{t('reason_cancel')}</label>
                 <input
                   type="text"
                   value={formData.reasonCancel}
                   onChange={e => setField('reasonCancel', e.target.value)}
-                  placeholder={t('reason_cancel_placeholder') || 'ระบุเหตุผล...'}
+                  placeholder={t('reason_cancel_placeholder')}
                   className="w-full border border-border rounded-lg px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1005,29 +1260,37 @@ function MachineEdit() {
               />
             </div>
 
+            {/* ── Images upload + preview ── */}
             <FileUploadField
               id="machine-images"
               label={t('images')}
               maxFiles={10}
               value={[]}
-              uploadedFiles={toUploadedFiles(imageFiles)}
+              uploadedFiles={[]}
               onChange={handleImagesChange}
               onDownloadFile={handleDownloadFile}
               onDeleteUploadedFile={handleDeleteImage}
               onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
             />
+            {activeFiles(imageFiles).length > 0 && (
+              <FilePreviewGrid files={imageFiles} onDelete={handleDeleteImage} />
+            )}
 
+            {/* ── Work instructions upload + preview ── */}
             <FileUploadField
               id="machine-instructions"
               label={t('work_instructions')}
               maxFiles={10}
               value={[]}
-              uploadedFiles={toUploadedFiles(instrFiles)}
+              uploadedFiles={[]}
               onChange={handleInstructionsChange}
               onDownloadFile={handleDownloadFile}
               onDeleteUploadedFile={handleDeleteInstruction}
               onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
             />
+            {activeFiles(instrFiles).length > 0 && (
+              <FilePreviewGrid files={instrFiles} onDelete={handleDeleteInstruction} />
+            )}
           </div>
         )
 
@@ -1035,129 +1298,63 @@ function MachineEdit() {
         return (
           <div className="px-2 pt-2">
             {renderChecklistTable(
-              checklists,
-              checklistLoading,
-              deletingIds,
-              handleDeleteChecklist,
-              handleAddQuestion,
+              checklists, checklistLoading, deletingIds,
+              handleDeleteChecklist, handleAddQuestion,
             )}
           </div>
         )
 
-      // ─── MAINTENANCE — now fully editable ─────────────────────────────────
       case 'maintenance':
         return (
           <div className="px-2 pt-2 space-y-4">
-            {/* maintenance period dropdown */}
             <SingleSelectField
               id="maintenancePeriod"
               label={t('maintenance_period')}
               value={[formData.maintenancePeriod]}
               onChange={v => setField('maintenancePeriod', v[0] || '')}
-              options={maintenanceOptions.map(m => ({ value: m.name, label: m.name }))}
+              options={maintenanceOptions}
             />
-
-            {/* Round 1 & 2 always shown */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <DatePickerField
-                id="maintenance1"
-                label={t('round_1')}
-                value={formData.maintenance1}
-                onChange={d => setField('maintenance1', d)}
-              />
-              <DatePickerField
-                id="maintenance2"
-                label={t('round_2')}
-                value={formData.maintenance2}
-                onChange={d => setField('maintenance2', d)}
-              />
+              <DatePickerField id="maintenance1" label={t('round_1')} value={formData.maintenance1} onChange={d => setField('maintenance1', d)} />
+              <DatePickerField id="maintenance2" label={t('round_2')} value={formData.maintenance2} onChange={d => setField('maintenance2', d)} />
             </div>
-
-            {/* Round 3 & 4 only for 3-month period */}
             {formData.maintenancePeriod === '3 MONTH' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <DatePickerField
-                  id="maintenance3"
-                  label={t('round_3')}
-                  value={formData.maintenance3}
-                  onChange={d => setField('maintenance3', d)}
-                />
-                <DatePickerField
-                  id="maintenance4"
-                  label={t('round_4')}
-                  value={formData.maintenance4}
-                  onChange={d => setField('maintenance4', d)}
-                />
+                <DatePickerField id="maintenance3" label={t('round_3')} value={formData.maintenance3} onChange={d => setField('maintenance3', d)} />
+                <DatePickerField id="maintenance4" label={t('round_4')} value={formData.maintenance4} onChange={d => setField('maintenance4', d)} />
               </div>
             )}
-
             <hr className="border-t pt-2" />
-
-            {/* Maintenance checklist */}
             {renderChecklistTable(
-              maintChecklists,
-              maintChecklistLoading,
-              maintDeletingIds,
-              handleDeleteMaintChecklist,
-              handleAddMaintQuestion,
+              maintChecklists, maintChecklistLoading, maintDeletingIds,
+              handleDeleteMaintChecklist, handleAddMaintQuestion,
             )}
           </div>
         )
 
-      // ─── CALIBRATION — now fully editable ────────────────────────────────
       case 'calibration':
         return (
           <div className="px-2 pt-2 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <DatePickerField
-                id="calibrationDueDate"
-                label={t('calibration_due_date')}
-                value={formData.calibrationDueDate}
-                onChange={d => setField('calibrationDueDate', d)}
-              />
-              <DatePickerField
-                id="certificateDate"
-                label={t('certificate_date')}
-                value={formData.certificateDate}
-                onChange={d => setField('certificateDate', d)}
-              />
+              <DatePickerField id="calibrationDueDate" label={t('calibration_due_date')} value={formData.calibrationDueDate} onChange={d => setField('calibrationDueDate', d)} />
+              <DatePickerField id="certificateDate"    label={t('certificate_date')}     value={formData.certificateDate}    onChange={d => setField('certificateDate', d)} />
               <SingleSelectField
                 id="results"
                 label={t('results')}
                 value={[formData.results]}
                 onChange={v => setField('results', v[0] || '')}
-                options={resultOptions.map(r => ({ value: r.name, label: r.name }))}
+                options={resultOptions}
               />
-              <TextField
-                id="criteria"
-                label={t('criteria')}
-                value={formData.criteria}
-                onChange={v => setField('criteria', v)}
-              />
-              <TextField
-                id="measuringRange"
-                label={t('measuring_range')}
-                value={formData.measuringRange}
-                onChange={v => setField('measuringRange', v)}
-              />
-              <TextField
-                id="calibrationRange"
-                label={t('calibration_range')}
-                value={formData.calibrationRange}
-                onChange={v => setField('calibrationRange', v)}
-              />
-              <TextField
-                id="accuracy"
-                label={t('accuracy')}
-                value={formData.accuracy}
-                onChange={v => setField('accuracy', v)}
-              />
+              <TextField id="criteria"         label={t('criteria')}          value={formData.criteria}        onChange={v => setField('criteria', v)} />
+              <TextField id="measuringRange"   label={t('measuring_range')}   value={formData.measuringRange}  onChange={v => setField('measuringRange', v)} />
+              <TextField id="calibrationRange" label={t('calibration_range')} value={formData.calibrationRange} onChange={v => setField('calibrationRange', v)} />
+              <TextField id="accuracy"         label={t('accuracy')}          value={formData.accuracy}        onChange={v => setField('accuracy', v)} />
               <SingleSelectField
                 id="calibrationStatus"
                 label={t('calibration_status')}
                 value={[formData.calibrationStatus]}
                 onChange={v => setField('calibrationStatus', v[0] || '')}
-                options={calibrationStatusOptions.map(cs => ({ value: cs.name, label: cs.name }))}
+                options={calibrationStatusOptions}
               />
             </div>
           </div>

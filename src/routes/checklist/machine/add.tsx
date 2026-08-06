@@ -9,7 +9,7 @@ import { useTranslation } from '@/core/contexts/language-context'
 import { api } from '@/core/interceptor/api.interceptor'
 import type { ListResponse, MemberListDTO } from '@/core/types/common'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
-import { InfoIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, FileText, InfoIcon, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -30,19 +30,21 @@ interface FileUploadResponse {
   uploadedBy?: string | null
 }
 
-/**
- * SOFT-DELETE: _markedForDelete ใช้ mark ไฟล์ที่ผู้ใช้กดลบ
- * จะลบจริงพร้อมกัน DB update ตอน handleSubmit เท่านั้น
- */
 interface FileEntry extends FileUploadResponse {
   _markedForDelete?: boolean
-  _fromRegister?:    boolean  // true = โหลดมาจาก register (ไม่ต้องลบ disk เพราะเป็นของ register)
+  _fromRegister?:    boolean
 }
 
 interface ApiResponse<T = unknown> {
   code?: string; success?: boolean; message?: string; data?: T
 }
 interface CreateMachineResult { id: number; machineCode: string }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+const API_BASE   = import.meta.env.VITE_API_URL ?? ''
+const SUCCESS_CODES = new Set(['MS001', 'MS003', 'MS017', 'MS031', 'MS040'])
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,10 +58,6 @@ function ReadOnlyField({ label, value }: { label: string; value?: string | null 
     </div>
   )
 }
-
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
-const API_BASE   = import.meta.env.VITE_API_URL ?? ''
-const SUCCESS_CODES = new Set(['MS001', 'MS003', 'MS017', 'MS031', 'MS040'])
 
 function isApiSuccess(r: ApiResponse | null | undefined): boolean {
   if (!r) return false
@@ -75,8 +73,304 @@ function toDisplayUrl(f: FileEntry): string {
   return f.fileUrl || `/api/files/download/${encodeURIComponent(f.fileName)}`
 }
 
-/** ไฟล์ที่ยัง active (ไม่ถูก mark ลบ) */
 const activeFiles = (files: FileEntry[]) => files.filter(f => !f._markedForDelete)
+
+const isImageFile = (fileName: string) =>
+  IMAGE_EXTS.has(fileName.split('.').pop()?.toLowerCase() ?? '')
+
+const toFileUrl = (fileUrl: string) => {
+  const filename = fileUrl.split('/').pop() ?? fileUrl
+  return `${API_BASE}/api/files/download/${encodeURIComponent(filename)}`
+}
+
+// ─── AuthImage ────────────────────────────────────────────────────────────────
+
+function AuthImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [failed,  setFailed]  = useState(false)
+
+  useEffect(() => {
+    let url = ''
+    api.getInstance().get(src, { responseType: 'blob' })
+      .then((res: any) => { url = URL.createObjectURL(res.data); setBlobUrl(url) })
+      .catch(() => setFailed(true))
+    return () => { if (url) URL.revokeObjectURL(url) }
+  }, [src])
+
+  if (failed)   return null
+  if (!blobUrl) return <div className="w-full h-full animate-pulse bg-muted rounded" />
+  return <img src={blobUrl} alt={alt} className={className} />
+}
+
+// ─── ImageGalleryDialog ───────────────────────────────────────────────────────
+
+function ImageGalleryDialog({
+  files,
+  initialIndex,
+  open,
+  onClose,
+}: {
+  files: FileEntry[]
+  initialIndex: number
+  open: boolean
+  onClose: () => void
+}) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex)
+  const [blobUrls, setBlobUrls] = useState<Record<number, string>>({})
+  const [loading, setLoading] = useState(false)
+  const blobUrlsRef = useRef<Record<number, string>>({})
+
+  const imageFiles = files.filter(f => isImageFile(f.fileName))
+
+  useEffect(() => {
+    if (open) setCurrentIndex(initialIndex)
+  }, [open, initialIndex])
+
+  useEffect(() => {
+    if (!open || imageFiles.length === 0) return
+    const idx = currentIndex
+    if (blobUrlsRef.current[idx]) return
+    setLoading(true)
+    const src = toFileUrl(imageFiles[idx]?.fileUrl ?? '')
+    api.getInstance().get(src, { responseType: 'blob' })
+      .then((res: any) => {
+        const url = URL.createObjectURL(res.data)
+        blobUrlsRef.current[idx] = url
+        setBlobUrls(prev => ({ ...prev, [idx]: url }))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [open, currentIndex, imageFiles.length])
+
+  useEffect(() => {
+    if (!open) return
+    const preload = (idx: number) => {
+      if (idx < 0 || idx >= imageFiles.length || blobUrlsRef.current[idx]) return
+      const src = toFileUrl(imageFiles[idx]?.fileUrl ?? '')
+      api.getInstance().get(src, { responseType: 'blob' })
+        .then((res: any) => {
+          const url = URL.createObjectURL(res.data)
+          blobUrlsRef.current[idx] = url
+          setBlobUrls(prev => ({ ...prev, [idx]: url }))
+        })
+        .catch(() => {})
+    }
+    preload(currentIndex - 1)
+    preload(currentIndex + 1)
+  }, [open, currentIndex, imageFiles.length])
+
+  useEffect(() => {
+    return () => { Object.values(blobUrlsRef.current).forEach(url => URL.revokeObjectURL(url)) }
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft')  setCurrentIndex(i => Math.max(0, i - 1))
+      if (e.key === 'ArrowRight') setCurrentIndex(i => Math.min(imageFiles.length - 1, i + 1))
+    }
+    window.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
+  }, [open, imageFiles.length, onClose])
+
+  if (!open || imageFiles.length === 0) return null
+
+  const currentFile    = imageFiles[currentIndex]
+  const currentBlobUrl = blobUrls[currentIndex]
+  const hasPrev        = currentIndex > 0
+  const hasNext        = currentIndex < imageFiles.length - 1
+
+  const goPrev = (e: React.MouseEvent) => { e.stopPropagation(); setCurrentIndex(i => Math.max(0, i - 1)) }
+  const goNext = (e: React.MouseEvent) => { e.stopPropagation(); setCurrentIndex(i => Math.min(imageFiles.length - 1, i + 1)) }
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm" onClick={onClose}>
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-3 bg-black/60 shrink-0" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 min-w-0">
+          <p className="text-white text-sm truncate max-w-[50vw]">{currentFile?.fileName}</p>
+          {imageFiles.length > 1 && (
+            <span className="text-white/50 text-sm shrink-0">{currentIndex + 1} / {imageFiles.length}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {currentBlobUrl && (
+            <a href={currentBlobUrl} download={currentFile?.fileName}
+              className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors"
+              onClick={e => e.stopPropagation()}>
+              <Download className="h-4 w-4" /> ดาวน์โหลด
+            </a>
+          )}
+          <button onClick={onClose}
+            className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
+            <X className="h-4 w-4" /> ปิด
+          </button>
+        </div>
+      </div>
+
+      {/* Main image */}
+      <div className="flex flex-1 items-center justify-center relative overflow-hidden">
+        {hasPrev && (
+          <button onClick={goPrev}
+            className="absolute left-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg"
+            aria-label="ก่อนหน้า">
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+        )}
+        <div className="relative flex items-center justify-center w-full h-full px-16" onClick={e => e.stopPropagation()}>
+          {loading || !currentBlobUrl ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-10 w-10 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <p className="text-white/60 text-sm">กำลังโหลด...</p>
+            </div>
+          ) : (
+            <img key={currentIndex} src={currentBlobUrl} alt={currentFile?.fileName}
+              className="max-h-[80vh] max-w-full object-contain rounded-lg shadow-2xl select-none"
+              draggable={false} />
+          )}
+        </div>
+        {hasNext && (
+          <button onClick={goNext}
+            className="absolute right-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg"
+            aria-label="ถัดไป">
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        )}
+      </div>
+
+      {/* Thumbnail strip */}
+      {imageFiles.length > 1 && (
+        <div className="flex justify-center gap-2 px-4 py-3 bg-black/60 shrink-0 overflow-x-auto" onClick={e => e.stopPropagation()}>
+          {imageFiles.map((f, i) => (
+            <button key={i} onClick={() => setCurrentIndex(i)}
+              className={`shrink-0 w-14 h-14 rounded-md overflow-hidden border-2 transition-all ${
+                i === currentIndex ? 'border-white scale-105' : 'border-white/20 opacity-50 hover:opacity-90 hover:border-white/50'
+              }`}>
+              {blobUrls[i]
+                ? <img src={blobUrls[i]} alt={f.fileName} className="w-full h-full object-cover" />
+                : <div className="w-full h-full bg-white/10 animate-pulse" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── FilePreviewItem ──────────────────────────────────────────────────────────
+
+function FilePreviewItem({
+  file,
+  onOpenGallery,
+  galleryIndex,
+  onDelete,
+}: {
+  file: FileEntry
+  onOpenGallery?: (index: number) => void
+  galleryIndex?: number
+  onDelete: (fileName: string) => void
+}) {
+  const isImage = isImageFile(file.fileName)
+  const src     = toFileUrl(file.fileUrl)
+  const [loading, setLoading] = useState(false)
+
+  const handleClick = async () => {
+    if (isImage && onOpenGallery && galleryIndex !== undefined) {
+      onOpenGallery(galleryIndex)
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await api.getInstance().get(src, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch { toast.error('โหลดไฟล์ไม่สำเร็จ') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div className="group relative">
+      <div onClick={handleClick} title={file.fileName}
+        className="relative flex flex-col items-center justify-center w-20 h-20 rounded-lg border border-border bg-muted hover:border-primary transition-all overflow-hidden shrink-0 cursor-pointer">
+        {isImage ? (
+          <>
+            <AuthImage src={src} alt={file.fileName} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+              {loading
+                ? <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <p className="text-[10px] text-white text-center px-1">🔍 ดูเต็มจอ</p>}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-1 p-1 w-full h-full">
+            <FileText className="h-7 w-7 text-muted-foreground group-hover:text-primary transition-colors" />
+            <span className="text-[10px] text-muted-foreground text-center leading-tight line-clamp-2 break-all px-1">
+              {file.fileName}
+            </span>
+          </div>
+        )}
+      </div>
+      {/* Delete button */}
+      <button
+        onClick={e => { e.stopPropagation(); onDelete(file.fileName) }}
+        className="absolute -top-1.5 -right-1.5 z-10 w-5 h-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:scale-110"
+        title="ลบไฟล์">
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
+// ─── FilePreviewGrid ──────────────────────────────────────────────────────────
+
+function FilePreviewGrid({
+  files,
+  onDelete,
+}: {
+  files: FileEntry[]
+  onDelete: (fileName: string) => void
+}) {
+  const [galleryOpen,  setGalleryOpen]  = useState(false)
+  const [galleryStart, setGalleryStart] = useState(0)
+
+  const visibleFiles = activeFiles(files)
+  if (visibleFiles.length === 0) return null
+
+  const imageFiles = visibleFiles.filter(f => isImageFile(f.fileName))
+
+  let imgCursor = 0
+  const mapped = visibleFiles.map(f => {
+    if (isImageFile(f.fileName)) return { file: f, galleryIndex: imgCursor++ }
+    return { file: f, galleryIndex: null }
+  })
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-3 mt-2">
+        {mapped.map(({ file, galleryIndex }, i) => (
+          <FilePreviewItem
+            key={file.fileName + i}
+            file={file}
+            galleryIndex={galleryIndex ?? undefined}
+            onOpenGallery={galleryIndex !== null ? (idx) => { setGalleryStart(idx); setGalleryOpen(true) } : undefined}
+            onDelete={onDelete}
+          />
+        ))}
+      </div>
+      {imageFiles.length > 0 && (
+        <ImageGalleryDialog
+          files={imageFiles}
+          initialIndex={galleryStart}
+          open={galleryOpen}
+          onClose={() => setGalleryOpen(false)}
+        />
+      )}
+    </>
+  )
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -97,13 +391,8 @@ function RouteComponent({ data }: any) {
   const [cachedManager,       setCachedManager]       = useState<any[]>([])
   const cachedDepartments = useRef<Array<{ value: string; label: string; businessUnit: string }>>([])
 
-  /**
-   * SOFT-DELETE: ใช้ state เดียวต่อกลุ่ม รวม existing (จาก register) + new (upload ใหม่)
-   * _fromRegister = true หมายความว่าไม่ต้องส่ง DELETE disk เพราะเป็นไฟล์ของ register ไม่ใช่เครื่องจักรนี้
-   * _markedForDelete = true หมายความว่าจะ exclude ออกจาก DTO ตอน Save
-   */
-  const [imageFiles,   setImageFiles]   = useState<FileEntry[]>([])
-  const [instrFiles,   setInstrFiles]   = useState<FileEntry[]>([])
+  const [imageFiles,    setImageFiles]    = useState<FileEntry[]>([])
+  const [instrFiles,    setInstrFiles]    = useState<FileEntry[]>([])
   const [warrantyFiles, setWarrantyFiles] = useState<FileEntry[]>([])
 
   const [isUploadingImages,   setIsUploadingImages]   = useState(false)
@@ -129,11 +418,29 @@ function RouteComponent({ data }: any) {
     { id: 'calibration', title: t('calibration'), description: t('calibration_information'), required: false },
   ]
 
-  const machineStatusOptions     = [{ name: 'OPERATIONAL' }, { name: 'NON-OPERATIONAL' }, { name: 'UNDER MAINTENANCE' }]
-  const maintenanceOptions       = [{ name: '6 MONTH' }, { name: '3 MONTH' }]
-  const resetPeriodOptions       = [{ name: 'WEEKLY' }, { name: 'MONTHLY' }, { name: 'EVERY 3 MONTHS' }]
-  const resultOptions            = [{ name: 'PASS' }, { name: 'FAIL' }]
-  const calibrationStatusOptions = [{ name: 'ON TIME' }, { name: 'OVERDUE' }]
+  // value = API string ที่ส่งไป backend, label = ข้อความ i18n ที่แสดงในฟอร์ม
+  const machineStatusOptions = [
+    { value: 'OPERATIONAL',       label: t('status_operational') },
+    { value: 'NON-OPERATIONAL',   label: t('status_non_operational') },
+    { value: 'UNDER MAINTENANCE', label: t('status_under_maintenance') },
+  ]
+  const maintenanceOptions = [
+    { value: '6 MONTH', label: t('maintenance_6_month') },
+    { value: '3 MONTH', label: t('maintenance_3_month') },
+  ]
+  const resetPeriodOptions = [
+    { value: 'WEEKLY',         label: t('reset_weekly') },
+    { value: 'MONTHLY',        label: t('reset_monthly') },
+    //{ value: 'EVERY 3 MONTHS', label: t('reset_every_3_months') },
+  ]
+  const resultOptions = [
+    { value: 'PASS', label: t('status_pass') },
+    { value: 'FAIL', label: t('status_not_pass') },
+  ]
+  const calibrationStatusOptions = [
+    { value: 'ON TIME', label: t('status_on_time') },
+    { value: 'OVERDUE', label: t('status_overdue') },
+  ]
   const yesNoOptions = [{ value: 'YES', label: t('yes') }, { value: 'NO', label: t('no') }]
 
   const [formData, setFormData] = useState({
@@ -149,9 +456,7 @@ function RouteComponent({ data }: any) {
     hasWarranty: '', warrantyNote: '', warrantyExpireDate: '',
   })
 
-  // reset scroll ทุกครั้งที่โหลดหน้า
   useEffect(() => { window.scrollTo(0, 0) }, [])
-
   useEffect(() => { if (refId) fetchRegisterData(refId) }, [refId])
   useEffect(() => {
     fetchMachineGroup('')
@@ -222,7 +527,7 @@ function RouteComponent({ data }: any) {
     }
   }
 
-  const handleImagesChange   = (files: File[]) => {
+  const handleImagesChange = (files: File[]) => {
     const real = files.filter(f => f instanceof File && f.size > 0 && f.lastModified > 0)
     if (imageTimeoutRef.current) clearTimeout(imageTimeoutRef.current)
     imageTimeoutRef.current = setTimeout(() => {
@@ -247,11 +552,6 @@ function RouteComponent({ data }: any) {
     }, 100)
   }
 
-  /**
-   * SOFT-DELETE: mark ไฟล์ว่าจะลบ — ไม่ได้ลบจริงทันที
-   * _fromRegister = true → ไม่ต้องส่ง DELETE API (เป็นไฟล์ของ register)
-   * _fromRegister = false/undefined → ส่ง DELETE API ตอน Submit
-   */
   const markForDelete = (
     fileId:   string,
     setFiles: React.Dispatch<React.SetStateAction<FileEntry[]>>,
@@ -261,16 +561,15 @@ function RouteComponent({ data }: any) {
     ))
   }
 
-  const handleDeleteImage     = (fileId: string) => markForDelete(fileId, setImageFiles)
-  const handleDeleteInstr     = (fileId: string) => markForDelete(fileId, setInstrFiles)
-  const handleDeleteWarranty  = (fileId: string) => markForDelete(fileId, setWarrantyFiles)
+  const handleDeleteImage    = (fileId: string) => markForDelete(fileId, setImageFiles)
+  const handleDeleteInstr    = (fileId: string) => markForDelete(fileId, setInstrFiles)
+  const handleDeleteWarranty = (fileId: string) => markForDelete(fileId, setWarrantyFiles)
 
   const handleWarrantyToggle = (val: string) => {
     handleInputChange('hasWarranty', val)
     if (val === 'NO') {
       handleInputChange('warrantyNote', '')
       handleInputChange('warrantyExpireDate', '')
-      // mark ทุกไฟล์ warranty ที่เป็น new upload ว่าจะลบ (ที่ fromRegister ให้ mark เฉยๆ)
       setWarrantyFiles(prev => prev.map(f => ({ ...f, _markedForDelete: true })))
     }
   }
@@ -281,20 +580,6 @@ function RouteComponent({ data }: any) {
     const url = file?.fileUrl || `/api/files/download/${encodeURIComponent(fileName)}`
     window.open(`${API_BASE}${url}`, '_blank')
   }
-
-  // ─── FileUploadField value mapper ─────────────────────────────────────────
-
-  /**
-   * FIX: ส่งผ่าน uploadedFiles prop (ไม่ใช่ value)
-   * value=[] = ไม่มีไฟล์ใหม่ที่กำลัง drop
-   * uploadedFiles = รายการไฟล์ที่ upload แล้ว / โหลดมาจาก DB
-   * id = fileName เพื่อให้ onDeleteUploadedFile รับ fileName ตรงๆ
-   */
-  const toUploadedFiles = (files: FileEntry[]) =>
-    activeFiles(files).map(f => ({
-      id: f.fileName, name: f.fileName,
-      size: f.fileSize, type: f.fileType, url: toDisplayUrl(f),
-    }))
 
   // ─── Fetch register ────────────────────────────────────────────────────────
 
@@ -333,7 +618,6 @@ function RouteComponent({ data }: any) {
         } catch {}
       }
 
-      // โหลดไฟล์จาก register → mark _fromRegister=true เพื่อให้รู้ว่าไม่ต้องลบ disk
       if (d.attachment) {
         try {
           const files: any[] = typeof d.attachment === 'string' ? JSON.parse(d.attachment) : d.attachment
@@ -432,8 +716,8 @@ function RouteComponent({ data }: any) {
   const formatDateToISO = (s: string) => { if (!s) return null; try { return new Date(s).toISOString() } catch { return null } }
 
   const buildMachineDTO = (
-    resolvedImages:  FileEntry[],
-    resolvedInstrs:  FileEntry[],
+    resolvedImages:   FileEntry[],
+    resolvedInstrs:   FileEntry[],
     resolvedWarranty: FileEntry[],
   ) => {
     const toFileItem = (f: FileEntry) => ({
@@ -441,7 +725,7 @@ function RouteComponent({ data }: any) {
       fileType: f.fileType, fileSize: f.fileSize, uploadedBy: (f as any).uploadedBy ?? null,
     })
 
-    const deptCode = getDeptCode(formData.department)
+    const deptCode    = getDeptCode(formData.department)
     const machineCode = buildMachineCode()
 
     const calibrationDTO = formData.calibrationDueDate ? {
@@ -485,8 +769,8 @@ function RouteComponent({ data }: any) {
       certificatePeriod: formData.certificatePeriod || null, resetPeriod: formData.resetPeriod || null,
       registerId: formData.registerId || null, registerDate: formatDateToISO(formData.registerDate),
       calibration: calibrationDTO, maintenanceList: maintenanceList.length ? maintenanceList : null,
-      image:           allImages.length   ? JSON.stringify(allImages)   : null,
-      workInstruction: allInstrs.length   ? JSON.stringify(allInstrs)   : null,
+      image:           allImages.length ? JSON.stringify(allImages) : null,
+      workInstruction: allInstrs.length ? JSON.stringify(allInstrs) : null,
       note: refId ? `REF:REGISTER-${refId}` : null,
       hasWarranty: formData.hasWarranty || null,
       warrantyNote: formData.hasWarranty === 'YES' ? (formData.warrantyNote || null) : null,
@@ -503,43 +787,31 @@ function RouteComponent({ data }: any) {
     if (!validateRequiredFields()) { setCurrentStep('general'); toast.error(t('fill_required_fields')); return }
     setIsSubmitting(true)
     try {
-      // 1. หาไฟล์ที่ต้องลบ (marked + ไม่ใช่ fromRegister เพราะ fromRegister เป็นของ register ไม่ใช่ machine)
       const filesToDeleteFromDisk = [
         ...imageFiles.filter(f => f._markedForDelete && !f._fromRegister),
         ...instrFiles.filter(f => f._markedForDelete && !f._fromRegister),
         ...warrantyFiles.filter(f => f._markedForDelete && !f._fromRegister),
       ]
-
-      // 2. ลบไฟล์จากดิสก์พร้อมกัน (parallel, non-blocking)
       await Promise.allSettled(
         filesToDeleteFromDisk.map(f =>
           api.delete(`/api/files/delete/${encodeURIComponent(f.fileName)}`)
             .catch(err => console.warn('Failed to delete from disk:', f.fileName, err))
         )
       )
-
-      // 3. คำนวณ active files ที่จะส่งไปบันทึกใน DB
       const resolvedImages   = activeFiles(imageFiles)
       const resolvedInstrs   = activeFiles(instrFiles)
       const resolvedWarranty = activeFiles(warrantyFiles)
-
-      // 4. Create machine — DTO มีเฉพาะ active files
       const raw = await api.post('/api/machine/create', buildMachineDTO(resolvedImages, resolvedInstrs, resolvedWarranty))
       const resData: ApiResponse<CreateMachineResult> =
         (raw as any)?.success !== undefined || (raw as any)?.code !== undefined ? (raw as any) : (raw as any)?.data
-
       if (!isApiSuccess(resData)) {
         toast.error(t('failed_to_create_machine'), { description: getApiErrorMessage(resData) })
         return
       }
-
-      // 5. Sync to Lark (non-blocking)
       const savedId = resData?.data?.id
       if (savedId) {
-        api.post(`/api/machine/${savedId}/sync-to-lark`)
-          .catch(err => console.warn('[sync-to-lark] failed:', err))
+        api.post(`/api/machine/${savedId}/sync-to-lark`).catch(err => console.warn('[sync-to-lark] failed:', err))
       }
-
       toast.success(t('machine_created'))
       setTimeout(() => navigate(
         refId ? { to: '/checklist/register/view', search: { id: refId } } : { to: '/checklist/machine' }
@@ -665,7 +937,11 @@ function RouteComponent({ data }: any) {
   // ─── Step content ──────────────────────────────────────────────────────────
 
   const renderStepContent = () => {
-    if (isLoadingRefData) return <div className="px-2 pt-2"><div className="text-center py-12 text-muted-foreground">{t('loading')}</div></div>
+    if (isLoadingRefData) return (
+      <div className="px-2 pt-2">
+        <div className="text-center py-12 text-muted-foreground">{t('loading')}</div>
+      </div>
+    )
 
     switch (currentStep) {
       case 'general': return (
@@ -715,13 +991,15 @@ function RouteComponent({ data }: any) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <SingleSelectField id="machineStatus" label={t('machine_status')} value={[formData.machineStatus]}
               onChange={v => handleInputChange('machineStatus', v[0] || '')}
-              options={machineStatusOptions.map(s => ({ value: s.name, label: s.name }))} error={errors.machineStatus} required />
+              options={machineStatusOptions} error={errors.machineStatus} required />
             <SingleSelectField id="resetPeriod" label={t('reset_period')} value={[formData.resetPeriod]}
               onChange={v => handleInputChange('resetPeriod', v[0] || '')}
-              options={resetPeriodOptions.map(r => ({ value: r.name, label: r.name }))} error={errors.resetPeriod} required />
+              options={resetPeriodOptions} error={errors.resetPeriod} required />
             <TextField id="certificatePeriod" label={t('certificate_period')} value={formData.certificatePeriod} onChange={v => handleInputChange('certificatePeriod', v)} />
             {refId && <TextField id="registerDate" label={t('register_date')} value={formData.registerDate} onChange={() => {}} />}
           </div>
+
+          {/* ── Warranty section ── */}
           <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
             <p className="text-sm font-semibold">{t('warranty')}</p>
             <SingleSelectField id="hasWarranty" label={t('has_warranty')} value={[formData.hasWarranty]}
@@ -731,31 +1009,64 @@ function RouteComponent({ data }: any) {
                 <TextField id="warrantyNote" label={t('warranty_note')} value={formData.warrantyNote}
                   onChange={v => handleInputChange('warrantyNote', v)} error={errors.warrantyNote} required />
                 <DatePickerField id="warrantyExpireDate" label={t('warranty_expire_date')} value={formData.warrantyExpireDate} onChange={d => handleInputChange('warrantyExpireDate', d)} />
-                <FileUploadField id="warranty-docs" label={t('warranty_documents')} maxFiles={10}
+                {/* Warranty file upload + preview */}
+                <FileUploadField
+                  id="warranty-docs"
+                  label={t('warranty_documents')}
+                  maxFiles={10}
                   value={[]}
-                  uploadedFiles={toUploadedFiles(warrantyFiles)}
-                  onChange={handleWarrantyChange} onDownloadFile={handleDownloadFile} onDeleteUploadedFile={handleDeleteWarranty}
-                  onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
+                  uploadedFiles={[]}
+                  onChange={handleWarrantyChange}
+                  onDownloadFile={handleDownloadFile}
+                  onDeleteUploadedFile={handleDeleteWarranty}
+                  onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+                />
+                {activeFiles(warrantyFiles).length > 0 && (
+                  <FilePreviewGrid files={warrantyFiles} onDelete={handleDeleteWarranty} />
+                )}
               </>
             )}
           </div>
-          <FileUploadField id="machine-images" label={t('images')} maxFiles={10}
+
+          {/* ── Images upload + preview ── */}
+          <FileUploadField
+            id="machine-images"
+            label={t('images')}
+            maxFiles={10}
             value={[]}
-            uploadedFiles={toUploadedFiles(imageFiles)}
-            onChange={handleImagesChange} onDownloadFile={handleDownloadFile} onDeleteUploadedFile={handleDeleteImage}
-            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
-          <FileUploadField id="machine-instructions" label={t('work_instructions')} maxFiles={10}
+            uploadedFiles={[]}
+            onChange={handleImagesChange}
+            onDownloadFile={handleDownloadFile}
+            onDeleteUploadedFile={handleDeleteImage}
+            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+          />
+          {activeFiles(imageFiles).length > 0 && (
+            <FilePreviewGrid files={imageFiles} onDelete={handleDeleteImage} />
+          )}
+
+          {/* ── Work instructions upload + preview ── */}
+          <FileUploadField
+            id="machine-instructions"
+            label={t('work_instructions')}
+            maxFiles={10}
             value={[]}
-            uploadedFiles={toUploadedFiles(instrFiles)}
-            onChange={handleInstructionsChange} onDownloadFile={handleDownloadFile} onDeleteUploadedFile={handleDeleteInstr}
-            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
+            uploadedFiles={[]}
+            onChange={handleInstructionsChange}
+            onDownloadFile={handleDownloadFile}
+            onDeleteUploadedFile={handleDeleteInstr}
+            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
+          />
+          {activeFiles(instrFiles).length > 0 && (
+            <FilePreviewGrid files={instrFiles} onDelete={handleDeleteInstr} />
+          )}
         </div>
       )
+
       case 'maintenance': return (
         <div className="px-2 pt-2 space-y-4">
           <SingleSelectField id="maintenancePeriod" label={t('maintenance_period')} value={[formData.maintenancePeriod]}
             onChange={v => handleInputChange('maintenancePeriod', v[0] || '')}
-            options={maintenanceOptions.map(m => ({ value: m.name, label: m.name }))} />
+            options={maintenanceOptions} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <DatePickerField id="maintenance1" label={t('round_1')} value={formData.maintenance1} onChange={d => handleInputChange('maintenance1', d)} />
             <DatePickerField id="maintenance2" label={t('round_2')} value={formData.maintenance2} onChange={d => handleInputChange('maintenance2', d)} />
@@ -768,22 +1079,24 @@ function RouteComponent({ data }: any) {
           )}
         </div>
       )
+
       case 'calibration': return (
         <div className="px-2 pt-2 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <DatePickerField id="calibrationDueDate" label={t('calibration_due_date')} value={formData.calibrationDueDate} onChange={d => handleInputChange('calibrationDueDate', d)} />
             <DatePickerField id="certificateDate"    label={t('certificate_date')}     value={formData.certificateDate}    onChange={d => handleInputChange('certificateDate', d)} />
             <SingleSelectField id="result" label={t('results')} value={[formData.result]}
-              onChange={v => handleInputChange('result', v[0] || '')} options={resultOptions.map(r => ({ value: r.name, label: r.name }))} />
+              onChange={v => handleInputChange('result', v[0] || '')} options={resultOptions} />
             <TextField id="criteria"         label={t('criteria')}          value={formData.criteria}         onChange={v => handleInputChange('criteria', v)} />
             <TextField id="measuringRange"   label={t('measuring_range')}   value={formData.measuringRange}   onChange={v => handleInputChange('measuringRange', v)} />
             <TextField id="calibrationRange" label={t('calibration_range')} value={formData.calibrationRange} onChange={v => handleInputChange('calibrationRange', v)} />
             <TextField id="accuracy"         label={t('accuracy')}          value={formData.accuracy}         onChange={v => handleInputChange('accuracy', v)} />
             <SingleSelectField id="calibrationStatus" label={t('calibration_status')} value={[formData.calibrationStatus]}
-              onChange={v => handleInputChange('calibrationStatus', v[0] || '')} options={calibrationStatusOptions.map(cs => ({ value: cs.name, label: cs.name }))} />
+              onChange={v => handleInputChange('calibrationStatus', v[0] || '')} options={calibrationStatusOptions} />
           </div>
         </div>
       )
+
       default: return null
     }
   }

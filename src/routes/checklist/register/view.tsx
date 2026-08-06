@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, Download, FileText, ListCheck, PenBox, Plus, ShieldCheck, X } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, ListCheck, PenBox, Plus, ShieldCheck, X } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import { toast } from 'sonner'
@@ -75,11 +75,10 @@ interface RegisterRequest {
   supervisorName?: string
   managerName?: string
   note?: string
-  attachment?: string | AttachmentItem[]       // รูปภาพ
-  workInstruction?: string | AttachmentItem[]  // work instruction แยก field
+  attachment?: string | AttachmentItem[]
+  workInstruction?: string | AttachmentItem[]
   maintenance?: MaintenanceItem[] | string
   calibration?: CalibrationItem[] | string
-  // ── warranty ────────────────────────────────────────────────────────────────
   hasWarranty?: string
   warrantyNote?: string
   warrantyExpireDate?: string | null
@@ -113,6 +112,9 @@ const parseAttachments = (raw?: string | AttachmentItem[]): AttachmentItem[] => 
   try { return JSON.parse(raw) } catch { return [] }
 }
 
+const isImageFile = (fileName: string) =>
+  IMAGE_EXTS.includes(fileName.split('.').pop()?.toLowerCase() ?? '')
+
 // ─── AuthImage ────────────────────────────────────────────────────────────────
 
 function AuthImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
@@ -132,98 +134,269 @@ function AuthImage({ src, alt, className }: { src: string; alt: string; classNam
   return <img src={blobUrl} alt={alt} className={className} />
 }
 
-// ─── ImageDialog ──────────────────────────────────────────────────────────────
+// ─── ImageGalleryDialog ───────────────────────────────────────────────────────
 
-function ImageDialog({ blobUrl, fileName, open, onClose }: {
-  blobUrl: string; fileName: string; open: boolean; onClose: () => void
+function ImageGalleryDialog({
+  files,
+  initialIndex,
+  open,
+  onClose,
+}: {
+  files: AttachmentItem[]
+  initialIndex: number
+  open: boolean
+  onClose: () => void
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    if (open) { window.addEventListener('keydown', onKey); document.body.style.overflow = 'hidden' }
-    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
-  }, [open, onClose])
+  const [currentIndex, setCurrentIndex] = useState(initialIndex)
+  const [blobUrls, setBlobUrls] = useState<Record<number, string>>({})
+  const [loading, setLoading] = useState(false)
+  const blobUrlsRef = useRef<Record<number, string>>({})
 
-  if (!open) return null
+  const imageFiles = files.filter(f => isImageFile(f.fileName))
+
+  // Reset index when dialog opens
+  useEffect(() => {
+    if (open) setCurrentIndex(initialIndex)
+  }, [open, initialIndex])
+
+  // Load blob for current image
+  useEffect(() => {
+    if (!open || imageFiles.length === 0) return
+    const idx = currentIndex
+    if (blobUrlsRef.current[idx]) return
+
+    setLoading(true)
+    const src = toFileUrl(imageFiles[idx]?.fileUrl ?? '')
+    api.getInstance().get(src, { responseType: 'blob' })
+      .then((res: any) => {
+        const url = URL.createObjectURL(res.data)
+        blobUrlsRef.current[idx] = url
+        setBlobUrls(prev => ({ ...prev, [idx]: url }))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [open, currentIndex, imageFiles.length])
+
+  // Preload adjacent images
+  useEffect(() => {
+    if (!open) return
+    const preload = (idx: number) => {
+      if (idx < 0 || idx >= imageFiles.length || blobUrlsRef.current[idx]) return
+      const src = toFileUrl(imageFiles[idx]?.fileUrl ?? '')
+      api.getInstance().get(src, { responseType: 'blob' })
+        .then((res: any) => {
+          const url = URL.createObjectURL(res.data)
+          blobUrlsRef.current[idx] = url
+          setBlobUrls(prev => ({ ...prev, [idx]: url }))
+        })
+        .catch(() => {})
+    }
+    preload(currentIndex - 1)
+    preload(currentIndex + 1)
+  }, [open, currentIndex, imageFiles.length])
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => { Object.values(blobUrlsRef.current).forEach(url => URL.revokeObjectURL(url)) }
+  }, [])
+
+  // Keyboard & body scroll lock
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft')  setCurrentIndex(i => Math.max(0, i - 1))
+      if (e.key === 'ArrowRight') setCurrentIndex(i => Math.min(imageFiles.length - 1, i + 1))
+    }
+    window.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
+  }, [open, imageFiles.length, onClose])
+
+  if (!open || imageFiles.length === 0) return null
+
+  const currentFile    = imageFiles[currentIndex]
+  const currentBlobUrl = blobUrls[currentIndex]
+  const hasPrev        = currentIndex > 0
+  const hasNext        = currentIndex < imageFiles.length - 1
+
+  const goPrev = (e: React.MouseEvent) => { e.stopPropagation(); setCurrentIndex(i => Math.max(0, i - 1)) }
+  const goNext = (e: React.MouseEvent) => { e.stopPropagation(); setCurrentIndex(i => Math.min(imageFiles.length - 1, i + 1)) }
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm" onClick={onClose}>
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-black/60" onClick={e => e.stopPropagation()}>
-        <p className="text-white text-sm truncate max-w-[60%]">{fileName}</p>
-        <div className="flex items-center gap-2">
-          <a href={blobUrl} download={fileName}
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      {/* ── Top bar ── */}
+      <div
+        className="flex items-center justify-between px-4 py-3 bg-black/60 shrink-0"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <p className="text-white text-sm truncate max-w-[50vw]">{currentFile?.fileName}</p>
+          {imageFiles.length > 1 && (
+            <span className="text-white/50 text-sm shrink-0">
+              {currentIndex + 1} / {imageFiles.length}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {currentBlobUrl && (
+            <a
+              href={currentBlobUrl}
+              download={currentFile?.fileName}
+              className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors"
+              onClick={e => e.stopPropagation()}
+            >
+              <Download className="h-4 w-4" /> ดาวน์โหลด
+            </a>
+          )}
+          <button
+            onClick={onClose}
             className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors"
-            onClick={e => e.stopPropagation()}>
-            <Download className="h-4 w-4" /> ดาวน์โหลด
-          </a>
-          <button onClick={onClose}
-            className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
+          >
             <X className="h-4 w-4" /> ปิด
           </button>
         </div>
       </div>
-      <img src={blobUrl} alt={fileName}
-        className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl mt-14"
-        onClick={e => e.stopPropagation()} />
+
+      {/* ── Main image area ── */}
+      <div className="flex flex-1 items-center justify-center relative overflow-hidden">
+        {/* Prev */}
+        {hasPrev && (
+          <button
+            onClick={goPrev}
+            className="absolute left-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg"
+            aria-label="ก่อนหน้า"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+        )}
+
+        <div
+          className="relative flex items-center justify-center w-full h-full px-16"
+          onClick={e => e.stopPropagation()}
+        >
+          {loading || !currentBlobUrl ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-10 w-10 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <p className="text-white/60 text-sm">กำลังโหลด...</p>
+            </div>
+          ) : (
+            <img
+              key={currentIndex}
+              src={currentBlobUrl}
+              alt={currentFile?.fileName}
+              className="max-h-[80vh] max-w-full object-contain rounded-lg shadow-2xl select-none"
+              draggable={false}
+            />
+          )}
+        </div>
+
+        {/* Next */}
+        {hasNext && (
+          <button
+            onClick={goNext}
+            className="absolute right-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg"
+            aria-label="ถัดไป"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        )}
+      </div>
+
+      {/* ── Thumbnail strip (shown only when multiple images) ── */}
+      {imageFiles.length > 1 && (
+        <div
+          className="flex justify-center gap-2 px-4 py-3 bg-black/60 shrink-0 overflow-x-auto"
+          onClick={e => e.stopPropagation()}
+        >
+          {imageFiles.map((f, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrentIndex(i)}
+              className={`shrink-0 w-14 h-14 rounded-md overflow-hidden border-2 transition-all ${
+                i === currentIndex
+                  ? 'border-white scale-105'
+                  : 'border-white/20 opacity-50 hover:opacity-90 hover:border-white/50'
+              }`}
+              aria-label={`ดูรูป ${i + 1}`}
+            >
+              {blobUrls[i]
+                ? <img src={blobUrls[i]} alt={f.fileName} className="w-full h-full object-cover" />
+                : <div className="w-full h-full bg-white/10 animate-pulse" />
+              }
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 // ─── AttachmentFile ───────────────────────────────────────────────────────────
 
-function AttachmentFile({ file }: { file: AttachmentItem }) {
+function AttachmentFile({
+  file,
+  galleryFiles,
+  galleryIndex,
+  onOpenGallery,
+}: {
+  file: AttachmentItem
+  galleryFiles?: AttachmentItem[]
+  galleryIndex?: number
+  onOpenGallery?: (index: number) => void
+}) {
   const ext     = file.fileName.split('.').pop()?.toLowerCase() ?? ''
   const isImage = IMAGE_EXTS.includes(ext)
   const src     = toFileUrl(file.fileUrl)
-
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [blobUrl,    setBlobUrl]    = useState<string | null>(null)
-  const [loading,    setLoading]    = useState(false)
+  const [loading, setLoading] = useState(false)
 
   const handleClick = async () => {
-    if (isImage) {
-      if (blobUrl) { setDialogOpen(true); return }
-      setLoading(true)
-      try {
-        const res = await api.getInstance().get(src, { responseType: 'blob' })
-        const url = URL.createObjectURL(res.data)
-        setBlobUrl(url); setDialogOpen(true)
-      } catch { toast.error('โหลดไฟล์ไม่สำเร็จ') }
-      finally { setLoading(false) }
-    } else {
-      try {
-        const res = await api.getInstance().get(src, { responseType: 'blob' })
-        const url = URL.createObjectURL(res.data)
-        window.open(url, '_blank')
-        setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      } catch { toast.error('โหลดไฟล์ไม่สำเร็จ') }
+    if (isImage && onOpenGallery && galleryIndex !== undefined) {
+      onOpenGallery(galleryIndex)
+      return
+    }
+
+    // Non-image: open in new tab
+    setLoading(true)
+    try {
+      const res = await api.getInstance().get(src, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch {
+      toast.error('โหลดไฟล์ไม่สำเร็จ')
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <>
-      <div onClick={handleClick} title={file.fileName}
-        className="group relative flex flex-col items-center justify-center w-20 h-20 rounded-lg border border-border bg-muted hover:border-primary transition-all overflow-hidden shrink-0 cursor-pointer">
-        {isImage ? (
-          <>
-            <AuthImage src={src} alt={file.fileName} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-              {loading
-                ? <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <p className="text-[10px] text-white text-center px-1">🔍 ดูเต็มจอ</p>}
-            </div>
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-1 p-1 w-full h-full">
-            <FileText className="h-7 w-7 text-muted-foreground group-hover:text-primary transition-colors" />
-            <span className="text-[10px] text-muted-foreground text-center leading-tight line-clamp-2 break-all px-1">
-              {file.fileName}
-            </span>
+    <div
+      onClick={handleClick}
+      title={file.fileName}
+      className="group relative flex flex-col items-center justify-center w-20 h-20 rounded-lg border border-border bg-muted hover:border-primary transition-all overflow-hidden shrink-0 cursor-pointer"
+    >
+      {isImage ? (
+        <>
+          <AuthImage src={src} alt={file.fileName} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+            {loading
+              ? <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : <p className="text-[10px] text-white text-center px-1">🔍 ดูเต็มจอ</p>}
           </div>
-        )}
-      </div>
-      {isImage && blobUrl && (
-        <ImageDialog blobUrl={blobUrl} fileName={file.fileName} open={dialogOpen} onClose={() => setDialogOpen(false)} />
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-1 p-1 w-full h-full">
+          <FileText className="h-7 w-7 text-muted-foreground group-hover:text-primary transition-colors" />
+          <span className="text-[10px] text-muted-foreground text-center leading-tight line-clamp-2 break-all px-1">
+            {file.fileName}
+          </span>
+        </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -231,11 +404,52 @@ function AttachmentFile({ file }: { file: AttachmentItem }) {
 
 function AttachmentList({ attachment }: { attachment?: string | AttachmentItem[] }) {
   const files = parseAttachments(attachment)
+  const [galleryOpen,  setGalleryOpen]  = useState(false)
+  const [galleryStart, setGalleryStart] = useState(0)
+
   if (files.length === 0) return null
+
+  // Build a separate index for only image files (for gallery navigation)
+  const imageFiles = files.filter(f => isImageFile(f.fileName))
+
+  const handleOpenGallery = (imageIndex: number) => {
+    setGalleryStart(imageIndex)
+    setGalleryOpen(true)
+  }
+
+  // Map each file to its image-gallery index (null for non-images)
+  let imgCursor = 0
+  const filesMapped = files.map(f => {
+    if (isImageFile(f.fileName)) {
+      const idx = imgCursor++
+      return { file: f, galleryIndex: idx }
+    }
+    return { file: f, galleryIndex: null }
+  })
+
   return (
-    <div className="flex flex-wrap gap-3">
-      {files.map((f, i) => <AttachmentFile key={i} file={f} />)}
-    </div>
+    <>
+      <div className="flex flex-wrap gap-3">
+        {filesMapped.map(({ file, galleryIndex }, i) => (
+          <AttachmentFile
+            key={i}
+            file={file}
+            galleryFiles={imageFiles}
+            galleryIndex={galleryIndex ?? undefined}
+            onOpenGallery={galleryIndex !== null ? handleOpenGallery : undefined}
+          />
+        ))}
+      </div>
+
+      {imageFiles.length > 0 && (
+        <ImageGalleryDialog
+          files={imageFiles}
+          initialIndex={galleryStart}
+          open={galleryOpen}
+          onClose={() => setGalleryOpen(false)}
+        />
+      )}
+    </>
   )
 }
 
@@ -355,11 +569,8 @@ function RegisterView() {
     </div>
   )
 
-  const maintenanceItems   = Array.isArray(record.maintenance)    ? record.maintenance   : []
-  const calibrationItems   = Array.isArray(record.calibration)    ? record.calibration   : []
-  const warrantyFileItems  = parseAttachments(record.warrantyFiles)
-  const imageAttachments   = parseAttachments(record.attachment)
-  const instrAttachments   = parseAttachments(record.workInstruction)
+  const maintenanceItems  = Array.isArray(record.maintenance) ? record.maintenance : []
+  const calibrationItems  = Array.isArray(record.calibration) ? record.calibration : []
 
   return (
     <div className="min-h-screen bg-background">
@@ -424,23 +635,19 @@ function RegisterView() {
                 </div>
               )}
 
-              {/* ── รูปภาพ (attachment) ──────────────────────────────────── */}
-              {imageAttachments.length > 0 && (
+              {/* ── รูปภาพ (attachment) ── */}
+              {parseAttachments(record.attachment).length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-muted-foreground mb-3">{t('images')}</p>
-                  <div className="flex flex-wrap gap-3">
-                    {imageAttachments.map((f, i) => <AttachmentFile key={i} file={f} />)}
-                  </div>
+                  <AttachmentList attachment={record.attachment} />
                 </div>
               )}
 
-              {/* ── work instruction (workInstruction field) ─────────────── */}
-              {instrAttachments.length > 0 && (
+              {/* ── Work instruction ── */}
+              {parseAttachments(record.workInstruction).length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-muted-foreground mb-3">{t('work_instructions')}</p>
-                  <div className="flex flex-wrap gap-3">
-                    {instrAttachments.map((f, i) => <AttachmentFile key={i} file={f} />)}
-                  </div>
+                  <AttachmentList attachment={record.workInstruction} />
                 </div>
               )}
             </div>
@@ -484,12 +691,10 @@ function RegisterView() {
               )}
             </div>
 
-            {record.hasWarranty === 'YES' && warrantyFileItems.length > 0 && (
+            {record.hasWarranty === 'YES' && parseAttachments(record.warrantyFiles).length > 0 && (
               <div className="mt-6">
                 <p className="text-sm font-medium text-muted-foreground mb-3">{t('warranty_documents')}</p>
-                <div className="flex flex-wrap gap-3">
-                  {warrantyFileItems.map((f, i) => <AttachmentFile key={i} file={f} />)}
-                </div>
+                <AttachmentList attachment={record.warrantyFiles} />
               </div>
             )}
 

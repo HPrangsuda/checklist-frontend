@@ -3,16 +3,13 @@ import { DataTableSkeleton } from '@/components/data-table/data-table-skeleton'
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar'
 import type { PageResponse, ResponseDTO } from '@/core/types/common'
 import { useTranslation } from '@/core/contexts/language-context'
-import { DeleteDialog } from '@/components/dialog/delete-dialog'
 import { TblContainer } from '@/components/layout/tbl-container'
 import { DataTable } from '@/components/data-table/data-table'
 import { api } from '@/core/interceptor/api.interceptor'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { useDebounce } from '@/core/hooks/use-debounce'
-import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
-import { TblAction } from '@/components/action/tbl-action'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/core/contexts/auth-context'
 
@@ -45,7 +42,7 @@ interface RegisterDTO {
   createdBy?:       CreatedByDTO | null
   updatedBy?:       CreatedByDTO | null
   hasMachine?:      boolean
-  machineCount?:    number    // ← เพิ่ม
+  machineCount?:    number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -76,8 +73,6 @@ function DataTbl() {
   const isAdmin = role === 'ADMIN'
 
   const [pagination,       setPagination]       = useState({ pageIndex: 0, pageSize: 10 })
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [selectedIds,      setSelectedIds]      = useState<number[]>([])
   const [data,             setData]             = useState<RegisterDTO[]>([])
   const [loading,          setLoading]          = useState(false)
   const [totalCount,       setTotalCount]       = useState(0)
@@ -88,98 +83,60 @@ function DataTbl() {
   // ─── Columns ──────────────────────────────────────────────────────────────
 
   const columns: ColumnDef<RegisterDTO>[] = [
-  {
-    id: 'select',
-    header: () => (
-      <Checkbox
-        checked={data.length > 0 && data.every(row => selectedIds.includes(row.id))}
-        onCheckedChange={checked => setSelectedIds(checked ? data.map(r => r.id) : [])}
-        aria-label="Select all"
-      />
-    ),
-    cell: ({ row }) => (
-      <div onClick={e => e.stopPropagation()}>
-        <Checkbox
-          checked={selectedIds.includes(row.original.id)}
-          onCheckedChange={checked =>
-            setSelectedIds(prev =>
-              checked
-                ? [...prev, row.original.id]
-                : prev.filter(id => id !== row.original.id)
-            )
-          }
-          aria-label="Select row"
-        />
-      </div>
-    ),
-    size: 32,
-  },
-  {
-    accessorKey: 'machineName',
-    header: t('machine_name'),
-    cell: ({ row }) => (
-      <div className="text-sm font-medium">{row.original.machineName || '-'}</div>
-    ),
-  },
-  {
-    accessorKey: 'model',
-    header: t('model'),
-    cell: ({ row }) => (
-      <div className="text-sm">{row.original.model || '-'}</div>
-    ),
-  },
-  {
-    accessorKey: 'createdAt',
-    header: t('request_date'),
-    cell: ({ row }) => (
-      <div className="text-sm">{formatDate(row.original.createdAt)}</div>
-    ),
-  },
-  {
-    id: 'requestBy',
-    header: t('request_by'),
-    cell: ({ row }) => (
-      <div className="text-sm">{row.original.createdBy?.name ?? '-'}</div>
-    ),
-  },
-  // ── คอลัมน์สถานะเครื่องจักร (เฉพาะ ADMIN) ──────────────────────────────
-  ...(isAdmin ? [{
-    id: 'hasMachine',
-    header: t('add_machine_status'),
-    cell: ({ row }: { row: { original: RegisterDTO } }) => {
-      const count = row.original.machineCount ?? 0
-      return count > 0 ? (
-        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-              clipRule="evenodd"
-            />
-          </svg>
-          {t('has_machine')} {count}
-        </span>
-      ) : (
-        <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
-          {t('pending')}
-        </span>
-      )
+    {
+      accessorKey: 'machineName',
+      header: t('machine_name'),
+      cell: ({ row }) => (
+        <div className="text-sm font-medium">{row.original.machineName || '-'}</div>
+      ),
     },
-    size: 160,
-  } satisfies ColumnDef<RegisterDTO>] : []),
-  {
-    id: 'action',
-    header: t('action'),
-    cell: ({ row }) => (
-      <TblAction
-        view
-        onView={()   => handleView(row.original.id)}
-        onDelete={() => handleDelete(row.original.id)}
-      />
-    ),
-    size: 80,
-  },
-]
+    {
+      accessorKey: 'model',
+      header: t('model'),
+      cell: ({ row }) => (
+        <div className="text-sm">{row.original.model || '-'}</div>
+      ),
+    },
+    {
+      accessorKey: 'createdAt',
+      header: t('request_date'),
+      cell: ({ row }) => (
+        <div className="text-sm">{formatDate(row.original.createdAt)}</div>
+      ),
+    },
+    {
+      id: 'requestBy',
+      header: t('request_by'),
+      cell: ({ row }) => (
+        <div className="text-sm">{row.original.createdBy?.name ?? '-'}</div>
+      ),
+    },
+    // ── คอลัมน์สถานะเครื่องจักร (เฉพาะ ADMIN) ──────────────────────────────
+    ...(isAdmin ? [{
+      id: 'hasMachine',
+      header: t('add_machine_status'),
+      cell: ({ row }: { row: { original: RegisterDTO } }) => {
+        const count = row.original.machineCount ?? 0
+        return count > 0 ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd"
+              />
+            </svg>
+            {t('has_machine')} {count}
+          </span>
+        ) : (
+          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
+            {t('pending')}
+          </span>
+        )
+      },
+      size: 160,
+    } satisfies ColumnDef<RegisterDTO>] : []),
+  ]
 
   // ─── Effects ──────────────────────────────────────────────────────────────
 
@@ -212,29 +169,6 @@ function DataTbl() {
       setData([])
     } finally {
       setLoading(false)
-      setSelectedIds([])
-    }
-  }
-
-  // ─── Delete ───────────────────────────────────────────────────────────────
-
-  const onDeleteData = async (): Promise<{ success: boolean }> => {
-    if (selectedIds.length === 0) return { success: false }
-    try {
-      const response = await api.delete<ResponseDTO<void>>('/api/register/delete', {
-        headers: { 'Content-Type': 'application/json' },
-        data:    selectedIds,
-      })
-      if (response.success) {
-        toast.success(response.message)
-        return { success: true }
-      } else {
-        toast.error(response.message)
-        return { success: false }
-      }
-    } catch {
-      toast.error(t('data_delete_failed'))
-      return { success: false }
     }
   }
 
@@ -245,14 +179,11 @@ function DataTbl() {
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
   }, [])
 
-  const handleSelectDelete = () => {
-    if (selectedIds.length === 0) { toast.warning(t('please_select_at_least_one')); return }
-    setShowDeleteDialog(true)
-  }
-
-  const handleAdd    = () => router.navigate({ to: '/checklist/register/add' })
+  const handleAdd    = () => router.navigate({
+    to: '/checklist/register/add',
+    search: { refId: undefined }
+  })
   const handleView   = (id: number) => router.navigate({ to: '/checklist/register/view', search: { id } })
-  const handleDelete = (id: number) => { setSelectedIds([id]); setShowDeleteDialog(true) }
 
   // ─── Table ────────────────────────────────────────────────────────────────
 
@@ -288,9 +219,7 @@ function DataTbl() {
                 table={table}
                 isSync={false}
                 isAdd={true}
-                isDelete={selectedIds.length > 0}
                 onSearch={handleSearch}
-                onDelete={handleSelectDelete}
                 onAdd={handleAdd}
                 isServerSide={true}
                 searchValue={keyword}
@@ -315,20 +244,10 @@ function DataTbl() {
                 <DataTable
                   table={table}
                   emptyText={t('no_result')}
+                  onRowClick={(row: RegisterDTO) => handleView(row.id)}
                 />
               )}
             </div>
-
-            <DeleteDialog
-              isOpen={showDeleteDialog}
-              onClose={() => setShowDeleteDialog(false)}
-              title={t('delete_registers')}
-              confirmText="DELETE"
-              isAlert={false}
-              variant="destructive"
-              onConfirm={onDeleteData}
-              onSuccess={() => { onFetchData(); setSelectedIds([]) }}
-            />
           </TblContainer>
         </Card>
       </main>

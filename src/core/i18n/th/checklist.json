@@ -418,5 +418,10 @@
   "question_updated":               "อัปเดตคำถามสำเร็จ",
   "question_update_failed":         "อัปเดตคำถามล้มเหลว",
   "question_load_failed":           "โหลดข้อมูลคำถามล้มเหลว",
-  "invalid_id":                     "ID ไม่ถูกต้อง"
+  "invalid_id":                     "ID ไม่ถูกต้อง",
+  "maintenance_6_month": "6 เดือน (2 รอบ)",
+  "maintenance_3_month": "3 เดือน (4 รอบ)",
+  "reset_weekly":         "รายสัปดาห์",
+  "reset_monthly":        "รายเดือน",
+  "reset_every_3_months": "ทุก 3 เดือน"
 }
