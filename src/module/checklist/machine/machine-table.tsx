@@ -303,7 +303,14 @@ export function MachineTbl({
   const { t } = useTranslation('checklist')
   const router = useRouter()
   const { role } = useAuth()
-  const isManagerOrSupervisor = role === 'MANAGER' || role === 'SUPERVISOR'
+
+  // ─── Role flags ───────────────────────────────────────────────────────────
+  // roles ที่มี tab "ที่รับผิดชอบ / ภาพรวม"
+  const hasViewModeTabs = role === 'MANAGER' || role === 'SUPERVISOR' || role === 'DEPARTMENT_ADMIN'
+
+  // DEPARTMENT_ADMIN เริ่มที่ 'overview' (เห็นทั้ง department ตัวเอง)
+  // MANAGER / SUPERVISOR เริ่มที่ 'mine' (เห็นเฉพาะที่ตัวเองรับผิดชอบ)
+  const defaultViewMode: ViewMode = role === 'DEPARTMENT_ADMIN' ? 'overview' : 'mine'
 
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
   const [selectedIds, setSelectedIds] = useState<number[]>([])
@@ -312,7 +319,7 @@ export function MachineTbl({
   const [totalCount, setTotalCount] = useState(0)
   const [keyword, setKeyword] = useState('')
   const [searchValue, setSearchValue] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode>('mine')
+  const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode)
   const debouncedSearch = useDebounce(keyword, 500)
 
   const [filters, setFilters] = useState<MachineFilters>({
@@ -329,19 +336,19 @@ export function MachineTbl({
     responsiblePersons: [],
   })
 
-  const paginationRef = useRef(pagination)
-  const viewModeRef   = useRef(viewMode)
+  const paginationRef  = useRef(pagination)
+  const viewModeRef    = useRef(viewMode)
   const searchValueRef = useRef(searchValue)
 
-  useEffect(() => { paginationRef.current = pagination }, [pagination])
-  useEffect(() => { viewModeRef.current = viewMode }, [viewMode])
+  useEffect(() => { paginationRef.current  = pagination }, [pagination])
+  useEffect(() => { viewModeRef.current    = viewMode },   [viewMode])
   useEffect(() => { searchValueRef.current = searchValue }, [searchValue])
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length
 
   useEffect(() => { onSelectionChange?.(selectedIds) }, [selectedIds])
-  useEffect(() => { onSearchChange?.(keyword) }, [keyword])
-  useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
+  useEffect(() => { onSearchChange?.(keyword) },        [keyword])
+  useEffect(() => { setSearchValue(debouncedSearch) },  [debouncedSearch])
   useEffect(() => { onFetchData(filters) }, [searchValue, pagination.pageIndex, pagination.pageSize, viewMode])
   useEffect(() => { fetchFilterOptions() }, [])
 
@@ -354,9 +361,14 @@ export function MachineTbl({
 
       const params = new URLSearchParams()
       params.set('index', pg.pageIndex.toString())
-      params.set('size', pg.pageSize.toString())
+      params.set('size',  pg.pageSize.toString())
       if (sv.trim()) params.set('keyword', sv.trim())
-      if (isManagerOrSupervisor && vm === 'mine') params.set('mine', 'true')
+
+      // ส่ง mine=true เฉพาะ role ที่มี tab และกด "ที่รับผิดชอบ"
+      // DEPARTMENT_ADMIN ใน overview → ไม่ส่ง mine (Backend filter ตาม department อยู่แล้ว)
+      // DEPARTMENT_ADMIN ใน mine     → ส่ง mine=true (เห็นเฉพาะที่ตัวเองรับผิดชอบใน department)
+      if (hasViewModeTabs && vm === 'mine') params.set('mine', 'true')
+
       if (currentFilters.department)            params.set('department',            currentFilters.department)
       if (currentFilters.machineStatus)         params.set('machineStatus',         currentFilters.machineStatus)
       if (currentFilters.checkStatus)           params.set('checkStatus',           currentFilters.checkStatus)
@@ -402,7 +414,7 @@ export function MachineTbl({
     return translated !== `status_${key}` ? translated : status
   }
 
-  // ─── Columns — ลบ action column ออก, เพิ่ม row click แทน ─────────────────
+  // ─── Columns ──────────────────────────────────────────────────────────────
 
   const columns: ColumnDef<MachineDTO>[] = [
     {
@@ -415,7 +427,6 @@ export function MachineTbl({
         />
       ),
       cell: ({ row }) => (
-        // stopPropagation ป้องกันไม่ให้ checkbox click ไปเปิด sidebar
         <div onClick={e => e.stopPropagation()}>
           <Checkbox
             checked={selectedIds.includes(row.original.id)}
@@ -541,7 +552,8 @@ export function MachineTbl({
           {t('machine_records')}
         </CardTitle>
 
-        {isManagerOrSupervisor && (
+        {/* แสดง Tabs เฉพาะ MANAGER, SUPERVISOR, DEPARTMENT_ADMIN */}
+        {hasViewModeTabs && (
           <Tabs value={viewMode} onValueChange={handleViewModeChange}>
             <TabsList>
               <TabsTrigger value="mine" className="data-[state=active]:bg-red-700 data-[state=active]:text-white">
@@ -590,10 +602,6 @@ export function MachineTbl({
                 className="w-full"
               />
             ) : (
-              /*
-               * ส่ง onRowClick + getRowClassName ให้ DataTable
-               * เพื่อให้ทุก <tr> clickable และ highlight แถวที่เลือก
-               */
               <DataTable
                 table={table}
                 emptyText={t('no_result')}
