@@ -14,8 +14,6 @@ export const Route = createFileRoute('/checklist/members/add')({
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type RoleType = 'ADMIN' | 'SUPERVISOR' | 'MANAGER' | 'MEMBER'
-
 interface MemberForm {
   employeeId:      string
   firstName:       string
@@ -44,11 +42,14 @@ interface MemberOption {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+type RoleType = 'ADMIN' | 'SUPERVISOR' | 'MANAGER' | 'DEPARTMENT_ADMIN' | 'MEMBER'
+
 const ROLE_OPTIONS: { value: RoleType; label: string }[] = [
-  { value: 'ADMIN',      label: 'Admin'      },
-  { value: 'MANAGER',    label: 'Manager'    },
-  { value: 'SUPERVISOR', label: 'Supervisor' },
-  { value: 'MEMBER',     label: 'Member'     },
+  { value: 'ADMIN',            label: 'Admin'            },
+  { value: 'MANAGER',          label: 'Manager'          },
+  { value: 'SUPERVISOR',       label: 'Supervisor'       },
+  { value: 'DEPARTMENT_ADMIN', label: 'Department Admin' },
+  { value: 'MEMBER',           label: 'Member'           },
 ]
 
 const LANGUAGE_OPTIONS = [

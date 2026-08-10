@@ -305,12 +305,9 @@ export function MachineTbl({
   const { role } = useAuth()
 
   // ─── Role flags ───────────────────────────────────────────────────────────
-  // roles ที่มี tab "ที่รับผิดชอบ / ภาพรวม"
   const hasViewModeTabs = role === 'MANAGER' || role === 'SUPERVISOR' || role === 'DEPARTMENT_ADMIN'
 
-  // DEPARTMENT_ADMIN เริ่มที่ 'overview' (เห็นทั้ง department ตัวเอง)
-  // MANAGER / SUPERVISOR เริ่มที่ 'mine' (เห็นเฉพาะที่ตัวเองรับผิดชอบ)
-  const defaultViewMode: ViewMode = role === 'DEPARTMENT_ADMIN' ? 'overview' : 'mine'
+  const defaultViewMode: ViewMode = 'mine'
 
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
   const [selectedIds, setSelectedIds] = useState<number[]>([])
