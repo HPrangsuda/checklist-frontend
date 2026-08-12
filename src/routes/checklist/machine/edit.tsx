@@ -45,7 +45,7 @@ interface QuestionOption {
   isChoice:    boolean
 }
 
-type MachineEditSearch = { id: number }
+type MachineEditSearch = { id: number; step?: string }
 
 const ACTIVE_STATUSES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER MAINTENANCE'] as const
 const isNonActiveStatus = (status: string): boolean =>
@@ -86,8 +86,9 @@ function toISOPreservingDate(val: unknown): string | null {
 export const Route = createFileRoute('/checklist/machine/edit')({
   component: MachineEdit,
   validateSearch: (search: Record<string, unknown>): MachineEditSearch => ({
-    id: Number(search.id) || 0,
-  }),
+  id:   Number(search.id) || 0,
+  step: typeof search.step === 'string' ? search.step : undefined,
+}),
   loaderDeps: ({ search: { id } }) => ({ id }),
   loader: async ({ deps: { id } }) => {
     try {
@@ -547,7 +548,7 @@ function QuestionPicker({ onAdd, existingQuestionIds }: {
 function MachineEdit() {
   const navigate        = useNavigate()
   const { machineData } = Route.useLoaderData()
-  const { id }          = Route.useSearch()
+  const { id, step } = Route.useSearch()
   const { t }           = useTranslation('checklist')
   const { role }        = useAuth()
 
@@ -624,7 +625,10 @@ function MachineEdit() {
   })
 
   // ── Load machine data ─────────────────────────────────────────────────────
-  useEffect(() => { window.scrollTo(0, 0) }, [])
+  useEffect(() => {
+    window.scrollTo(0, 0)
+    if (step) setCurrentStep(step)   // ← เพิ่มบรรทัดนี้
+  }, [])
 
   useEffect(() => {
     if (!machineData) return

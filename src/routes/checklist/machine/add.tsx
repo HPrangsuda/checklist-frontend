@@ -42,8 +42,8 @@ interface CreateMachineResult { id: number; machineCode: string }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
-const API_BASE   = import.meta.env.VITE_API_URL ?? ''
+const IMAGE_EXTS    = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+const API_BASE      = import.meta.env.VITE_API_URL ?? ''
 const SUCCESS_CODES = new Set(['MS001', 'MS003', 'MS017', 'MS031', 'MS040'])
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -105,34 +105,24 @@ function AuthImage({ src, alt, className }: { src: string; alt: string; classNam
 // ─── ImageGalleryDialog ───────────────────────────────────────────────────────
 
 function ImageGalleryDialog({
-  files,
-  initialIndex,
-  open,
-  onClose,
+  files, initialIndex, open, onClose,
 }: {
-  files: FileEntry[]
-  initialIndex: number
-  open: boolean
-  onClose: () => void
+  files: FileEntry[]; initialIndex: number; open: boolean; onClose: () => void
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
-  const [blobUrls, setBlobUrls] = useState<Record<number, string>>({})
-  const [loading, setLoading] = useState(false)
+  const [blobUrls, setBlobUrls]         = useState<Record<number, string>>({})
+  const [loading, setLoading]           = useState(false)
   const blobUrlsRef = useRef<Record<number, string>>({})
+  const imageFiles  = files.filter(f => isImageFile(f.fileName))
 
-  const imageFiles = files.filter(f => isImageFile(f.fileName))
-
-  useEffect(() => {
-    if (open) setCurrentIndex(initialIndex)
-  }, [open, initialIndex])
+  useEffect(() => { if (open) setCurrentIndex(initialIndex) }, [open, initialIndex])
 
   useEffect(() => {
     if (!open || imageFiles.length === 0) return
     const idx = currentIndex
     if (blobUrlsRef.current[idx]) return
     setLoading(true)
-    const src = toFileUrl(imageFiles[idx]?.fileUrl ?? '')
-    api.getInstance().get(src, { responseType: 'blob' })
+    api.getInstance().get(toFileUrl(imageFiles[idx]?.fileUrl ?? ''), { responseType: 'blob' })
       .then((res: any) => {
         const url = URL.createObjectURL(res.data)
         blobUrlsRef.current[idx] = url
@@ -146,14 +136,12 @@ function ImageGalleryDialog({
     if (!open) return
     const preload = (idx: number) => {
       if (idx < 0 || idx >= imageFiles.length || blobUrlsRef.current[idx]) return
-      const src = toFileUrl(imageFiles[idx]?.fileUrl ?? '')
-      api.getInstance().get(src, { responseType: 'blob' })
+      api.getInstance().get(toFileUrl(imageFiles[idx]?.fileUrl ?? ''), { responseType: 'blob' })
         .then((res: any) => {
           const url = URL.createObjectURL(res.data)
           blobUrlsRef.current[idx] = url
           setBlobUrls(prev => ({ ...prev, [idx]: url }))
-        })
-        .catch(() => {})
+        }).catch(() => {})
     }
     preload(currentIndex - 1)
     preload(currentIndex + 1)
@@ -166,7 +154,7 @@ function ImageGalleryDialog({
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape')     onClose()
       if (e.key === 'ArrowLeft')  setCurrentIndex(i => Math.max(0, i - 1))
       if (e.key === 'ArrowRight') setCurrentIndex(i => Math.min(imageFiles.length - 1, i + 1))
     }
@@ -181,19 +169,15 @@ function ImageGalleryDialog({
   const currentBlobUrl = blobUrls[currentIndex]
   const hasPrev        = currentIndex > 0
   const hasNext        = currentIndex < imageFiles.length - 1
-
   const goPrev = (e: React.MouseEvent) => { e.stopPropagation(); setCurrentIndex(i => Math.max(0, i - 1)) }
   const goNext = (e: React.MouseEvent) => { e.stopPropagation(); setCurrentIndex(i => Math.min(imageFiles.length - 1, i + 1)) }
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm" onClick={onClose}>
-      {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/60 shrink-0" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 min-w-0">
           <p className="text-white text-sm truncate max-w-[50vw]">{currentFile?.fileName}</p>
-          {imageFiles.length > 1 && (
-            <span className="text-white/50 text-sm shrink-0">{currentIndex + 1} / {imageFiles.length}</span>
-          )}
+          {imageFiles.length > 1 && <span className="text-white/50 text-sm shrink-0">{currentIndex + 1} / {imageFiles.length}</span>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {currentBlobUrl && (
@@ -203,19 +187,14 @@ function ImageGalleryDialog({
               <Download className="h-4 w-4" /> ดาวน์โหลด
             </a>
           )}
-          <button onClick={onClose}
-            className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
+          <button onClick={onClose} className="flex items-center gap-1.5 text-white text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
             <X className="h-4 w-4" /> ปิด
           </button>
         </div>
       </div>
-
-      {/* Main image */}
       <div className="flex flex-1 items-center justify-center relative overflow-hidden">
         {hasPrev && (
-          <button onClick={goPrev}
-            className="absolute left-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg"
-            aria-label="ก่อนหน้า">
+          <button onClick={goPrev} className="absolute left-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg" aria-label="ก่อนหน้า">
             <ChevronLeft className="h-6 w-6" />
           </button>
         )}
@@ -227,20 +206,15 @@ function ImageGalleryDialog({
             </div>
           ) : (
             <img key={currentIndex} src={currentBlobUrl} alt={currentFile?.fileName}
-              className="max-h-[80vh] max-w-full object-contain rounded-lg shadow-2xl select-none"
-              draggable={false} />
+              className="max-h-[80vh] max-w-full object-contain rounded-lg shadow-2xl select-none" draggable={false} />
           )}
         </div>
         {hasNext && (
-          <button onClick={goNext}
-            className="absolute right-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg"
-            aria-label="ถัดไป">
+          <button onClick={goNext} className="absolute right-3 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 active:scale-95 shadow-lg" aria-label="ถัดไป">
             <ChevronRight className="h-6 w-6" />
           </button>
         )}
       </div>
-
-      {/* Thumbnail strip */}
       {imageFiles.length > 1 && (
         <div className="flex justify-center gap-2 px-4 py-3 bg-black/60 shrink-0 overflow-x-auto" onClick={e => e.stopPropagation()}>
           {imageFiles.map((f, i) => (
@@ -248,9 +222,7 @@ function ImageGalleryDialog({
               className={`shrink-0 w-14 h-14 rounded-md overflow-hidden border-2 transition-all ${
                 i === currentIndex ? 'border-white scale-105' : 'border-white/20 opacity-50 hover:opacity-90 hover:border-white/50'
               }`}>
-              {blobUrls[i]
-                ? <img src={blobUrls[i]} alt={f.fileName} className="w-full h-full object-cover" />
-                : <div className="w-full h-full bg-white/10 animate-pulse" />}
+              {blobUrls[i] ? <img src={blobUrls[i]} alt={f.fileName} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-white/10 animate-pulse" />}
             </button>
           ))}
         </div>
@@ -261,26 +233,15 @@ function ImageGalleryDialog({
 
 // ─── FilePreviewItem ──────────────────────────────────────────────────────────
 
-function FilePreviewItem({
-  file,
-  onOpenGallery,
-  galleryIndex,
-  onDelete,
-}: {
-  file: FileEntry
-  onOpenGallery?: (index: number) => void
-  galleryIndex?: number
-  onDelete: (fileName: string) => void
+function FilePreviewItem({ file, onOpenGallery, galleryIndex, onDelete }: {
+  file: FileEntry; onOpenGallery?: (index: number) => void; galleryIndex?: number; onDelete: (fileName: string) => void
 }) {
   const isImage = isImageFile(file.fileName)
   const src     = toFileUrl(file.fileUrl)
   const [loading, setLoading] = useState(false)
 
   const handleClick = async () => {
-    if (isImage && onOpenGallery && galleryIndex !== undefined) {
-      onOpenGallery(galleryIndex)
-      return
-    }
+    if (isImage && onOpenGallery && galleryIndex !== undefined) { onOpenGallery(galleryIndex); return }
     setLoading(true)
     try {
       const res = await api.getInstance().get(src, { responseType: 'blob' })
@@ -299,23 +260,17 @@ function FilePreviewItem({
           <>
             <AuthImage src={src} alt={file.fileName} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-              {loading
-                ? <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <p className="text-[10px] text-white text-center px-1">🔍 ดูเต็มจอ</p>}
+              {loading ? <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <p className="text-[10px] text-white text-center px-1">🔍 ดูเต็มจอ</p>}
             </div>
           </>
         ) : (
           <div className="flex flex-col items-center justify-center gap-1 p-1 w-full h-full">
             <FileText className="h-7 w-7 text-muted-foreground group-hover:text-primary transition-colors" />
-            <span className="text-[10px] text-muted-foreground text-center leading-tight line-clamp-2 break-all px-1">
-              {file.fileName}
-            </span>
+            <span className="text-[10px] text-muted-foreground text-center leading-tight line-clamp-2 break-all px-1">{file.fileName}</span>
           </div>
         )}
       </div>
-      {/* Delete button */}
-      <button
-        onClick={e => { e.stopPropagation(); onDelete(file.fileName) }}
+      <button onClick={e => { e.stopPropagation(); onDelete(file.fileName) }}
         className="absolute -top-1.5 -right-1.5 z-10 w-5 h-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:scale-110"
         title="ลบไฟล์">
         <X className="h-3 w-3" />
@@ -326,13 +281,7 @@ function FilePreviewItem({
 
 // ─── FilePreviewGrid ──────────────────────────────────────────────────────────
 
-function FilePreviewGrid({
-  files,
-  onDelete,
-}: {
-  files: FileEntry[]
-  onDelete: (fileName: string) => void
-}) {
+function FilePreviewGrid({ files, onDelete }: { files: FileEntry[]; onDelete: (fileName: string) => void }) {
   const [galleryOpen,  setGalleryOpen]  = useState(false)
   const [galleryStart, setGalleryStart] = useState(0)
 
@@ -340,7 +289,6 @@ function FilePreviewGrid({
   if (visibleFiles.length === 0) return null
 
   const imageFiles = visibleFiles.filter(f => isImageFile(f.fileName))
-
   let imgCursor = 0
   const mapped = visibleFiles.map(f => {
     if (isImageFile(f.fileName)) return { file: f, galleryIndex: imgCursor++ }
@@ -361,12 +309,7 @@ function FilePreviewGrid({
         ))}
       </div>
       {imageFiles.length > 0 && (
-        <ImageGalleryDialog
-          files={imageFiles}
-          initialIndex={galleryStart}
-          open={galleryOpen}
-          onClose={() => setGalleryOpen(false)}
-        />
+        <ImageGalleryDialog files={imageFiles} initialIndex={galleryStart} open={galleryOpen} onClose={() => setGalleryOpen(false)} />
       )}
     </>
   )
@@ -408,17 +351,16 @@ function RouteComponent({ data }: any) {
   const imageFilesRef    = useRef<FileEntry[]>([])
   const instrFilesRef    = useRef<FileEntry[]>([])
   const warrantyFilesRef = useRef<FileEntry[]>([])
-  useEffect(() => { imageFilesRef.current    = imageFiles   }, [imageFiles])
-  useEffect(() => { instrFilesRef.current    = instrFiles   }, [instrFiles])
+  useEffect(() => { imageFilesRef.current    = imageFiles    }, [imageFiles])
+  useEffect(() => { instrFilesRef.current    = instrFiles    }, [instrFiles])
   useEffect(() => { warrantyFilesRef.current = warrantyFiles }, [warrantyFiles])
 
   const formSteps: FormStep[] = [
-    { id: 'general',     title: t('general'),    description: t('basic_information'),        required: true  },
+    { id: 'general',     title: t('general'),     description: t('basic_information'),        required: true  },
     { id: 'maintenance', title: t('maintenance'), description: t('maintenance_information'),  required: false },
     { id: 'calibration', title: t('calibration'), description: t('calibration_information'), required: false },
   ]
 
-  // value = API string ที่ส่งไป backend, label = ข้อความ i18n ที่แสดงในฟอร์ม
   const machineStatusOptions = [
     { value: 'OPERATIONAL',       label: t('status_operational') },
     { value: 'NON-OPERATIONAL',   label: t('status_non_operational') },
@@ -429,9 +371,8 @@ function RouteComponent({ data }: any) {
     { value: '3 MONTH', label: t('maintenance_3_month') },
   ]
   const resetPeriodOptions = [
-    { value: 'WEEKLY',         label: t('reset_weekly') },
-    { value: 'MONTHLY',        label: t('reset_monthly') },
-    //{ value: 'EVERY 3 MONTHS', label: t('reset_every_3_months') },
+    { value: 'WEEKLY',  label: t('reset_weekly') },
+    { value: 'MONTHLY', label: t('reset_monthly') },
   ]
   const resultOptions = [
     { value: 'PASS', label: t('status_pass') },
@@ -552,13 +493,8 @@ function RouteComponent({ data }: any) {
     }, 100)
   }
 
-  const markForDelete = (
-    fileId:   string,
-    setFiles: React.Dispatch<React.SetStateAction<FileEntry[]>>,
-  ) => {
-    setFiles(prev => prev.map(f =>
-      f.fileName === fileId ? { ...f, _markedForDelete: true } : f
-    ))
+  const markForDelete = (fileId: string, setFiles: React.Dispatch<React.SetStateAction<FileEntry[]>>) => {
+    setFiles(prev => prev.map(f => f.fileName === fileId ? { ...f, _markedForDelete: true } : f))
   }
 
   const handleDeleteImage    = (fileId: string) => markForDelete(fileId, setImageFiles)
@@ -715,19 +651,13 @@ function RouteComponent({ data }: any) {
 
   const formatDateToISO = (s: string) => { if (!s) return null; try { return new Date(s).toISOString() } catch { return null } }
 
-  const buildMachineDTO = (
-    resolvedImages:   FileEntry[],
-    resolvedInstrs:   FileEntry[],
-    resolvedWarranty: FileEntry[],
-  ) => {
+  const buildMachineDTO = (resolvedImages: FileEntry[], resolvedInstrs: FileEntry[], resolvedWarranty: FileEntry[]) => {
     const toFileItem = (f: FileEntry) => ({
       fileName: f.fileName, fileUrl: f.fileUrl ?? toDisplayUrl(f),
       fileType: f.fileType, fileSize: f.fileSize, uploadedBy: (f as any).uploadedBy ?? null,
     })
-
     const deptCode    = getDeptCode(formData.department)
     const machineCode = buildMachineCode()
-
     const calibrationDTO = formData.calibrationDueDate ? {
       machineName: formData.name, dueDate: formatDateToISO(formData.calibrationDueDate),
       certificateDate: formatDateToISO(formData.certificateDate),
@@ -735,7 +665,6 @@ function RouteComponent({ data }: any) {
       measuringRange: formData.measuringRange || null, accuracy: formData.accuracy || null,
       calibrationRange: formData.calibrationRange || null, calibrationStatus: formData.calibrationStatus || null,
     } : null
-
     const rounds = formData.maintenancePeriod === '3 MONTH' ? 4 : formData.maintenancePeriod === '6 MONTH' ? 2 : 0
     const maintenanceList: any[] = []
     for (let i = 1; i <= rounds; i++) {
@@ -748,11 +677,9 @@ function RouteComponent({ data }: any) {
         planDate: null, resultDate: null, maintenanceBy: null, note: null, attachment: null,
       })
     }
-
     const allImages   = resolvedImages.map(toFileItem)
     const allInstrs   = resolvedInstrs.map(toFileItem)
     const allWarranty = resolvedWarranty.map(f => ({ ...toFileItem(f), category: 'WARRANTY' }))
-
     return {
       machineName: formData.name, machineCode,
       brand: formData.brand || null, model: formData.model || null, serialNumber: formData.serialNumber || null,
@@ -813,9 +740,13 @@ function RouteComponent({ data }: any) {
         api.post(`/api/machine/${savedId}/sync-to-lark`).catch(err => console.warn('[sync-to-lark] failed:', err))
       }
       toast.success(t('machine_created'))
-      setTimeout(() => navigate(
-        refId ? { to: '/checklist/register/view', search: { id: refId } } : { to: '/checklist/machine' }
-      ), 1000)
+      setTimeout(() => {
+        if (savedId) {
+          navigate({ to: '/checklist/machine/edit', search: { id: savedId, step: 'checklist' } })
+        } else {
+          navigate({ to: '/checklist/machine' })
+        }
+      }, 1000)
     } catch (error: any) {
       const serverMsg = error?.response?.data?.message || error?.response?.data?.code || error?.message || t('unknown_error')
       toast.error(t('failed_to_create_machine'), { description: serverMsg })
@@ -998,8 +929,6 @@ function RouteComponent({ data }: any) {
             <TextField id="certificatePeriod" label={t('certificate_period')} value={formData.certificatePeriod} onChange={v => handleInputChange('certificatePeriod', v)} />
             {refId && <TextField id="registerDate" label={t('register_date')} value={formData.registerDate} onChange={() => {}} />}
           </div>
-
-          {/* ── Warranty section ── */}
           <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
             <p className="text-sm font-semibold">{t('warranty')}</p>
             <SingleSelectField id="hasWarranty" label={t('has_warranty')} value={[formData.hasWarranty]}
@@ -1009,64 +938,28 @@ function RouteComponent({ data }: any) {
                 <TextField id="warrantyNote" label={t('warranty_note')} value={formData.warrantyNote}
                   onChange={v => handleInputChange('warrantyNote', v)} error={errors.warrantyNote} required />
                 <DatePickerField id="warrantyExpireDate" label={t('warranty_expire_date')} value={formData.warrantyExpireDate} onChange={d => handleInputChange('warrantyExpireDate', d)} />
-                {/* Warranty file upload + preview */}
-                <FileUploadField
-                  id="warranty-docs"
-                  label={t('warranty_documents')}
-                  maxFiles={10}
-                  value={[]}
-                  uploadedFiles={[]}
-                  onChange={handleWarrantyChange}
-                  onDownloadFile={handleDownloadFile}
-                  onDeleteUploadedFile={handleDeleteWarranty}
-                  onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
-                />
-                {activeFiles(warrantyFiles).length > 0 && (
-                  <FilePreviewGrid files={warrantyFiles} onDelete={handleDeleteWarranty} />
-                )}
+                <FileUploadField id="warranty-docs" label={t('warranty_documents')} maxFiles={10} value={[]} uploadedFiles={[]}
+                  onChange={handleWarrantyChange} onDownloadFile={handleDownloadFile} onDeleteUploadedFile={handleDeleteWarranty}
+                  onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
+                {activeFiles(warrantyFiles).length > 0 && <FilePreviewGrid files={warrantyFiles} onDelete={handleDeleteWarranty} />}
               </>
             )}
           </div>
-
-          {/* ── Images upload + preview ── */}
-          <FileUploadField
-            id="machine-images"
-            label={t('images')}
-            maxFiles={10}
-            value={[]}
-            uploadedFiles={[]}
-            onChange={handleImagesChange}
-            onDownloadFile={handleDownloadFile}
-            onDeleteUploadedFile={handleDeleteImage}
-            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
-          />
-          {activeFiles(imageFiles).length > 0 && (
-            <FilePreviewGrid files={imageFiles} onDelete={handleDeleteImage} />
-          )}
-
-          {/* ── Work instructions upload + preview ── */}
-          <FileUploadField
-            id="machine-instructions"
-            label={t('work_instructions')}
-            maxFiles={10}
-            value={[]}
-            uploadedFiles={[]}
-            onChange={handleInstructionsChange}
-            onDownloadFile={handleDownloadFile}
-            onDeleteUploadedFile={handleDeleteInstr}
-            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })}
-          />
-          {activeFiles(instrFiles).length > 0 && (
-            <FilePreviewGrid files={instrFiles} onDelete={handleDeleteInstr} />
-          )}
+          <FileUploadField id="machine-images" label={t('images')} maxFiles={10} value={[]} uploadedFiles={[]}
+            onChange={handleImagesChange} onDownloadFile={handleDownloadFile} onDeleteUploadedFile={handleDeleteImage}
+            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
+          {activeFiles(imageFiles).length > 0 && <FilePreviewGrid files={imageFiles} onDelete={handleDeleteImage} />}
+          <FileUploadField id="machine-instructions" label={t('work_instructions')} maxFiles={10} value={[]} uploadedFiles={[]}
+            onChange={handleInstructionsChange} onDownloadFile={handleDownloadFile} onDeleteUploadedFile={handleDeleteInstr}
+            onFileReject={(f, m) => toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })} />
+          {activeFiles(instrFiles).length > 0 && <FilePreviewGrid files={instrFiles} onDelete={handleDeleteInstr} />}
         </div>
       )
 
       case 'maintenance': return (
         <div className="px-2 pt-2 space-y-4">
           <SingleSelectField id="maintenancePeriod" label={t('maintenance_period')} value={[formData.maintenancePeriod]}
-            onChange={v => handleInputChange('maintenancePeriod', v[0] || '')}
-            options={maintenanceOptions} />
+            onChange={v => handleInputChange('maintenancePeriod', v[0] || '')} options={maintenanceOptions} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <DatePickerField id="maintenance1" label={t('round_1')} value={formData.maintenance1} onChange={d => handleInputChange('maintenance1', d)} />
             <DatePickerField id="maintenance2" label={t('round_2')} value={formData.maintenance2} onChange={d => handleInputChange('maintenance2', d)} />
