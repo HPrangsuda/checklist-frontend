@@ -22,24 +22,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getStatusColor } from '@/utils/status.untils'
 import { Button } from '@/components/ui/button'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 } from '@/components/ui/sheet'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
+  Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover'
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command'
 import { Separator } from '@/components/ui/separator'
 import { Filter, X, SlidersHorizontal, Check, ChevronsUpDown } from 'lucide-react'
@@ -49,20 +38,20 @@ import type { PageResponse } from '@/core/types/common'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CalibrationDTO {
-  id: number
-  machineCode: string
-  machineName: string
-  years: number
-  dueDate: string
-  certificateDate: string
-  results: string
+  id:                number
+  machineCode:       string
+  machineName:       string
+  years:             number
+  dueDate:           string
+  certificateDate:   string
+  results:           string
   calibrationStatus: string
 }
 
 interface ApiResponse<T> {
-  status: boolean
+  status:  boolean
   message: string
-  data: T
+  data:    T
 }
 
 interface DepartmentOption {
@@ -71,23 +60,23 @@ interface DepartmentOption {
 }
 
 interface FilterOptionsResponse {
-  years: number[]
-  departments: DepartmentOption[]
-  results: string[]
+  years:               number[]
+  departments:         DepartmentOption[]
+  results:             string[]
   calibrationStatuses: string[]
 }
 
 interface CalibrationFilters {
-  year: string
-  department: string
-  results: string
+  year:              string
+  department:        string
+  results:           string
   calibrationStatus: string
 }
 
 interface FilterOptions {
-  years: number[]
-  departments: DepartmentOption[]
-  results: string[]
+  years:               number[]
+  departments:         DepartmentOption[]
+  results:             string[]
   calibrationStatuses: string[]
 }
 
@@ -95,7 +84,7 @@ interface Props {
   machineCode?: string
 }
 
-// ─── i18n status key map ──────────────────────────────────────────────────────
+// ─── Status i18n map ──────────────────────────────────────────────────────────
 
 const STATUS_I18N_MAP: Record<string, string> = {
   'pass':     'status_pass',
@@ -118,23 +107,20 @@ const formatDate = (dateStr?: string): string => {
 const PAGE_SIZE = 10
 
 interface LazySearchSelectProps<T> {
-  value: string
+  value:       string
   placeholder: string
-  allLabel: string
-  items: T[]
-  getKey: (item: T) => string
-  getLabel: (item: T) => string
-  onSelect: (value: string) => void
+  allLabel:    string
+  items:       T[]
+  getKey:      (item: T) => string
+  getLabel:    (item: T) => string
+  onSelect:    (value: string) => void
+  scrollHint:  string   // i18n: "scroll to load more"
+  remaining:   string   // i18n: "remaining"
 }
 
 function LazySearchSelect<T>({
-  value,
-  placeholder,
-  allLabel,
-  items,
-  getKey,
-  getLabel,
-  onSelect,
+  value, placeholder, allLabel, items, getKey, getLabel, onSelect,
+  scrollHint, remaining,
 }: LazySearchSelectProps<T>) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -163,16 +149,9 @@ function LazySearchSelect<T>({
     : ''
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={o => { setOpen(o); if (!o) { setSearch(''); setPage(1) } }}
-    >
+    <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) { setSearch(''); setPage(1) } }}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          className="h-9 w-full justify-between text-sm font-normal"
-        >
+        <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">
           <span className={cn('truncate', !value && 'text-muted-foreground')}>
             {value ? selectedLabel : placeholder}
           </span>
@@ -182,37 +161,25 @@ function LazySearchSelect<T>({
       <PopoverContent className="w-64 p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput placeholder={placeholder} value={search} onValueChange={setSearch} />
-          <CommandList
-            ref={listRef}
-            className="max-h-52 overflow-y-auto"
-            onScroll={handleScroll}
-          >
+          <CommandList ref={listRef} className="max-h-52 overflow-y-auto" onScroll={handleScroll}>
             <CommandEmpty>-</CommandEmpty>
             <CommandGroup>
-              <CommandItem
-                value="__ALL__"
-                onSelect={() => { onSelect(''); setOpen(false); setSearch('') }}
-              >
+              <CommandItem value="__ALL__" onSelect={() => { onSelect(''); setOpen(false); setSearch('') }}>
                 <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
                 {allLabel}
               </CommandItem>
               {visible.map(item => {
-                const key   = getKey(item)
-                const label = getLabel(item)
+                const key = getKey(item)
                 return (
-                  <CommandItem
-                    key={key}
-                    value={key}
-                    onSelect={() => { onSelect(key); setOpen(false); setSearch('') }}
-                  >
+                  <CommandItem key={key} value={key} onSelect={() => { onSelect(key); setOpen(false); setSearch('') }}>
                     <Check className={cn('mr-2 h-4 w-4', value === key ? 'opacity-100' : 'opacity-0')} />
-                    {label}
+                    {getLabel(item)}
                   </CommandItem>
                 )
               })}
               {hasMore && (
                 <div className="py-2 text-center text-xs text-muted-foreground select-none">
-                  ↓ scroll to load more ({filtered.length - visible.length} remaining)
+                  ↓ {scrollHint} ({filtered.length - visible.length} {remaining})
                 </div>
               )}
             </CommandGroup>
@@ -226,22 +193,22 @@ function LazySearchSelect<T>({
 // ─── CalibrationFilterPanel ───────────────────────────────────────────────────
 
 function CalibrationFilterPanel({
-  filters,
-  options,
-  onChange,
-  onClear,
-  activeCount,
-  t,
+  filters, options, onChange, onClear, activeCount, t,
 }: {
-  filters: CalibrationFilters
-  options: FilterOptions
-  onChange: (key: keyof CalibrationFilters, value: string) => void
-  onClear: () => void
+  filters:     CalibrationFilters
+  options:     FilterOptions
+  onChange:    (key: keyof CalibrationFilters, value: string) => void
+  onClear:     () => void
   activeCount: number
-  t: (key: string) => string
+  t:           (key: string) => string
 }) {
   const [open, setOpen] = useState(false)
   const yearItems = options.years.map(y => String(y))
+
+  const selectProps = {
+    scrollHint: t('scroll_to_load_more'),
+    remaining:  t('remaining'),
+  }
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -265,88 +232,52 @@ function CalibrationFilterPanel({
               {t('filter_by')}
             </SheetTitle>
             {activeCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-                onClick={onClear}
-              >
-                <X className="w-3 h-3 mr-1" />
-                {t('clear_all')}
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive" onClick={onClear}>
+                <X className="w-3 h-3 mr-1" />{t('clear_all')}
               </Button>
             )}
           </div>
           {activeCount > 0 && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {activeCount} {t('active_filters')}
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{activeCount} {t('active_filters')}</p>
           )}
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t('years')}
-            </label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('years')}</label>
             <LazySearchSelect<string>
-              value={filters.year}
-              placeholder={t('all')}
-              allLabel={t('all')}
-              items={yearItems}
-              getKey={y => y}
-              getLabel={y => y}
-              onSelect={v => onChange('year', v)}
+              value={filters.year} placeholder={t('all')} allLabel={t('all')}
+              items={yearItems} getKey={y => y} getLabel={y => y}
+              onSelect={v => onChange('year', v)} {...selectProps}
             />
           </div>
-
           <Separator />
-
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t('department')}
-            </label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('department')}</label>
             <LazySearchSelect<DepartmentOption>
-              value={filters.department}
-              placeholder={t('all')}
-              allLabel={t('all')}
-              items={options.departments}
-              getKey={d => d.code}
-              getLabel={d => d.name}
-              onSelect={v => onChange('department', v)}
+              value={filters.department} placeholder={t('all')} allLabel={t('all')}
+              items={options.departments} getKey={d => d.code} getLabel={d => d.name}
+              onSelect={v => onChange('department', v)} {...selectProps}
             />
           </div>
-
           <Separator />
-
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t('results')}
-            </label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('results')}</label>
             <LazySearchSelect<string>
-              value={filters.results}
-              placeholder={t('all')}
-              allLabel={t('all')}
-              items={options.results}
-              getKey={s => s}
+              value={filters.results} placeholder={t('all')} allLabel={t('all')}
+              items={options.results} getKey={s => s}
               getLabel={s => t(STATUS_I18N_MAP[s.toLowerCase()] ?? s) ?? s}
-              onSelect={v => onChange('results', v)}
+              onSelect={v => onChange('results', v)} {...selectProps}
             />
           </div>
-
           <Separator />
-
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t('calibration_status')}
-            </label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('calibration_status')}</label>
             <LazySearchSelect<string>
-              value={filters.calibrationStatus}
-              placeholder={t('all')}
-              allLabel={t('all')}
-              items={options.calibrationStatuses}
-              getKey={s => s}
+              value={filters.calibrationStatus} placeholder={t('all')} allLabel={t('all')}
+              items={options.calibrationStatuses} getKey={s => s}
               getLabel={s => t(STATUS_I18N_MAP[s.toLowerCase()] ?? s) ?? s}
-              onSelect={v => onChange('calibrationStatus', v)}
+              onSelect={v => onChange('calibrationStatus', v)} {...selectProps}
             />
           </div>
         </div>
@@ -358,8 +289,7 @@ function CalibrationFilterPanel({
               className="w-full h-9 text-sm text-destructive border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
               onClick={() => { onClear(); setOpen(false) }}
             >
-              <X className="w-3.5 h-3.5 mr-1.5" />
-              {t('clear_all')}
+              <X className="w-3.5 h-3.5 mr-1.5" />{t('clear_all')}
             </Button>
           </div>
         )}
@@ -371,22 +301,21 @@ function CalibrationFilterPanel({
 // ─── CalibrationTbl ───────────────────────────────────────────────────────────
 
 export function CalibrationTbl({ machineCode }: Props) {
+  const { t } = useTranslation('checklist')   // ← namespace ถูกต้อง
+
   const [pagination, setPagination]   = useState({ pageIndex: 0, pageSize: 10 })
-  // allData = cache ทั้งหมดสำหรับ detail mode (กรอง client-side)
   const [allData, setAllData]         = useState<CalibrationDTO[]>([])
   const [data, setData]               = useState<CalibrationDTO[]>([])
   const [loading, setLoading]         = useState(false)
   const [totalCount, setTotalCount]   = useState(0)
   const [keyword, setKeyword]         = useState('')
   const [searchValue, setSearchValue] = useState('')
-  const debouncedSearch = useDebounce(keyword, 500)
-  const router = useRouter()
-  const { t }  = useTranslation()
+  const debouncedSearch               = useDebounce(keyword, 500)
+  const router                        = useRouter()
 
   const [filters, setFilters] = useState<CalibrationFilters>({
     year: '', department: '', results: '', calibrationStatus: '',
   })
-
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     years: [], departments: [], results: [], calibrationStatuses: [],
   })
@@ -401,47 +330,42 @@ export function CalibrationTbl({ machineCode }: Props) {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length
 
-  // ─── Debounce → searchValue ─────────────────────────────────────────────
-  useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
-
-  // ─── Fetch เมื่อ machineCode เปลี่ยน ─────────────────────────────────────
-  useEffect(() => {
-    fetchFilterOptions()
-    if (machineCode) {
-      fetchByMachineCode()
-    } else {
-      onFetchData(filtersRef.current)
-    }
-  }, [machineCode])
-
-  // ─── List mode: re-fetch เมื่อ search/page เปลี่ยน ──────────────────────
-  useEffect(() => {
-    if (!machineCode) onFetchData(filtersRef.current)
-  }, [searchValue, pagination.pageIndex, pagination.pageSize])
-
-  // ─── Detail mode: re-filter client-side เมื่อ search/filter/page เปลี่ยน
-  useEffect(() => {
-    if (!machineCode) return
-    applyClientFilter(allData, filtersRef.current, searchValue, paginationRef.current)
-  }, [searchValue, filters, pagination.pageIndex, pagination.pageSize, allData])
-
-  // ─── Translate status ────────────────────────────────────────────────────
   const translateStatus = (status: string): string => {
     if (!status) return '-'
     const key = STATUS_I18N_MAP[status.toLowerCase()]
     return key ? t(key) : status
   }
 
-  // ─── Detail mode: fetch once → cache → client-side filter ───────────────
+  // ── Debounce ────────────────────────────────────────────────────────────
+  useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
+
+  // ── Initial fetch ────────────────────────────────────────────────────────
+  useEffect(() => {
+    fetchFilterOptions()
+    if (machineCode) fetchByMachineCode()
+    else             onFetchData(filtersRef.current)
+  }, [machineCode])
+
+  // ── List mode: re-fetch on search/page ──────────────────────────────────
+  useEffect(() => {
+    if (!machineCode) onFetchData(filtersRef.current)
+  }, [searchValue, pagination.pageIndex, pagination.pageSize])
+
+  // ── Detail mode: re-filter on search/filter/page ────────────────────────
+  useEffect(() => {
+    if (!machineCode) return
+    applyClientFilter(allData, filtersRef.current, searchValue, paginationRef.current)
+  }, [searchValue, filters, pagination.pageIndex, pagination.pageSize, allData])
+
+  // ── Detail mode fetch ────────────────────────────────────────────────────
   const fetchByMachineCode = async () => {
     try {
       setLoading(true)
       const resp = await api.get(`/api/calibration/get/${machineCode}`)
-      const responseData = resp as ApiResponse<CalibrationDTO[]>
-      if (responseData.status) {
-        const all = responseData.data ?? []
+      const res  = resp as ApiResponse<CalibrationDTO[]>
+      if (res.status) {
+        const all = res.data ?? []
         setAllData(all)
-        // build filter options จาก data ที่ได้มา
         setFilterOptions(prev => ({
           ...prev,
           years:               [...new Set(all.map(d => d.years).filter(Boolean))].sort((a, b) => b - a),
@@ -450,34 +374,29 @@ export function CalibrationTbl({ machineCode }: Props) {
         }))
         applyClientFilter(all, filtersRef.current, searchValueRef.current, paginationRef.current)
       } else {
-        toast.error(t(responseData.message ?? 'data_fetch_failed'))
-        setAllData([])
-        setData([])
+        toast.error(t('data_fetch_failed'))
+        setAllData([]); setData([])
       }
     } catch {
       toast.error(t('data_fetch_failed'))
-      setAllData([])
-      setData([])
+      setAllData([]); setData([])
     } finally {
       setLoading(false)
     }
   }
 
-  // ─── Client-side filter + slice สำหรับ detail mode ──────────────────────
+  // ── Client-side filter ───────────────────────────────────────────────────
   const applyClientFilter = (
-    source: CalibrationDTO[],
+    source:         CalibrationDTO[],
     currentFilters: CalibrationFilters,
-    sv: string,
-    pg: { pageIndex: number; pageSize: number },
+    sv:             string,
+    pg:             { pageIndex: number; pageSize: number },
   ) => {
     const q = sv.toLowerCase().trim()
     const filtered = source.filter(item => {
-      if (q && !(
-        item.machineCode?.toLowerCase().includes(q) ||
-        item.machineName?.toLowerCase().includes(q)
-      )) return false
-      if (currentFilters.year   && String(item.years) !== currentFilters.year) return false
-      if (currentFilters.results && item.results?.toLowerCase() !== currentFilters.results.toLowerCase()) return false
+      if (q && !(item.machineCode?.toLowerCase().includes(q) || item.machineName?.toLowerCase().includes(q))) return false
+      if (currentFilters.year              && String(item.years) !== currentFilters.year) return false
+      if (currentFilters.results           && item.results?.toLowerCase()           !== currentFilters.results.toLowerCase())           return false
       if (currentFilters.calibrationStatus && item.calibrationStatus?.toLowerCase() !== currentFilters.calibrationStatus.toLowerCase()) return false
       return true
     })
@@ -486,13 +405,12 @@ export function CalibrationTbl({ machineCode }: Props) {
     setData(filtered.slice(start, start + pg.pageSize))
   }
 
-  // ─── List mode: server-side paged fetch ─────────────────────────────────
+  // ── List mode server fetch ────────────────────────────────────────────────
   const onFetchData = async (currentFilters: CalibrationFilters) => {
     try {
       setLoading(true)
       const pg = paginationRef.current
       const sv = searchValueRef.current
-
       const params = new URLSearchParams()
       params.set('index', pg.pageIndex.toString())
       params.set('size',  pg.pageSize.toString())
@@ -507,7 +425,7 @@ export function CalibrationTbl({ machineCode }: Props) {
         setData(response.data ?? [])
         setTotalCount(response.totalElements ?? 0)
       } else {
-        toast.error(response?.message ?? t('data_fetch_failed'))
+        toast.error(t('data_fetch_failed'))
         setData([])
       }
     } catch {
@@ -518,7 +436,7 @@ export function CalibrationTbl({ machineCode }: Props) {
     }
   }
 
-  // ─── Filter options (list mode: server, role-scoped) ─────────────────────
+  // ── Filter options ────────────────────────────────────────────────────────
   const fetchFilterOptions = async () => {
     try {
       const response = await api.get<FilterOptionsResponse>('/api/calibration/filter-options')
@@ -535,27 +453,21 @@ export function CalibrationTbl({ machineCode }: Props) {
     }
   }
 
-  // ─── Filter handlers ─────────────────────────────────────────────────────
+  // ── Filter handlers ───────────────────────────────────────────────────────
   const handleFilterChange = useCallback((key: keyof CalibrationFilters, value: string) => {
     const newFilters = { ...filtersRef.current, [key]: value }
     setFilters(newFilters)
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-    if (machineCode) {
-      applyClientFilter(allData, newFilters, searchValueRef.current, { ...paginationRef.current, pageIndex: 0 })
-    } else {
-      onFetchData(newFilters)
-    }
+    if (machineCode) applyClientFilter(allData, newFilters, searchValueRef.current, { ...paginationRef.current, pageIndex: 0 })
+    else             onFetchData(newFilters)
   }, [machineCode, allData])
 
   const handleClearFilters = useCallback(() => {
     const empty: CalibrationFilters = { year: '', department: '', results: '', calibrationStatus: '' }
     setFilters(empty)
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-    if (machineCode) {
-      applyClientFilter(allData, empty, searchValueRef.current, { ...paginationRef.current, pageIndex: 0 })
-    } else {
-      onFetchData(empty)
-    }
+    if (machineCode) applyClientFilter(allData, empty, searchValueRef.current, { ...paginationRef.current, pageIndex: 0 })
+    else             onFetchData(empty)
   }, [machineCode, allData])
 
   const handleSearch = useCallback((value: string) => {
@@ -563,13 +475,7 @@ export function CalibrationTbl({ machineCode }: Props) {
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
   }, [])
 
-  // ─── Navigation ──────────────────────────────────────────────────────────
-  const handleView = (id: number) =>
-    router.navigate({ to: '/checklist/calibration/view', search: { id } })
-  const handleEdit = (id: number) =>
-    router.navigate({ to: '/checklist/calibration/edit', search: { id } })
-
-  // ─── Columns ─────────────────────────────────────────────────────────────
+  // ── Columns ───────────────────────────────────────────────────────────────
   const columns = useMemo<ColumnDef<CalibrationDTO>[]>(() => [
     {
       accessorKey: 'years',
@@ -578,7 +484,7 @@ export function CalibrationTbl({ machineCode }: Props) {
     },
     {
       accessorKey: 'dueDate',
-      header: t('due_date'),
+      header: t('calibration_due_date'),
       cell: ({ row }) => <div className="text-sm">{formatDate(row.original.dueDate)}</div>,
     },
     {
@@ -590,20 +496,16 @@ export function CalibrationTbl({ machineCode }: Props) {
       accessorKey: 'results',
       header: t('results'),
       cell: ({ row }) => {
-        const status = row.original.results
-        return status
-          ? <Badge className={getStatusColor(status)}>{translateStatus(status)}</Badge>
-          : <span>-</span>
+        const s = row.original.results
+        return s ? <Badge className={getStatusColor(s)}>{translateStatus(s)}</Badge> : <span>-</span>
       },
     },
     {
       accessorKey: 'calibrationStatus',
       header: t('calibration_status'),
       cell: ({ row }) => {
-        const status = row.original.calibrationStatus
-        return status
-          ? <Badge className={getStatusColor(status)}>{translateStatus(status)}</Badge>
-          : <span>-</span>
+        const s = row.original.calibrationStatus
+        return s ? <Badge className={getStatusColor(s)}>{translateStatus(s)}</Badge> : <span>-</span>
       },
     },
     {
@@ -611,33 +513,30 @@ export function CalibrationTbl({ machineCode }: Props) {
       header: t('action'),
       cell: ({ row }) => (
         <TblAction
-          view
-          edit
-          onView={() => handleView(row.original.id)}
-          onEdit={() => handleEdit(row.original.id)}
+          view edit
+          onView={() => router.navigate({ to: '/checklist/calibration/view', search: { id: row.original.id } })}
+          onEdit={() => router.navigate({ to: '/checklist/calibration/edit', search: { id: row.original.id } })}
         />
       ),
     },
   ], [t])
 
-  // ─── Table ───────────────────────────────────────────────────────────────
+  // ── Table ─────────────────────────────────────────────────────────────────
   const table = useReactTable({
-    data,
-    columns,
+    data, columns,
     manualPagination: true,
-    getCoreRowModel: getCoreRowModel(),
+    getCoreRowModel:     getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    getSortedRowModel:   getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onPaginationChange: setPagination,
-    pageCount: Math.ceil(totalCount / pagination.pageSize) || 0,
-    manualSorting: true,
-    manualFiltering: true,
+    onPaginationChange:  setPagination,
+    pageCount:           Math.ceil(totalCount / pagination.pageSize) || 0,
+    manualSorting: true, manualFiltering: true,
     state: { pagination },
     getRowId: row => row.id.toString(),
   })
 
-  // ─── Render ──────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Card className="shadow-sm border-dashboard-border">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b bg-dashboard-bg/50">
@@ -645,39 +544,27 @@ export function CalibrationTbl({ machineCode }: Props) {
       </CardHeader>
       <CardContent className="p-2">
         <TblContainer>
-          {/* Toolbar row: Search + ปุ่มกรอง อยู่แถวเดียวกันเสมอ */}
           <div className="flex items-center gap-2 pt-1 pb-3">
             <div className="flex-1">
               <DataTableToolbar
-                table={table}
-                isSync={false}
-                onSearch={handleSearch}
-                isServerSide={true}
-                searchValue={keyword}
-                breakpoint={1300}
+                table={table} isSync={false}
+                onSearch={handleSearch} isServerSide={true}
+                searchValue={keyword} breakpoint={1300}
                 className="w-full gap-2 pt-0 pb-0"
               />
             </div>
             <CalibrationFilterPanel
-              filters={filters}
-              options={filterOptions}
-              onChange={handleFilterChange}
-              onClear={handleClearFilters}
-              activeCount={activeFilterCount}
-              t={t}
+              filters={filters} options={filterOptions}
+              onChange={handleFilterChange} onClear={handleClearFilters}
+              activeCount={activeFilterCount} t={t}
             />
           </div>
           <div>
             {loading ? (
               <DataTableSkeleton
-                columnCount={columns.length}
-                rowCount={10}
-                filterCount={0}
-                cellWidths={['auto']}
-                withViewOptions={false}
-                withPagination={true}
-                shrinkZero={false}
-                className="w-full"
+                columnCount={columns.length} rowCount={10} filterCount={0}
+                cellWidths={['auto']} withViewOptions={false} withPagination={true}
+                shrinkZero={false} className="w-full"
               />
             ) : (
               <DataTable table={table} emptyText={t('no_result')} />

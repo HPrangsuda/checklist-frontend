@@ -453,7 +453,7 @@ export function CalibrationKanbanCard() {
 
   return (
     <>
-      <Card className="p-0 overflow-hidden gap-0">
+      <Card className="p-0 overflow-hidden gap-0 mb-4">
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3 border-b px-5 py-4">
           <div>
             <CardTitle className="font-bold">

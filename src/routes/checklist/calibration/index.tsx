@@ -19,6 +19,7 @@ import { PencilRuler, SlidersHorizontal, Filter, X, Check, ChevronsUpDown } from
 import { CalibrationDepartmentDashboard } from '@/module/checklist/calibration/calibration-department-dashboard'
 import { CalibrationKanbanCard } from '@/module/checklist/calibration/calibrationkanbancard'
 import { CalibrationPlanActualCard } from '@/module/checklist/calibration/plan-actual-cal'
+import { CalibrationCalendarCard } from '@/module/checklist/calibration/calibration-calendar'
 import { Button } from '@/components/ui/button'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
@@ -386,11 +387,7 @@ function CalibrationTable() {
   ]
 
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
-
-  // re-fetch เมื่อ search หรือ page เปลี่ยน
   useEffect(() => { onFetchData(filtersRef.current) }, [searchValue, pagination.pageIndex, pagination.pageSize])
-
-  // โหลด filter options ครั้งเดียวตอน mount
   useEffect(() => { fetchFilterOptions() }, [])
 
   const onFetchData = async (currentFilters: CalibrationFilters) => {
@@ -488,13 +485,12 @@ function CalibrationTable() {
   })
 
   return (
-    <Card className="p-0 overflow-hidden">
+    <Card className="p-0 overflow-hidden mb-4">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b px-5 py-4">
         <CardTitle className="font-bold">
           <PencilRuler className="w-5 h-5 text-red-600 inline mr-2" />
           {t('calibration_lists')}
         </CardTitle>
-        {/* ── ปุ่มกรองอยู่ใน CardHeader ชิดขวา เสมอ ── */}
         <CalibrationFilterPanel
           filters={filters}
           options={filterOptions}
@@ -543,6 +539,7 @@ function Calibration() {
       <div className="flex flex-col gap-4 px-4 py-6 sm:px-6">
         <CalibrationDepartmentDashboard />
         <CalibrationKanbanCard />
+        <CalibrationCalendarCard />
         <CalibrationTable />
         <CalibrationPlanActualCard />
       </div>

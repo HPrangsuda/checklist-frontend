@@ -423,5 +423,20 @@
   "maintenance_3_month": "3 เดือน (4 รอบ)",
   "reset_weekly":         "รายสัปดาห์",
   "reset_monthly":        "รายเดือน",
-  "reset_every_3_months": "ทุก 3 เดือน"
+  "reset_every_3_months": "ทุก 3 เดือน",
+  "calibration_calendar": "ปฏิทินการสอบเทียบ",
+  "cal_mon": "จ",
+  "cal_tue": "อ",
+  "cal_wed": "พ",
+  "cal_thu": "พฤ",
+  "cal_fri": "ศ",
+  "cal_sat": "ส",
+  "cal_sun": "อา",
+  "cal_more": "รายการ",
+  "cal_items": "รายการ",
+  "today": "วันนี้",
+  "view": "ดูรายละเอียด",
+  "total_calibrations": "จำนวนการสอบเทียบทั้งหมด",
+  "total_overdue": "จำนวนการสอบเทียบเกินกำหนด",
+  "overview_cal_departments": "ภาพรวมการสอบเทียบใน {count} แผนก"
 }

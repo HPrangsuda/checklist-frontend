@@ -423,5 +423,20 @@
   "maintenance_3_month": "3 Month (4 rounds)",
   "reset_weekly":         "Weekly",
   "reset_monthly":        "Monthly",
-  "reset_every_3_months": "Every 3 Months"
+  "reset_every_3_months": "Every 3 Months",
+  "calibration_calendar": "Calibration Calendar",
+  "cal_mon": "Mon",
+  "cal_tue": "Tue",
+  "cal_wed": "Wed",
+  "cal_thu": "Thu",
+  "cal_fri": "Fri",
+  "cal_sat": "Sat",
+  "cal_sun": "Sun",
+  "cal_more": "more",
+  "cal_items": "items",
+  "today": "Today",
+  "view": "View",
+  "total_calibrations": "Total Calibrations",
+  "total_overdue": "Total Overdue",
+  "overview_cal_departments": "Overview across {count} departments"
 }
