@@ -442,5 +442,5 @@
   "machine_details": "รายละเอียดเครื่องจักร",
   "export_selected": "ส่งออกที่เลือก",
   "export_selected_desc": "ส่งออก QR สำหรับ {count} รายการที่เลือก",
-  "maintenance_calendar": "ปฏิทินการซ่อมบำรุง "
+  "maintenance_calendar": "ปฏิทินการซ่อมบำรุง"
 }
