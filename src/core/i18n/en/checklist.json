@@ -438,5 +438,9 @@
   "view": "View",
   "total_calibrations": "Total Calibrations",
   "total_overdue": "Total Overdue",
-  "overview_cal_departments": "Overview across {count} departments"
+  "overview_cal_departments": "Overview across {count} departments",
+  "machine_details": "Machine Details",
+  "export_selected": "Export Selected",
+  "export_selected_desc": "Export QR for {count} selected items",
+   "maintenance_calendar": "Maintenance Calendar"
 }

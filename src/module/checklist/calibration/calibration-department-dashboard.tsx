@@ -26,7 +26,7 @@ interface DepartmentSummaryRaw {
 }
 
 interface DepartmentSummary extends DepartmentSummaryRaw {
-  passRate:      number   // คำนวณใน frontend
+  passRate:      number
   onTimeRate:    number
   completedRate: number
 }
@@ -54,10 +54,10 @@ function parseResponse(response: unknown): DepartmentSummaryRaw[] {
   if (response && typeof response === 'object') {
     const r = response as Record<string, any>
     const numericKeys = Object.keys(r).filter(k => !isNaN(Number(k)))
-    if (numericKeys.length > 0)        return numericKeys.map(k => r[k])
-    if (Array.isArray(r.data))         return r.data
-    if (Array.isArray(r.body))         return r.body
-    if (Array.isArray(r.content))      return r.content
+    if (numericKeys.length > 0)   return numericKeys.map(k => r[k])
+    if (Array.isArray(r.data))    return r.data
+    if (Array.isArray(r.body))    return r.body
+    if (Array.isArray(r.content)) return r.content
   }
   return []
 }
@@ -75,8 +75,6 @@ export function CalibrationDepartmentDashboard() {
   const [sortOrder,      setSortOrder]      = useState<SortOrder>('desc')
   const [filterPerf,     setFilterPerf]     = useState<PerfFilter>('all')
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
-
   useEffect(() => { fetchDepartmentSummary() }, [])
 
   const fetchDepartmentSummary = async () => {
@@ -84,7 +82,6 @@ export function CalibrationDepartmentDashboard() {
       setLoading(true)
       const response = await api.get<unknown>('/api/calibration/department-summary')
       const raw = parseResponse(response)
-      // คำนวณ rate ทันทีหลัง fetch
       setDepartmentData(raw.map(withRates))
     } catch {
       toast.error(t('error_fetching_calibration_stats'))
@@ -93,8 +90,6 @@ export function CalibrationDepartmentDashboard() {
       setLoading(false)
     }
   }
-
-  // ── Filter + Sort ──────────────────────────────────────────────────────────
 
   useEffect(() => {
     let f = [...departmentData]
@@ -129,8 +124,6 @@ export function CalibrationDepartmentDashboard() {
     setFilteredData(f)
   }, [departmentData, searchTerm, sortField, sortOrder, filterPerf])
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortOrder(o => o === 'asc' ? 'desc' : 'asc')
     else { setSortField(field); setSortOrder('desc') }
@@ -143,18 +136,15 @@ export function CalibrationDepartmentDashboard() {
 
   const perfScore = (dept: DepartmentSummary): number => {
     const hasResults = dept.totalPass + dept.totalNotPass > 0
-    if (!hasResults) {
-      return (dept.onTimeRate + dept.completedRate) / 2
-    }
+    if (!hasResults) return (dept.onTimeRate + dept.completedRate) / 2
     return dept.passRate * 0.5 + dept.onTimeRate * 0.3 + dept.completedRate * 0.2
   }
 
   const perfBadge = (dept: DepartmentSummary) => {
-    const score = perfScore(dept)
+    const score      = perfScore(dept)
     const hasResults = dept.totalPass + dept.totalNotPass > 0
-    if (!hasResults && dept.completedRate === 0 && dept.onTimeRate === 0) {
+    if (!hasResults && dept.completedRate === 0 && dept.onTimeRate === 0)
       return <Badge className="bg-zinc-100 text-zinc-500 text-[10px]">{t('pending')}</Badge>
-    }
     if (score >= 80) return <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">{t('excellent')}</Badge>
     if (score >= 60) return <Badge className="bg-amber-100  text-amber-700  text-[10px]">{t('good')}</Badge>
     return                  <Badge className="bg-red-100    text-red-700    text-[10px]">{t('needs_attention')}</Badge>
@@ -185,16 +175,12 @@ export function CalibrationDepartmentDashboard() {
     URL.revokeObjectURL(url)
   }
 
-  // ── Aggregates ─────────────────────────────────────────────────────────────
-
-  const totalCalibrations = filteredData.reduce((s, d) => s + (d.total       || 0), 0)
-  const totalPassAll      = filteredData.reduce((s, d) => s + (d.totalPass    || 0), 0)
-  const totalOverdueAll   = filteredData.reduce((s, d) => s + (d.totalOverdue || 0), 0)
-  const totalCompletedAll = filteredData.reduce((s, d) => s + (d.totalCompleted || 0), 0)
+  const totalCalibrations = filteredData.reduce((s, d) => s + (d.total          || 0), 0)
+  const totalPassAll      = filteredData.reduce((s, d) => s + (d.totalPass       || 0), 0)
+  const totalOverdueAll   = filteredData.reduce((s, d) => s + (d.totalOverdue    || 0), 0)
+  const totalCompletedAll = filteredData.reduce((s, d) => s + (d.totalCompleted  || 0), 0)
   const avgPassRate       = totalCalibrations > 0 ? (totalPassAll      / totalCalibrations) * 100 : 0
   const avgCompletedRate  = totalCalibrations > 0 ? (totalCompletedAll / totalCalibrations) * 100 : 0
-
-  // ── Config ─────────────────────────────────────────────────────────────────
 
   const sortFields: { field: SortField; label: string }[] = [
     { field: 'departmentName', label: t('department')      },
@@ -238,14 +224,12 @@ export function CalibrationDepartmentDashboard() {
     },
   ]
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
   return (
     <div className="space-y-4 mb-4">
 
-      {/* Header */}
+      {/* ── Header — เปลี่ยนเป็นสีแดง เหมือน Machine dashboard ── */}
       <Card className="p-0 overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3 border-b px-5 py-4">
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3 border-b px-5 py-4 bg-gradient-to-r from-red-50 dark:from-red-950/30 to-red-100/60 dark:to-red-900/20">
           <div>
             <CardTitle className="font-bold text-lg flex items-center gap-2">
               <PencilRuler className="w-5 h-5 text-red-600" />
@@ -263,7 +247,7 @@ export function CalibrationDepartmentDashboard() {
         </CardHeader>
       </Card>
 
-      {/* Stat cards */}
+      {/* ── Stat cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {statCards.map(({ label, value, icon, color }) => (
           <Card key={label} className="p-4">
@@ -278,9 +262,8 @@ export function CalibrationDepartmentDashboard() {
         ))}
       </div>
 
-      {/* Table card */}
+      {/* ── Table card ── */}
       <Card className="p-0 overflow-hidden">
-        {/* Toolbar */}
         <div className="flex flex-col sm:flex-row gap-3 px-5 py-4 border-b">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -306,7 +289,6 @@ export function CalibrationDepartmentDashboard() {
           </div>
         </div>
 
-        {/* Table */}
         <div className="overflow-x-auto">
           {loading ? (
             <div className="space-y-2 p-5">
@@ -351,15 +333,12 @@ export function CalibrationDepartmentDashboard() {
                   </tr>
                 ) : filteredData.map((dept, i) => (
                   <tr key={i} className="hover:bg-muted/30 transition-colors">
-                    {/* Department name */}
                     <td className="px-4 py-2.5 text-xs font-medium">
                       {dept.departmentName || dept.department}
                     </td>
-                    {/* Total */}
                     <td className="px-4 py-2.5 text-xs text-center font-semibold">
                       {dept.total}
                     </td>
-                    {/* Rate columns */}
                     {(['passRate', 'onTimeRate', 'completedRate'] as const).map(rk => (
                       <td key={rk} className="px-4 py-2.5 text-center min-w-[100px]">
                         <div className="flex flex-col items-center gap-1">
@@ -375,7 +354,6 @@ export function CalibrationDepartmentDashboard() {
                         </div>
                       </td>
                     ))}
-                    {/* Pass / Not Pass */}
                     <td className="px-4 py-2.5 text-center">
                       <div className="flex items-center justify-center gap-1.5 text-xs">
                         <span className="text-emerald-600 font-semibold">{dept.totalPass}</span>
@@ -383,7 +361,6 @@ export function CalibrationDepartmentDashboard() {
                         <span className="text-red-700 font-semibold">{dept.totalNotPass}</span>
                       </div>
                     </td>
-                    {/* Performance badge */}
                     <td className="px-4 py-2.5 text-center">
                       {perfBadge(dept)}
                     </td>

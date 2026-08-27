@@ -18,6 +18,7 @@ import { Wrench, SlidersHorizontal, Filter, X, Check, ChevronsUpDown } from 'luc
 import { MaintenanceKanbanCard } from '@/module/checklist/maintenance/maintencekanbancard'
 import { MaintenanceDepartmentDashboard } from '@/module/checklist/maintenance/maintenance-department-dashboard'
 import { MaintenancePlanActualCard } from '@/module/checklist/maintenance/plan-actual-card'
+import { MaintenanceCalendarCard } from '@/module/checklist/maintenance/maintenance-calendar'
 import { Button } from '@/components/ui/button'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
@@ -455,6 +456,7 @@ function Maintenance() {
       <main className="container mx-auto px-4 py-8">
         <MaintenanceDepartmentDashboard />
         <MaintenanceKanbanCard />
+        <MaintenanceCalendarCard />
         <MaintenanceTable />
         <MaintenancePlanActualCard />
       </main>

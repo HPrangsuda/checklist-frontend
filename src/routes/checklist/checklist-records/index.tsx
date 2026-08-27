@@ -80,9 +80,7 @@ function Checklist() {
       params.set('size', pagination.pageSize.toString())
       if (searchValue.trim()) params.set('keyword', searchValue.trim())
 
-      console.log('🔍 Fetching main data with role...')
       const response = await api.get<PageResponse<ChecklistDTO>>('/api/checklist/get/role', { params })
-      console.log('✅ Main response:', response)
       if (response?.success) {
         setData(response.data ?? [])
         setTotalCount(response.totalElements ?? 0)
@@ -124,60 +122,22 @@ function Checklist() {
     </div>
   )
 
-  // ─── columns (main table) ─────────────────────────────────────────────────
-
   const columns: ColumnDef<ChecklistDTO>[] = [
     {
-      id: 'select',
-      header: () => (
-        <Checkbox
-          checked={data.length > 0 && data.every(row => selectedIds.includes(row.id))}
-          onCheckedChange={checked => setSelectedIds(checked ? data.map(r => r.id) : [])}
-          aria-label="Select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <div onClick={e => e.stopPropagation()}>
-          <Checkbox
-            checked={selectedIds.includes(row.original.id)}
-            onCheckedChange={checked =>
-              setSelectedIds(prev => checked
-                ? [...prev, row.original.id]
-                : prev.filter(id => id !== row.original.id)
-              )
-            }
-            aria-label="Select row"
-          />
-        </div>
-      ),
-      size: 32,
-    },
-    {
-      id: 'action',
-      header: t('action'),
-      cell: ({ row }) => (
-        <TblAction
-          view
-          onView={() => handleView(row.original.id)}
-        />
-      ),
-      size: 80,
-    },
-    {
       id: 'machine',
-      size: 280,       
+      size: 280,
       maxSize: 280,
       header: t('machine_name'),
       cell: ({ row }) => <MachineCell row={row} />,
     },
-    {      
+    {
       id: 'createdAt',
       header: t('created_at'),
-      cell: ({ row }) => {    
+      cell: ({ row }) => {
         const date = new Date(row.original.createdAt)
         const formatted = date.toLocaleDateString('en-CA')
         return <span className="text-sm">{formatted}</span>
-      },  
+      },
     },
     {
       accessorKey: 'userName',
@@ -204,7 +164,7 @@ function Checklist() {
     },
   ]
 
-  // ─── columns (pending table) ──────────────────────────────────────────────
+  // ─── columns (pending table) — คงเดิม ใช้ TblAction edit ─────────────────
 
   const pendingColumns: ColumnDef<ChecklistDTO>[] = [
     {
@@ -335,7 +295,11 @@ function Checklist() {
                   shrinkZero={false} className="w-full"
                 />
               ) : (
-                <DataTable table={table} emptyText={t('no_result')} />
+                <DataTable
+                  table={table}
+                  emptyText={t('no_result')}
+                  onRowClick={(row: ChecklistDTO) => handleView(row.id)}
+                />
               )}
             </div>
           </TblContainer>

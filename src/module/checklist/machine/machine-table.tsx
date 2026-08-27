@@ -59,6 +59,7 @@ export interface MachineDTO {
   machineStatus: string
   checkStatus: string
   responsiblePersonName: string
+  createdAt: string
   qrCode?: string
   qr_code?: string
   image?: string
@@ -490,6 +491,16 @@ export function MachineTbl({
         ) : (
           <span className="text-muted-foreground text-sm">-</span>
         ),
+    },
+    {
+      accessorKey: 'createdAt',
+      header: t('created_at'),
+      cell: ({ row }) => {
+        const raw = row.original.createdAt
+        if (!raw) return <span className="text-muted-foreground text-sm">-</span>
+        const [y, m, d] = raw.split('T')[0].split('-')
+        return <div className="text-sm">{`${y}-${m}-${d}`}</div>
+      },
     },
   ]
 
