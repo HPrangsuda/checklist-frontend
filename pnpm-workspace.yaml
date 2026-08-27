@@ -1,0 +1,10 @@
+overrides:
+  node-domexception: ^2.0.0
+
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - '@tailwindcss/oxide'
+  - core-js
+  - esbuild
+  - sharp
+  - unrs-resolver
