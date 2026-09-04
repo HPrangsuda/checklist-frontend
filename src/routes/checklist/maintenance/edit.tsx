@@ -18,6 +18,7 @@ import { FileUploadField } from '@/components/form/FileUploadField'
 import { ServerSingleSelect } from '@/components/select/server-single-select'
 import { sessionStore } from '@/core/lib/store'
 import type { ListResponse, MemberListDTO } from '@/core/types/common'
+import { useAuth } from '@/core/contexts/auth-context'
 
 export const Route = createFileRoute('/checklist/maintenance/edit')({
   component: MaintenanceEdit,
@@ -152,6 +153,8 @@ const parseAttachment = (raw: unknown): FileUploadResponse[] => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function MaintenanceEdit() {
+  const { role } = useAuth()
+  const isAdmin  = role === 'ADMIN'
   const { id } = useSearch({ from: '/checklist/maintenance/edit' })
   const { t }  = useTranslation('checklist')
 
@@ -577,8 +580,10 @@ function MaintenanceEdit() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label>{t('due_date')}</Label>
-            <DatePickerField id="dueDate" value={formData.dueDate}
-              onChange={d => handleInputChange('dueDate', d)} />
+            <div className={!isAdmin ? 'pointer-events-none opacity-50' : ''}>
+              <DatePickerField id="dueDate" value={formData.dueDate}
+                onChange={d => handleInputChange('dueDate', d)} />
+            </div>
           </div>
           <div className="space-y-2">
             <Label>{t('plan_date')}</Label>

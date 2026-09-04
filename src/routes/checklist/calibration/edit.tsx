@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { DatePickerField } from '@/components/form/DatePickerField'
 import { FileUploadField } from '@/components/form/FileUploadField'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAuth } from '@/core/contexts/auth-context'
 
 export const Route = createFileRoute('/checklist/calibration/edit')({
   component: CalibrationEdit,
@@ -68,6 +69,9 @@ const parseAttachments = (raw?: string | null): FileUploadResponse[] => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function CalibrationEdit() {
+  const { role } = useAuth()
+  const isAdmin  = role === 'ADMIN'
+
   const { id } = useSearch({ from: '/checklist/calibration/edit' })
   const [formData, setFormData] = useState<CalibrationFormData>({
     id: 0,
@@ -279,23 +283,25 @@ function CalibrationEdit() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
               <div className="space-y-2">
-                <DatePickerField
-                  id="dueDate"
-                  label={t('due_date')}
-                  value={formData.dueDate ? new Date(formData.dueDate) : null}
-                  onChange={(date) => {
-                    const isoDate = date ? date.toISOString().split('T')[0] : ''
-                    handleInputChange('dueDate', isoDate)
-                    if (formData.certificateDate && isoDate) {
-                      if (new Date(formData.certificateDate) > new Date(isoDate)) {
-                        handleInputChange('calibrationStatus', 'Overdue')
-                        toast.warning(t('cert_exceeds_due_date'))
-                      } else if (formData.calibrationStatus === 'Overdue') {
-                        handleInputChange('calibrationStatus', 'On Time')
-                      }
-                    }
-                  }}
-                />
+                <div className={!isAdmin ? 'pointer-events-none opacity-50' : ''}>
+  <DatePickerField
+    id="dueDate"
+    label={t('due_date')}
+    value={formData.dueDate ? new Date(formData.dueDate) : null}
+    onChange={(date) => {
+      const isoDate = date ? date.toISOString().split('T')[0] : ''
+      handleInputChange('dueDate', isoDate)
+      if (formData.certificateDate && isoDate) {
+        if (new Date(formData.certificateDate) > new Date(isoDate)) {
+          handleInputChange('calibrationStatus', 'Overdue')
+          toast.warning(t('cert_exceeds_due_date'))
+        } else if (formData.calibrationStatus === 'Overdue') {
+          handleInputChange('calibrationStatus', 'On Time')
+        }
+      }
+    }}
+  />
+</div>
               </div>
 
               <div className="space-y-2">

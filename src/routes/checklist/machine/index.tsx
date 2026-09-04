@@ -11,7 +11,7 @@ import { MachineTbl, type MachineDTO } from '@/module/checklist/machine/machine-
 import { getStatusColor } from '@/utils/status.untils'
 import {
   CheckCircle2, TrendingUp, TrendingDown,
-  Search, Download, Drill, Wrench, XCircle, FileCheck, QrCode,
+  Search, Download, Drill, Wrench, QrCode,
   X, Eye, Pencil, Building2, User, ShieldCheck, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { exportMachineQrPdf } from '@/utils/exportMachineQrPdf'
@@ -34,27 +34,16 @@ export const Route = createFileRoute('/checklist/machine/')({
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DepartmentSummary {
-  department:      string
-  departmentName:  string
-  total:           number
-  totalReadyToUse: number
-  totalRepair:     number
-  totalNotInUse:   number
-  totalCompleted:  number
-  totalPending:    number
-  totalApprove:    number
-  readyRate:       number
-  completedRate:   number
-  approveRate:     number
+  department:            string
+  departmentName:        string
+  total:                 number
+  totalReadyToUse:       number
+  totalUnderMaintenance: number
+  readyRate:             number
 }
 
-type SortField  = 'departmentName' | 'total' | 'readyRate' | 'completedRate' | 'approveRate'
-type SortOrder  = 'asc' | 'desc'
-type PerfFilter = 'all' | 'excellent' | 'good' | 'needsAttention'
-
-function perfScore(d: DepartmentSummary): number {
-  return d.readyRate * 0.5 + d.completedRate * 0.3 + d.approveRate * 0.2
-}
+type SortField = 'departmentName' | 'total' | 'readyRate'
+type SortOrder = 'asc' | 'desc'
 
 // ─── Image helpers ────────────────────────────────────────────────────────────
 
@@ -227,7 +216,6 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
   const [searchTerm,     setSearchTerm]     = useState('')
   const [sortField,      setSortField]      = useState<SortField>('total')
   const [sortOrder,      setSortOrder]      = useState<SortOrder>('desc')
-  const [filterPerf,     setFilterPerf]     = useState<PerfFilter>('all')
 
   useEffect(() => { fetchDepartmentSummary() }, [])
 
@@ -238,22 +226,13 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
       const q = searchTerm.toLowerCase()
       f = f.filter(d => d.department.toLowerCase().includes(q) || (d.departmentName ?? '').toLowerCase().includes(q))
     }
-    if (filterPerf !== 'all') {
-      f = f.filter(d => {
-        const score = perfScore(d)
-        if (filterPerf === 'excellent')      return score >= 80
-        if (filterPerf === 'good')           return score >= 60 && score < 80
-        if (filterPerf === 'needsAttention') return score < 60
-        return true
-      })
-    }
     f.sort((a, b) => {
       const av = a[sortField] ?? 0; const bv = b[sortField] ?? 0
       const cmp = av > bv ? 1 : av < bv ? -1 : 0
       return sortOrder === 'asc' ? cmp : -cmp
     })
     setFilteredData(f)
-  }, [departmentData, searchTerm, sortField, sortOrder, filterPerf])
+  }, [departmentData, searchTerm, sortField, sortOrder])
 
   const fetchDepartmentSummary = async () => {
     try {
@@ -287,16 +266,15 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
   const getRateColor = (r: number) => r >= 80 ? 'text-emerald-600' : r >= 60 ? 'text-amber-500' : 'text-red-600'
   const getBarColor  = (r: number) => r >= 80 ? 'bg-emerald-500'  : r >= 60 ? 'bg-amber-400'   : 'bg-red-500'
 
-  const getPerfBadge = (d: DepartmentSummary) => {
-    const score = perfScore(d)
-    if (score >= 80) return <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">{t('excellent')}</Badge>
-    if (score >= 60) return <Badge className="bg-amber-100 text-amber-700 text-[10px]">{t('good')}</Badge>
-    return <Badge className="bg-red-100 text-red-700 text-[10px]">{t('needs_attention')}</Badge>
-  }
-
   const exportToCSV = () => {
-    const headers = [t('department'), t('total'), t('status_operational'), t('status_under_maintenance'), t('status_non_operational'), t('ready_rate'), t('completed'), t('pending'), t('check_completion_rate'), t('approve'), t('approve_rate')]
-    const rows = filteredData.map(d => [d.departmentName || d.department, d.total, d.totalReadyToUse, d.totalRepair, d.totalNotInUse, `${d.readyRate.toFixed(1)}%`, d.totalCompleted, d.totalPending, `${d.completedRate.toFixed(1)}%`, d.totalApprove, `${d.approveRate.toFixed(1)}%`])
+    const headers = [t('department'), t('total'), t('status_operational'), t('under_maintenance'), t('ready_rate')]
+    const rows = filteredData.map(d => [
+      d.departmentName || d.department,
+      d.total,
+      d.totalReadyToUse,
+      d.totalUnderMaintenance,
+      `${d.readyRate.toFixed(1)}%`,
+    ])
     const csv  = [headers, ...rows].map(r => r.join(',')).join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
     const url  = URL.createObjectURL(blob)
@@ -305,25 +283,14 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
     a.click(); URL.revokeObjectURL(url)
   }
 
-  const totalMachines    = filteredData.reduce((s, d) => s + (d.total           || 0), 0)
-  const totalReadyToUse  = filteredData.reduce((s, d) => s + (d.totalReadyToUse || 0), 0)
-  const totalRepair      = filteredData.reduce((s, d) => s + (d.totalRepair     || 0), 0)
-  const totalCompleted   = filteredData.reduce((s, d) => s + (d.totalCompleted  || 0), 0)
-  const avgCompletedRate = totalMachines > 0 ? (totalCompleted / totalMachines) * 100 : 0
+  const totalMachines          = filteredData.reduce((s, d) => s + (d.total                || 0), 0)
+  const totalReadyToUse        = filteredData.reduce((s, d) => s + (d.totalReadyToUse       || 0), 0)
+  const totalUnderMaintenance  = filteredData.reduce((s, d) => s + (d.totalUnderMaintenance  || 0), 0)
 
   const sortFields: { field: SortField; label: string }[] = [
-    { field: 'departmentName', label: t('department')            },
-    { field: 'total',          label: t('total')                 },
-    { field: 'readyRate',      label: t('ready_rate')            },
-    { field: 'completedRate',  label: t('check_completion_rate') },
-    { field: 'approveRate',    label: t('approve_rate')          },
-  ]
-
-  const perfFilters: { key: PerfFilter; label: string }[] = [
-    { key: 'all',            label: t('all')             },
-    { key: 'excellent',      label: t('excellent')       },
-    { key: 'good',           label: t('good')            },
-    { key: 'needsAttention', label: t('needs_attention') },
+    { field: 'departmentName', label: t('department') },
+    { field: 'total',          label: t('total')      },
+    { field: 'readyRate',      label: t('ready_rate') },
   ]
 
   if (loading) return (
@@ -371,7 +338,7 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
       <PendingCard />
 
       {/* ── Summary stat cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div><p className="text-sm text-muted-foreground">{t('total_machines')}</p><p className="text-2xl font-bold">{totalMachines}</p></div>
@@ -380,23 +347,14 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between">
-            <div><p className="text-sm text-muted-foreground">{t('ready_to_use')}</p><p className="text-2xl font-bold">{totalReadyToUse}</p></div>
+            <div><p className="text-sm text-muted-foreground">{t('ready_to_use')}</p><p className="text-2xl font-bold text-emerald-600">{totalReadyToUse}</p></div>
             <CheckCircle2 className="w-8 h-8 text-emerald-400" />
           </div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between">
-            <div><p className="text-sm text-muted-foreground">{t('under_repair')}</p><p className="text-2xl font-bold text-red-600">{totalRepair}</p></div>
-            <Wrench className="w-8 h-8 text-red-400" />
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">{t('avg_check_completion')}</p>
-              <p className={`text-2xl font-bold ${getRateColor(avgCompletedRate)}`}>{avgCompletedRate.toFixed(1)}%</p>
-            </div>
-            <FileCheck className="w-8 h-8 text-amber-400" />
+            <div><p className="text-sm text-muted-foreground">{t('under_maintenance')}</p><p className="text-2xl font-bold text-amber-600">{totalUnderMaintenance}</p></div>
+            <Wrench className="w-8 h-8 text-amber-400" />
           </div>
         </Card>
       </div>
@@ -407,13 +365,6 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input placeholder={t('search_department')} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9 h-8 text-xs" />
-          </div>
-          <div className="flex gap-1.5 flex-wrap">
-            {perfFilters.map(({ key, label }) => (
-              <Button key={key} variant={filterPerf === key ? 'default' : 'outline'} size="sm" className="h-8 text-xs" onClick={() => setFilterPerf(key)}>
-                {label}
-              </Button>
-            ))}
           </div>
         </div>
 
@@ -430,34 +381,29 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
                   </th>
                 ))}
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-muted-foreground whitespace-nowrap">{t('machine_status')}</th>
-                <th className="px-4 py-2.5 text-center text-xs font-semibold text-muted-foreground">{t('performance')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filteredData.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">{t('no_data_available')}</td></tr>
+                <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-muted-foreground">{t('no_data_available')}</td></tr>
               ) : filteredData.map((dept, i) => (
                 <tr key={i} className="hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-2.5 text-xs font-medium">{dept.departmentName || dept.department}</td>
                   <td className="px-4 py-2.5 text-xs text-center font-semibold">{dept.total}</td>
-                  {(['readyRate', 'completedRate', 'approveRate'] as const).map(rk => (
-                    <td key={rk} className="px-4 py-2.5 text-center min-w-[100px]">
-                      <div className="flex flex-col items-center gap-1">
-                        <span className={`text-xs font-bold ${getRateColor(dept[rk])}`}>{dept[rk].toFixed(1)}%</span>
-                        <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${getBarColor(dept[rk])}`} style={{ width: `${Math.min(dept[rk], 100)}%` }} />
-                        </div>
+                  <td className="px-4 py-2.5 text-center min-w-[100px]">
+                    <div className="flex flex-col items-center gap-1">
+                      <span className={`text-xs font-bold ${getRateColor(dept.readyRate)}`}>{dept.readyRate.toFixed(1)}%</span>
+                      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${getBarColor(dept.readyRate)}`} style={{ width: `${Math.min(dept.readyRate, 100)}%` }} />
                       </div>
-                    </td>
-                  ))}
+                    </div>
+                  </td>
                   <td className="px-4 py-2.5 text-center">
                     <div className="flex items-center justify-center gap-3 text-xs">
                       <span className="flex items-center gap-1 text-emerald-600 font-semibold"><CheckCircle2 className="w-3.5 h-3.5" />{dept.totalReadyToUse}</span>
-                      <span className="flex items-center gap-1 text-red-600 font-semibold"><Wrench className="w-3.5 h-3.5" />{dept.totalRepair}</span>
-                      <span className="flex items-center gap-1 text-amber-500 font-semibold"><XCircle className="w-3.5 h-3.5" />{dept.totalNotInUse}</span>
+                      <span className="flex items-center gap-1 text-amber-500 font-semibold"><Wrench className="w-3.5 h-3.5" />{dept.totalUnderMaintenance}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-center">{getPerfBadge(dept)}</td>
                 </tr>
               ))}
             </tbody>
