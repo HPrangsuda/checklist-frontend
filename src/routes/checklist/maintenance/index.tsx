@@ -9,26 +9,21 @@ import { api } from '@/core/interceptor/api.interceptor'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDebounce } from '@/core/hooks/use-debounce'
-import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
-import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
-import { Wrench, SlidersHorizontal, Filter, X, Check, ChevronsUpDown } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  Wrench, SlidersHorizontal, Filter, X, Check, ChevronsUpDown,
+  Eye, Pencil, CalendarDays, Clock, User, Building2, CheckCircle2, AlertCircle,
+} from 'lucide-react'
 import { MaintenanceKanbanCard } from '@/module/checklist/maintenance/maintencekanbancard'
 import { MaintenanceDepartmentDashboard } from '@/module/checklist/maintenance/maintenance-department-dashboard'
 import { MaintenancePlanActualCard } from '@/module/checklist/maintenance/plan-actual-card'
 import { MaintenanceCalendarCard } from '@/module/checklist/maintenance/maintenance-calendar'
-import { Button } from '@/components/ui/button'
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
-} from '@/components/ui/sheet'
-import {
-  Popover, PopoverContent, PopoverTrigger,
-} from '@/components/ui/popover'
-import {
-  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
-} from '@/components/ui/command'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/core/lib/utils'
 
@@ -38,6 +33,8 @@ export const Route = createFileRoute('/checklist/maintenance/')({
 
 export type MaintenanceByFilter = 'ALL' | 'EXTERNAL' | 'CENTRAL' | 'RESPONSIBLE'
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface MaintenanceDTO {
   id: number
   machineCode: string
@@ -46,9 +43,15 @@ interface MaintenanceDTO {
   round: number
   dueDate: string
   planDate: string
+  startDate: string
   actualDate: string
   status: string
   maintenanceBy: string
+  responsibleMaintenance: number
+  responsibleMaintenanceName: string
+  machineDepartmentCode: string
+  machineDepartmentName: string
+  note: string
 }
 
 interface DepartmentOption { code: string; name: string }
@@ -69,9 +72,159 @@ interface FilterOptions {
   statuses:    string[]
 }
 
-// ─── LazySearchSelect ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 10
+
+const fmtDate = (d?: string) => {
+  if (!d) return '-'
+  const [y, m, day] = d.split('T')[0].split('-')
+  return `${day}-${m}-${y}`
+}
+
+// ─── MaintenanceDetailDrawer ──────────────────────────────────────────────────
+
+function MaintenanceDetailDrawer({
+  maintenance, onClose,
+}: { maintenance: MaintenanceDTO | null; onClose: () => void }) {
+  const { t }  = useTranslation('checklist')
+  const router = useRouter()
+  const ref    = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!maintenance) return
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [maintenance, onClose])
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [onClose])
+
+  const getStatusBadgeClass = (status?: string) => {
+    switch (status?.toLowerCase()) {
+      case 'on time': return 'bg-emerald-100 text-emerald-700'
+      case 'overdue': return 'bg-red-100 text-red-700'
+      default:        return 'bg-zinc-100 text-zinc-600'
+    }
+  }
+
+  const dept = maintenance?.machineDepartmentName || maintenance?.machineDepartmentCode
+
+  return (
+    <>
+      <div className={`fixed inset-0 z-40 bg-black/20 transition-opacity duration-200 ${maintenance ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} aria-hidden="true" />
+      <div
+        ref={ref} role="dialog" aria-modal="true" aria-label={t('maintenance')}
+        className={`fixed top-0 right-0 z-50 h-full w-80 bg-background border-l border-border shadow-xl flex flex-col transition-transform duration-200 ease-in-out ${maintenance ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        {/* header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
+          <div className="flex items-center gap-2">
+            <Wrench className="w-4 h-4 text-red-600" />
+            <span className="text-sm font-medium">{t('maintenance')}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {maintenance && (
+              <>
+                <Button variant="ghost" size="icon" className="h-7 w-7"
+                  onClick={() => router.navigate({ to: '/checklist/maintenance/view', search: { id: maintenance.id } })}
+                  aria-label={t('view_document')}>
+                  <Eye className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7"
+                  onClick={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id: maintenance.id } })}
+                  aria-label={t('edit')}>
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label={t('back_to_list')}>
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* body */}
+        {maintenance && (
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+            {/* machine info */}
+            <div className="rounded-lg border px-4 py-3 bg-white dark:bg-muted/20 border-slate-200">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">{t('machine_code')}</p>
+              <p className="text-base font-semibold leading-tight">{maintenance.machineCode}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{maintenance.machineName}</p>
+            </div>
+
+            {/* detail rows */}
+            <div className="space-y-3">
+              {dept && (
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                    <Building2 className="w-3.5 h-3.5" />{t('department')}
+                  </div>
+                  <span className="text-xs text-foreground text-right">{dept}</span>
+                </div>
+              )}
+              {maintenance.responsibleMaintenanceName && (
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                    <User className="w-3.5 h-3.5" />{t('responsible')}
+                  </div>
+                  <span className="text-xs text-foreground text-right">{maintenance.responsibleMaintenanceName}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <CalendarDays className="w-3.5 h-3.5" />{t('years')} / {t('round')}
+                </div>
+                <span className="text-xs text-foreground">{maintenance.years} / {maintenance.round}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <Clock className="w-3.5 h-3.5" />{t('due_date')}
+                </div>
+                <span className="text-xs text-foreground">{fmtDate(maintenance.dueDate)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <CalendarDays className="w-3.5 h-3.5" />{t('plan_date')}
+                </div>
+                <span className="text-xs text-foreground">{fmtDate(maintenance.planDate)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5" />{t('actual_date')}
+                </div>
+                <span className="text-xs text-foreground">{fmtDate(maintenance.actualDate)}</span>
+              </div>
+              {maintenance.maintenanceBy && (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                    <Wrench className="w-3.5 h-3.5" />{t('maintenance_by')}
+                  </div>
+                  <Badge className="text-[10px]">{maintenance.maintenanceBy}</Badge>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <AlertCircle className="w-3.5 h-3.5" />{t('check_status')}
+                </div>
+                {maintenance.status
+                  ? <Badge className={getStatusBadgeClass(maintenance.status)}>{maintenance.status}</Badge>
+                  : <span className="text-xs text-muted-foreground">-</span>}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+// ─── LazySearchSelect ─────────────────────────────────────────────────────────
 
 function LazySearchSelect<T>({
   value, placeholder, allLabel, items, getKey, getLabel, onSelect,
@@ -141,7 +294,7 @@ function LazySearchSelect<T>({
   )
 }
 
-// ─── MaintenanceFilterPanel — ไม่มี year selector แล้ว ──────────────────────
+// ─── MaintenanceFilterPanel ───────────────────────────────────────────────────
 
 function MaintenanceFilterPanel({
   filters, options, onChange, onClear, activeCount, t,
@@ -220,18 +373,23 @@ function MaintenanceFilterPanel({
 
 // ─── MaintenanceTable ─────────────────────────────────────────────────────────
 
-function MaintenanceTable({ maintenanceBy, year }: { maintenanceBy: MaintenanceByFilter; year: number }) {
-  const { t }  = useTranslation('checklist')
-  const router = useRouter()
+function MaintenanceTable({
+  maintenanceBy, year, selectedMaintenance, onRowClick,
+}: {
+  maintenanceBy: MaintenanceByFilter
+  year: number
+  selectedMaintenance: MaintenanceDTO | null
+  onRowClick: (m: MaintenanceDTO) => void
+}) {
+  const { t } = useTranslation('checklist')
 
-  const [pagination,   setPagination]   = useState({ pageIndex: 0, pageSize: 10 })
-  const [selectedIds,  setSelectedIds]  = useState<number[]>([])
-  const [data,         setData]         = useState<MaintenanceDTO[]>([])
-  const [loading,      setLoading]      = useState(false)
-  const [totalCount,   setTotalCount]   = useState(0)
-  const [keyword,      setKeyword]      = useState('')
-  const [searchValue,  setSearchValue]  = useState('')
-  const debouncedSearch                 = useDebounce(keyword, 500)
+  const [pagination,  setPagination]  = useState({ pageIndex: 0, pageSize: 10 })
+  const [data,        setData]        = useState<MaintenanceDTO[]>([])
+  const [loading,     setLoading]     = useState(false)
+  const [totalCount,  setTotalCount]  = useState(0)
+  const [keyword,     setKeyword]     = useState('')
+  const [searchValue, setSearchValue] = useState('')
+  const debouncedSearch               = useDebounce(keyword, 500)
 
   const [filters, setFilters] = useState<MaintenanceFilters>({ department: '', status: '' })
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ departments: [], statuses: [] })
@@ -265,39 +423,6 @@ function MaintenanceTable({ maintenanceBy, year }: { maintenanceBy: MaintenanceB
   }
 
   const columns: ColumnDef<MaintenanceDTO>[] = [
-    {
-      id: 'select',
-      header: () => (
-        <Checkbox
-          checked={data.length > 0 && data.every(r => selectedIds.includes(r.id))}
-          onCheckedChange={checked => setSelectedIds(checked ? data.map(r => r.id) : [])}
-          aria-label="Select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <div onClick={e => e.stopPropagation()}>
-          <Checkbox
-            checked={selectedIds.includes(row.original.id)}
-            onCheckedChange={checked =>
-              setSelectedIds(prev => checked ? [...prev, row.original.id] : prev.filter(id => id !== row.original.id))
-            }
-            aria-label="Select row"
-          />
-        </div>
-      ),
-      size: 32,
-    },
-    {
-      id: 'action', header: t('action'),
-      cell: ({ row }) => (
-        <TblAction
-          view edit
-          onView={() => router.navigate({ to: '/checklist/maintenance/view', search: { id: row.original.id } })}
-          onEdit={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id: row.original.id } })}
-        />
-      ),
-      size: 80,
-    },
     { accessorKey: 'machineCode', header: t('machine_code'), cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div> },
     { accessorKey: 'machineName', header: t('machine_name'), cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
     { accessorKey: 'years',       header: t('years'),        cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
@@ -320,11 +445,7 @@ function MaintenanceTable({ maintenanceBy, year }: { maintenanceBy: MaintenanceB
   ]
 
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
-
-  useEffect(() => {
-    onFetchData(filtersRef.current)
-  }, [searchValue, pagination.pageIndex, pagination.pageSize, maintenanceBy, year])
-
+  useEffect(() => { onFetchData(filtersRef.current) }, [searchValue, pagination.pageIndex, pagination.pageSize, maintenanceBy, year])
   useEffect(() => { fetchFilterOptions() }, [])
 
   const onFetchData = async (currentFilters: MaintenanceFilters) => {
@@ -357,7 +478,6 @@ function MaintenanceTable({ maintenanceBy, year }: { maintenanceBy: MaintenanceB
       setData([])
     } finally {
       setLoading(false)
-      setSelectedIds([])
     }
   }
 
@@ -415,12 +535,9 @@ function MaintenanceTable({ maintenanceBy, year }: { maintenanceBy: MaintenanceB
           {t('maintenance_lists')}
         </CardTitle>
         <MaintenanceFilterPanel
-          filters={filters}
-          options={filterOptions}
-          onChange={handleFilterChange}
-          onClear={handleClearFilters}
-          activeCount={activeFilterCount}
-          t={t}
+          filters={filters} options={filterOptions}
+          onChange={handleFilterChange} onClear={handleClearFilters}
+          activeCount={activeFilterCount} t={t}
         />
       </CardHeader>
       <TblContainer>
@@ -432,10 +549,25 @@ function MaintenanceTable({ maintenanceBy, year }: { maintenanceBy: MaintenanceB
         </div>
         <div>
           {loading ? (
-            <DataTableSkeleton columnCount={columns.length} rowCount={10} filterCount={0}
-              cellWidths={['auto']} withViewOptions={false} withPagination={true} shrinkZero={false} className="w-full" />
+            <DataTableSkeleton
+              columnCount={columns.length} rowCount={10} filterCount={0}
+              cellWidths={['auto']} withViewOptions={false} withPagination={true}
+              shrinkZero={false} className="w-full"
+            />
           ) : (
-            <DataTable table={table} emptyText={t('no_result')} />
+            <DataTable
+              table={table}
+              emptyText={t('no_result')}
+              onRowClick={row => onRowClick(row)}
+              getRowClassName={row =>
+                cn(
+                  'cursor-pointer transition-colors',
+                  selectedMaintenance?.id === row.original.id
+                    ? 'bg-primary/5 border-l-2 border-l-primary'
+                    : 'hover:bg-muted/50'
+                )
+              }
+            />
           )}
         </div>
       </TblContainer>
@@ -444,17 +576,19 @@ function MaintenanceTable({ maintenanceBy, year }: { maintenanceBy: MaintenanceB
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+
 function Maintenance() {
-  const { t }   = useTranslation('checklist')
-  const [maintenanceBy, setMaintenanceBy] = useState<MaintenanceByFilter>('ALL')
-  const [year,          setYear]          = useState<number>(new Date().getFullYear())
-  const [yearOptions,   setYearOptions]   = useState<number[]>([new Date().getFullYear()])
+  const { t }                                       = useTranslation('checklist')
+  const [maintenanceBy,      setMaintenanceBy]      = useState<MaintenanceByFilter>('ALL')
+  const [year,               setYear]               = useState<number>(new Date().getFullYear())
+  const [yearOptions,        setYearOptions]        = useState<number[]>([new Date().getFullYear()])
+  const [selectedMaintenance, setSelectedMaintenance] = useState<MaintenanceDTO | null>(null)
 
   useEffect(() => {
     api.get<FilterOptionsResponse>('/api/maintenance/filter-options')
       .then(res => {
         if (res?.years?.length) {
-          setYearOptions(res.years) 
+          setYearOptions(res.years)
           const currentYear = new Date().getFullYear()
           if (!res.years.includes(currentYear)) setYear(res.years[0])
         }
@@ -469,10 +603,15 @@ function Maintenance() {
     { key: 'RESPONSIBLE', label: t('maintenance_by_responsible') },
   ]
 
+  const handleRowClick = (m: MaintenanceDTO) => {
+    setSelectedMaintenance(prev => prev?.id === m.id ? null : m)
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <main className="container mx-auto px-4 py-8">
 
+        {/* ── Global filter bar ── */}
         <div className="flex items-center gap-2 flex-wrap mb-4 p-4 rounded-xl border bg-muted/20">
           <span className="text-xs font-medium text-muted-foreground shrink-0">{t('filter_by')}:</span>
           {filters.map(({ key, label }) => (
@@ -486,7 +625,6 @@ function Maintenance() {
               {label}
             </Button>
           ))}
-
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs font-medium text-muted-foreground">{t('years')}:</span>
             <select
@@ -505,9 +643,20 @@ function Maintenance() {
         <MaintenancePlanActualCard      maintenanceBy={maintenanceBy} year={year} />
         <MaintenanceKanbanCard          maintenanceBy={maintenanceBy} year={year} />
         <MaintenanceCalendarCard        maintenanceBy={maintenanceBy} />
-        <MaintenanceTable               maintenanceBy={maintenanceBy} year={year} />
+        <MaintenanceTable
+          maintenanceBy={maintenanceBy}
+          year={year}
+          selectedMaintenance={selectedMaintenance}
+          onRowClick={handleRowClick}
+        />
 
       </main>
+
+      {/* ── Detail Drawer ── */}
+      <MaintenanceDetailDrawer
+        maintenance={selectedMaintenance}
+        onClose={() => setSelectedMaintenance(null)}
+      />
     </div>
   )
 }

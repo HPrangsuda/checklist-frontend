@@ -16,7 +16,6 @@ import { useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { useDebounce } from '@/core/hooks/use-debounce'
 import { toast } from 'sonner'
-import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getStatusColor } from '@/utils/status.untils'
@@ -106,33 +105,24 @@ const formatDate = (dateStr?: string): string => {
 
 const PAGE_SIZE = 10
 
-interface LazySearchSelectProps<T> {
-  value:       string
-  placeholder: string
-  allLabel:    string
-  items:       T[]
-  getKey:      (item: T) => string
-  getLabel:    (item: T) => string
-  onSelect:    (value: string) => void
-  scrollHint:  string   // i18n: "scroll to load more"
-  remaining:   string   // i18n: "remaining"
-}
-
 function LazySearchSelect<T>({
   value, placeholder, allLabel, items, getKey, getLabel, onSelect,
   scrollHint, remaining,
-}: LazySearchSelectProps<T>) {
-  const [open, setOpen] = useState(false)
+}: {
+  value: string; placeholder: string; allLabel: string
+  items: T[]; getKey: (i: T) => string; getLabel: (i: T) => string
+  onSelect: (v: string) => void
+  scrollHint: string; remaining: string
+}) {
+  const [open,   setOpen]   = useState(false)
   const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const listRef = useRef<HTMLDivElement>(null)
-  const debouncedSearch = useDebounce(search, 200)
+  const [page,   setPage]   = useState(1)
+  const listRef             = useRef<HTMLDivElement>(null)
+  const debouncedSearch     = useDebounce(search, 200)
 
-  const filtered = items.filter(item =>
-    getLabel(item).toLowerCase().includes(debouncedSearch.toLowerCase())
-  )
-  const visible = filtered.slice(0, page * PAGE_SIZE)
-  const hasMore = visible.length < filtered.length
+  const filtered = items.filter(i => getLabel(i).toLowerCase().includes(debouncedSearch.toLowerCase()))
+  const visible  = filtered.slice(0, page * PAGE_SIZE)
+  const hasMore  = visible.length < filtered.length
 
   useEffect(() => { setPage(1) }, [debouncedSearch])
 
@@ -143,9 +133,7 @@ function LazySearchSelect<T>({
   }, [hasMore])
 
   const selectedLabel = value
-    ? (items.find(i => getKey(i) === value)
-        ? getLabel(items.find(i => getKey(i) === value)!)
-        : value)
+    ? (items.find(i => getKey(i) === value) ? getLabel(items.find(i => getKey(i) === value)!) : value)
     : ''
 
   return (
@@ -301,17 +289,18 @@ function CalibrationFilterPanel({
 // ─── CalibrationTbl ───────────────────────────────────────────────────────────
 
 export function CalibrationTbl({ machineCode }: Props) {
-  const { t } = useTranslation('checklist')   // ← namespace ถูกต้อง
+  const { t }  = useTranslation('checklist')
+  const router = useRouter()
 
-  const [pagination, setPagination]   = useState({ pageIndex: 0, pageSize: 10 })
-  const [allData, setAllData]         = useState<CalibrationDTO[]>([])
-  const [data, setData]               = useState<CalibrationDTO[]>([])
-  const [loading, setLoading]         = useState(false)
-  const [totalCount, setTotalCount]   = useState(0)
-  const [keyword, setKeyword]         = useState('')
-  const [searchValue, setSearchValue] = useState('')
-  const debouncedSearch               = useDebounce(keyword, 500)
-  const router                        = useRouter()
+  const [pagination,    setPagination]    = useState({ pageIndex: 0, pageSize: 10 })
+  const [allData,       setAllData]       = useState<CalibrationDTO[]>([])
+  const [data,          setData]          = useState<CalibrationDTO[]>([])
+  const [loading,       setLoading]       = useState(false)
+  const [totalCount,    setTotalCount]    = useState(0)
+  const [keyword,       setKeyword]       = useState('')
+  const [searchValue,   setSearchValue]   = useState('')
+  const [selectedRowId, setSelectedRowId] = useState<number | null>(null)
+  const debouncedSearch                   = useDebounce(keyword, 500)
 
   const [filters, setFilters] = useState<CalibrationFilters>({
     year: '', department: '', results: '', calibrationStatus: '',
@@ -336,28 +325,28 @@ export function CalibrationTbl({ machineCode }: Props) {
     return key ? t(key) : status
   }
 
-  // ── Debounce ────────────────────────────────────────────────────────────
+  // ── Debounce ──────────────────────────────────────────────────────────────
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
 
-  // ── Initial fetch ────────────────────────────────────────────────────────
+  // ── Initial fetch ─────────────────────────────────────────────────────────
   useEffect(() => {
     fetchFilterOptions()
     if (machineCode) fetchByMachineCode()
     else             onFetchData(filtersRef.current)
   }, [machineCode])
 
-  // ── List mode: re-fetch on search/page ──────────────────────────────────
+  // ── List mode: re-fetch on search/page ───────────────────────────────────
   useEffect(() => {
     if (!machineCode) onFetchData(filtersRef.current)
   }, [searchValue, pagination.pageIndex, pagination.pageSize])
 
-  // ── Detail mode: re-filter on search/filter/page ────────────────────────
+  // ── Detail mode: re-filter on search/filter/page ─────────────────────────
   useEffect(() => {
     if (!machineCode) return
     applyClientFilter(allData, filtersRef.current, searchValue, paginationRef.current)
   }, [searchValue, filters, pagination.pageIndex, pagination.pageSize, allData])
 
-  // ── Detail mode fetch ────────────────────────────────────────────────────
+  // ── Detail mode fetch ─────────────────────────────────────────────────────
   const fetchByMachineCode = async () => {
     try {
       setLoading(true)
@@ -385,7 +374,7 @@ export function CalibrationTbl({ machineCode }: Props) {
     }
   }
 
-  // ── Client-side filter ───────────────────────────────────────────────────
+  // ── Client-side filter ────────────────────────────────────────────────────
   const applyClientFilter = (
     source:         CalibrationDTO[],
     currentFilters: CalibrationFilters,
@@ -508,29 +497,18 @@ export function CalibrationTbl({ machineCode }: Props) {
         return s ? <Badge className={getStatusColor(s)}>{translateStatus(s)}</Badge> : <span>-</span>
       },
     },
-    {
-      id: 'action',
-      header: t('action'),
-      cell: ({ row }) => (
-        <TblAction
-          view edit
-          onView={() => router.navigate({ to: '/checklist/calibration/view', search: { id: row.original.id } })}
-          onEdit={() => router.navigate({ to: '/checklist/calibration/edit', search: { id: row.original.id } })}
-        />
-      ),
-    },
   ], [t])
 
   // ── Table ─────────────────────────────────────────────────────────────────
   const table = useReactTable({
     data, columns,
     manualPagination: true,
-    getCoreRowModel:     getCoreRowModel(),
+    getCoreRowModel:       getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel:   getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onPaginationChange:  setPagination,
-    pageCount:           Math.ceil(totalCount / pagination.pageSize) || 0,
+    getSortedRowModel:     getSortedRowModel(),
+    getFilteredRowModel:   getFilteredRowModel(),
+    onPaginationChange:    setPagination,
+    pageCount:             Math.ceil(totalCount / pagination.pageSize) || 0,
     manualSorting: true, manualFiltering: true,
     state: { pagination },
     getRowId: row => row.id.toString(),
@@ -567,7 +545,22 @@ export function CalibrationTbl({ machineCode }: Props) {
                 shrinkZero={false} className="w-full"
               />
             ) : (
-              <DataTable table={table} emptyText={t('no_result')} />
+              <DataTable
+                table={table}
+                emptyText={t('no_result')}
+                onRowClick={row => {
+                  setSelectedRowId(row.id)
+                  router.navigate({ to: '/checklist/calibration/view', search: { id: row.id } })
+                }}
+                getRowClassName={row =>
+                  cn(
+                    'cursor-pointer transition-colors',
+                    selectedRowId === row.original.id
+                      ? 'bg-primary/5 border-l-2 border-l-primary'
+                      : 'hover:bg-muted/50'
+                  )
+                }
+              />
             )}
           </div>
         </TblContainer>

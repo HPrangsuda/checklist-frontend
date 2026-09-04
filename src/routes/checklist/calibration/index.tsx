@@ -1,37 +1,32 @@
 import { getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { DataTableSkeleton } from '@/components/data-table/data-table-skeleton'
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar'
-import type { PageResponse, ResponseDTO } from '@/core/types/common'
+import type { PageResponse } from '@/core/types/common'
 import { useTranslation } from '@/core/contexts/language-context'
-import { DeleteDialog } from '@/components/dialog/delete-dialog'
 import { TblContainer } from '@/components/layout/tbl-container'
 import { DataTable } from '@/components/data-table/data-table'
 import { api } from '@/core/interceptor/api.interceptor'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDebounce } from '@/core/hooks/use-debounce'
-import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
-import { TblAction } from '@/components/action/tbl-action'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
-import { PencilRuler, SlidersHorizontal, Filter, X, Check, ChevronsUpDown } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  PencilRuler, SlidersHorizontal, Filter, X, Check, ChevronsUpDown,
+  Eye, Pencil, Calendar, FileCheck, Clock, Building2,
+} from 'lucide-react'
 import { CalibrationDepartmentDashboard } from '@/module/checklist/calibration/calibration-department-dashboard'
 import { CalibrationKanbanCard } from '@/module/checklist/calibration/calibrationkanbancard'
 import { CalibrationPlanActualCard } from '@/module/checklist/calibration/plan-actual-cal'
 import { CalibrationCalendarCard } from '@/module/checklist/calibration/calibration-calendar'
-import { Button } from '@/components/ui/button'
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
-} from '@/components/ui/sheet'
-import {
-  Popover, PopoverContent, PopoverTrigger,
-} from '@/components/ui/popover'
-import {
-  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
-} from '@/components/ui/command'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/core/lib/utils'
+import { getStatusColor } from '@/utils/status.untils'
 
 export const Route = createFileRoute('/checklist/calibration/')({
   component: Calibration,
@@ -46,7 +41,10 @@ interface CalibrationDTO {
   years: number
   results?: string
   dueDate?: string
+  certificateDate?: string
   calibrationStatus?: string
+  machineDepartmentCode?: string
+  machineDepartmentName?: string
 }
 
 interface DepartmentOption { code: string; name: string }
@@ -70,9 +68,137 @@ interface FilterOptions {
   calibrationStatuses: string[]
 }
 
-// ─── LazySearchSelect ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 10
+
+const fmtDate = (d?: string) => {
+  if (!d) return '-'
+  const [y, m, day] = d.split('T')[0].split('-')
+  return `${day}-${m}-${y}`
+}
+
+// ─── CalibrationDetailDrawer ──────────────────────────────────────────────────
+
+function CalibrationDetailDrawer({
+  cal, onClose,
+}: { cal: CalibrationDTO | null; onClose: () => void }) {
+  const { t }  = useTranslation('checklist')
+  const router = useRouter()
+  const ref    = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!cal) return
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [cal, onClose])
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [onClose])
+
+  const dept = cal?.machineDepartmentName || cal?.machineDepartmentCode
+
+  return (
+    <>
+      <div className={`fixed inset-0 z-40 bg-black/20 transition-opacity duration-200 ${cal ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} aria-hidden="true" />
+      <div
+        ref={ref} role="dialog" aria-modal="true" aria-label={t('calibration')}
+        className={`fixed top-0 right-0 z-50 h-full w-80 bg-background border-l border-border shadow-xl flex flex-col transition-transform duration-200 ease-in-out ${cal ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        {/* header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
+          <div className="flex items-center gap-2">
+            <PencilRuler className="w-4 h-4 text-red-600" />
+            <span className="text-sm font-medium">{t('calibration')}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {cal && (
+              <>
+                <Button variant="ghost" size="icon" className="h-7 w-7"
+                  onClick={() => router.navigate({ to: '/checklist/calibration/view', search: { id: cal.id } })}
+                  aria-label={t('view_document')}>
+                  <Eye className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7"
+                  onClick={() => router.navigate({ to: '/checklist/calibration/edit', search: { id: cal.id } })}
+                  aria-label={t('edit')}>
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label={t('back_to_list')}>
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* body */}
+        {cal && (
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+            {/* machine info */}
+            <div className="rounded-lg border px-4 py-3 bg-white dark:bg-muted/20 border-slate-200">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">{t('machine_code')}</p>
+              <p className="text-base font-semibold leading-tight">{cal.machineCode}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{cal.machineName}</p>
+            </div>
+
+            {/* detail rows */}
+            <div className="space-y-3">
+              {dept && (
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                    <Building2 className="w-3.5 h-3.5" />{t('department')}
+                  </div>
+                  <span className="text-xs text-foreground text-right">{dept}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <Calendar className="w-3.5 h-3.5" />{t('years')}
+                </div>
+                <span className="text-xs text-foreground">{cal.years || '-'}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <Clock className="w-3.5 h-3.5" />{t('calibration_due_date')}
+                </div>
+                <span className="text-xs text-foreground">{fmtDate(cal.dueDate)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <FileCheck className="w-3.5 h-3.5" />{t('certificate_date')}
+                </div>
+                <span className="text-xs text-foreground">{fmtDate(cal.certificateDate)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <PencilRuler className="w-3.5 h-3.5" />{t('results')}
+                </div>
+                {cal.results
+                  ? <Badge className={getStatusColor(cal.results)}>{cal.results}</Badge>
+                  : <span className="text-xs text-muted-foreground">-</span>}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <FileCheck className="w-3.5 h-3.5" />{t('calibration_status')}
+                </div>
+                {cal.calibrationStatus
+                  ? <Badge className={getStatusColor(cal.calibrationStatus)}>{cal.calibrationStatus}</Badge>
+                  : <span className="text-xs text-muted-foreground">-</span>}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+// ─── LazySearchSelect ─────────────────────────────────────────────────────────
 
 function LazySearchSelect<T>({
   value, placeholder, allLabel, items, getKey, getLabel, onSelect,
@@ -142,7 +268,7 @@ function LazySearchSelect<T>({
   )
 }
 
-// ─── CalibrationFilterPanel — ไม่มี year selector แล้ว ──────────────────────
+// ─── CalibrationFilterPanel ───────────────────────────────────────────────────
 
 function CalibrationFilterPanel({
   filters, options, onChange, onClear, activeCount, t,
@@ -237,19 +363,22 @@ function CalibrationFilterPanel({
 
 // ─── CalibrationTable ─────────────────────────────────────────────────────────
 
-function CalibrationTable({ year }: { year: number }) {
-  const { t }  = useTranslation('checklist')
-  const router = useRouter()
+function CalibrationTable({
+  year, selectedCal, onRowClick,
+}: {
+  year: number
+  selectedCal: CalibrationDTO | null
+  onRowClick: (cal: CalibrationDTO) => void
+}) {
+  const { t } = useTranslation('checklist')
 
-  const [pagination,       setPagination]       = useState({ pageIndex: 0, pageSize: 10 })
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [selectedIds,      setSelectedIds]      = useState<number[]>([])
-  const [data,             setData]             = useState<CalibrationDTO[]>([])
-  const [loading,          setLoading]          = useState(false)
-  const [totalCount,       setTotalCount]       = useState(0)
-  const [keyword,          setKeyword]          = useState('')
-  const [searchValue,      setSearchValue]      = useState('')
-  const debouncedSearch                         = useDebounce(keyword, 500)
+  const [pagination,  setPagination]  = useState({ pageIndex: 0, pageSize: 10 })
+  const [data,        setData]        = useState<CalibrationDTO[]>([])
+  const [loading,     setLoading]     = useState(false)
+  const [totalCount,  setTotalCount]  = useState(0)
+  const [keyword,     setKeyword]     = useState('')
+  const [searchValue, setSearchValue] = useState('')
+  const debouncedSearch               = useDebounce(keyword, 500)
 
   const [filters, setFilters] = useState<CalibrationFilters>({ department: '', results: '', calibrationStatus: '' })
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ departments: [], results: [], calibrationStatuses: [] })
@@ -292,63 +421,20 @@ function CalibrationTable({ year }: { year: number }) {
   }
 
   const columns: ColumnDef<CalibrationDTO>[] = [
-    {
-      id: 'select',
-      header: () => (
-        <Checkbox
-          checked={data.length > 0 && data.every(r => selectedIds.includes(r.id))}
-          onCheckedChange={checked => setSelectedIds(checked ? data.map(r => r.id) : [])}
-          aria-label="Select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <div onClick={e => e.stopPropagation()}>
-          <Checkbox
-            checked={selectedIds.includes(row.original.id)}
-            onCheckedChange={checked =>
-              setSelectedIds(prev => checked ? [...prev, row.original.id] : prev.filter(id => id !== row.original.id))
-            }
-            aria-label="Select row"
-          />
-        </div>
-      ),
-      size: 32,
-    },
-    { accessorKey: 'machineCode', header: t('machine_code'),       cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div> },
-    { accessorKey: 'machineName', header: t('machine_name'),       cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
-    { accessorKey: 'years',       header: t('years'),              cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
+    { accessorKey: 'machineCode', header: t('machine_code'),        cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div> },
+    { accessorKey: 'machineName', header: t('machine_name'),        cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
+    { accessorKey: 'years',       header: t('years'),               cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
     {
       accessorKey: 'dueDate',
       header: t('calibration_due_date'),
-      cell: ({ row }) => {
-        const d = row.original.dueDate
-        if (!d) return <div className="text-sm">-</div>
-        const [y, m, day] = d.split('-')
-        return <div className="text-sm">{`${day}-${m}-${y}`}</div>
-      },
+      cell: ({ row }) => <div className="text-sm">{fmtDate(row.original.dueDate)}</div>,
     },
-    { accessorKey: 'results',           header: t('results'),           cell: ({ row }) => getResultBadge(row.original.results) },
+    { accessorKey: 'results',           header: t('results'),            cell: ({ row }) => getResultBadge(row.original.results) },
     { accessorKey: 'calibrationStatus', header: t('calibration_status'), cell: ({ row }) => getStatusBadge(row.original.calibrationStatus) },
-    {
-      id: 'action', header: t('action'),
-      cell: ({ row }) => (
-        <TblAction
-          view edit delete
-          onView={() => router.navigate({ to: '/checklist/calibration/view', search: { id: row.original.id } })}
-          onEdit={() => router.navigate({ to: '/checklist/calibration/edit', search: { id: row.original.id } })}
-          onDelete={() => { setSelectedIds([row.original.id]); setShowDeleteDialog(true) }}
-        />
-      ),
-      size: 80,
-    },
   ]
 
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
-
-  useEffect(() => {
-    onFetchData(filtersRef.current)
-  }, [searchValue, pagination.pageIndex, pagination.pageSize, year])
-
+  useEffect(() => { onFetchData(filtersRef.current) }, [searchValue, pagination.pageIndex, pagination.pageSize, year])
   useEffect(() => { fetchFilterOptions() }, [])
 
   const onFetchData = async (currentFilters: CalibrationFilters) => {
@@ -380,7 +466,6 @@ function CalibrationTable({ year }: { year: number }) {
       setData([])
     } finally {
       setLoading(false)
-      setSelectedIds([])
     }
   }
 
@@ -413,20 +498,6 @@ function CalibrationTable({ year }: { year: number }) {
     onFetchData(reset)
   }, [])
 
-  const onDeleteData = async (): Promise<{ success: boolean }> => {
-    if (!selectedIds.length) return { success: false }
-    try {
-      const response = await api.delete<ResponseDTO<void>>('/api/calibration/delete', {
-        headers: { 'Content-Type': 'application/json' },
-        data: selectedIds,
-      })
-      if (response.success) { toast.success(response.message); return { success: true } }
-      toast.error(response.message); return { success: false }
-    } catch {
-      toast.error(t('data_delete_failed')); return { success: false }
-    }
-  }
-
   const handleSearch = useCallback((value: string) => {
     setKeyword(value || '')
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
@@ -453,41 +524,42 @@ function CalibrationTable({ year }: { year: number }) {
           {t('calibration_lists')}
         </CardTitle>
         <CalibrationFilterPanel
-          filters={filters}
-          options={filterOptions}
-          onChange={handleFilterChange}
-          onClear={handleClearFilters}
-          activeCount={activeFilterCount}
-          t={t}
+          filters={filters} options={filterOptions}
+          onChange={handleFilterChange} onClear={handleClearFilters}
+          activeCount={activeFilterCount} t={t}
         />
       </CardHeader>
       <TblContainer>
         <div>
           <DataTableToolbar
             table={table} isSync={false}
-            isDelete={selectedIds.length > 0}
-            onSearch={handleSearch} onDelete={() => setShowDeleteDialog(true)}
-            isServerSide={true} searchValue={keyword} breakpoint={1300} className="w-full gap-2"
+            onSearch={handleSearch} isServerSide={true}
+            searchValue={keyword} breakpoint={1300} className="w-full gap-2"
           />
         </div>
         <div>
           {loading ? (
-            <DataTableSkeleton columnCount={columns.length} rowCount={10} filterCount={0}
-              cellWidths={['auto']} withViewOptions={false} withPagination={true} shrinkZero={false} className="w-full" />
+            <DataTableSkeleton
+              columnCount={columns.length} rowCount={10} filterCount={0}
+              cellWidths={['auto']} withViewOptions={false} withPagination={true}
+              shrinkZero={false} className="w-full"
+            />
           ) : (
-            <DataTable table={table} emptyText={t('no_result')} />
+            <DataTable
+              table={table}
+              emptyText={t('no_result')}
+              onRowClick={row => onRowClick(row)}
+              getRowClassName={row =>
+                cn(
+                  'cursor-pointer transition-colors',
+                  selectedCal?.id === row.original.id
+                    ? 'bg-primary/5 border-l-2 border-l-primary'
+                    : 'hover:bg-muted/50'
+                )
+              }
+            />
           )}
         </div>
-        <DeleteDialog
-          isOpen={showDeleteDialog}
-          onClose={() => setShowDeleteDialog(false)}
-          title={t('delete_calibrations')}
-          confirmText="DELETE"
-          isAlert={false}
-          variant="destructive"
-          onConfirm={onDeleteData}
-          onSuccess={() => { onFetchData(filtersRef.current); setSelectedIds([]) }}
-        />
       </TblContainer>
     </Card>
   )
@@ -496,11 +568,11 @@ function CalibrationTable({ year }: { year: number }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function Calibration() {
-  const { t }         = useTranslation('checklist')
-  const [year, setYear]             = useState<number>(new Date().getFullYear())
-  const [yearOptions, setYearOptions] = useState<number[]>([new Date().getFullYear()])
+  const { t }                               = useTranslation('checklist')
+  const [year,           setYear]           = useState<number>(new Date().getFullYear())
+  const [yearOptions,    setYearOptions]    = useState<number[]>([new Date().getFullYear()])
+  const [selectedCal,    setSelectedCal]    = useState<CalibrationDTO | null>(null)
 
-  // ── ดึง years จาก filter-options ──
   useEffect(() => {
     api.get<FilterOptionsResponse>('/api/calibration/filter-options')
       .then(res => {
@@ -512,6 +584,10 @@ function Calibration() {
       })
       .catch(() => {})
   }, [])
+
+  const handleRowClick = (cal: CalibrationDTO) => {
+    setSelectedCal(prev => prev?.id === cal.id ? null : cal)
+  }
 
   return (
     <div className="w-full max-w-full overflow-x-hidden bg-background">
@@ -535,9 +611,19 @@ function Calibration() {
         <CalibrationPlanActualCard      year={year} />
         <CalibrationKanbanCard          year={year} />
         <CalibrationCalendarCard />
-        <CalibrationTable               year={year} />
+        <CalibrationTable
+          year={year}
+          selectedCal={selectedCal}
+          onRowClick={handleRowClick}
+        />
 
       </div>
+
+      {/* ── Detail Drawer ── */}
+      <CalibrationDetailDrawer
+        cal={selectedCal}
+        onClose={() => setSelectedCal(null)}
+      />
     </div>
   )
 }
