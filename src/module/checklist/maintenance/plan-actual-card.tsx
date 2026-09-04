@@ -10,33 +10,31 @@ import { useTranslation } from '@/core/contexts/language-context'
 import { api } from '@/core/interceptor/api.interceptor'
 import { toast } from 'sonner'
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
+type MaintenanceByFilter = 'ALL' | 'EXTERNAL' | 'CENTRAL' | 'RESPONSIBLE'
+
+interface Props {
+  maintenanceBy: MaintenanceByFilter
+  year: number
+}
 
 interface ResponsibleSummary {
   memberId:     number | null
   memberName:   string
   totalPlan:    number
-  totalOnTime:  number   // actual IS NOT NULL AND actual <= due
-  totalOverdue: number   // (actual IS NOT NULL AND actual > due) OR actual IS NULL
+  totalOnTime:  number
+  totalOverdue: number
 }
 
 interface MonthlySummary {
-  year:           number
-  month:          number
-  totalPlan:      number
-  totalOnTime:    number
-  totalOverdue:   number
-  byResponsible:  ResponsibleSummary[]
+  year:          number
+  month:         number
+  totalPlan:     number
+  totalOnTime:   number
+  totalOverdue:  number
+  byResponsible: ResponsibleSummary[]
 }
 
-interface ChartRow {
-  label:   string
-  plan:    number
-  onTime:  number
-  overdue: number
-}
-
-// ─── Custom Tooltip ────────────────────────────────────────────────────────────
+interface ChartRow { label: string; plan: number; onTime: number; overdue: number }
 
 function PlanActualTooltip({ active, payload, label }: TooltipProps<number, string>) {
   if (!active || !payload?.length) return null
@@ -52,13 +50,9 @@ function PlanActualTooltip({ active, payload, label }: TooltipProps<number, stri
   )
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-
 function buildEmpty12(year: number): MonthlySummary[] {
   return Array.from({ length: 12 }, (_, i) => ({
-    year, month: i + 1,
-    totalPlan: 0, totalOnTime: 0, totalOverdue: 0,
-    byResponsible: [],
+    year, month: i + 1, totalPlan: 0, totalOnTime: 0, totalOverdue: 0, byResponsible: [],
   }))
 }
 
@@ -74,19 +68,14 @@ function onTimeBarColor(pct: number) {
   return 'bg-red-400'
 }
 
-// ─── Sub-row: per-responsible breakdown ────────────────────────────────────────
-
 function ResponsibleRows({ rows }: { rows: ResponsibleSummary[] }) {
   return (
     <div className="border-t bg-muted/20">
       {rows.map((r, i) => {
-        const pct = r.totalPlan > 0 ? Math.round((r.totalOnTime / r.totalPlan) * 100) : 0  // on-time/plan
+        const pct = r.totalPlan > 0 ? Math.round((r.totalOnTime / r.totalPlan) * 100) : 0
         return (
-          <div
-            key={r.memberId ?? i}
-            className="grid grid-cols-[1.5rem_1fr_3.5rem_3.5rem_3.5rem] items-center gap-2 border-b px-5 py-1 last:border-0"
-          >
-            {/* indent + avatar */}
+          <div key={r.memberId ?? i}
+            className="grid grid-cols-[1.5rem_1fr_3.5rem_3.5rem_3.5rem] items-center gap-2 border-b px-5 py-1 last:border-0">
             <span />
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <User className="h-3 w-3 shrink-0 opacity-50" />
@@ -105,20 +94,11 @@ function ResponsibleRows({ rows }: { rows: ResponsibleSummary[] }) {
   )
 }
 
-// ─── Month row (collapsible) ───────────────────────────────────────────────────
-
-function MonthRow({
-  row, label, expanded, onToggle,
-}: {
-  row: MonthlySummary
-  label: string
-  expanded: boolean
-  onToggle: () => void
+function MonthRow({ row, label, expanded, onToggle }: {
+  row: MonthlySummary; label: string; expanded: boolean; onToggle: () => void
 }) {
-  // on-time rate = ทำทันเวลา / แผนทั้งหมด
-  const pct = row.totalPlan > 0 ? Math.round((row.totalOnTime / row.totalPlan) * 100) : 0
+  const pct          = row.totalPlan > 0 ? Math.round((row.totalOnTime / row.totalPlan) * 100) : 0
   const hasBreakdown = row.byResponsible.length > 0
-
   return (
     <>
       <div
@@ -127,106 +107,77 @@ function MonthRow({
         onClick={hasBreakdown ? onToggle : undefined}
       >
         <span className="flex items-center gap-1 font-medium text-muted-foreground">
-          {hasBreakdown && (
-            expanded
-              ? <ChevronDown className="h-3 w-3" />
-              : <ChevronRight className="h-3 w-3" />
-          )}
+          {hasBreakdown && (expanded
+            ? <ChevronDown  className="h-3 w-3" />
+            : <ChevronRight className="h-3 w-3" />)}
           {label}
         </span>
-
-        {/* on-time progress bar */}
         <div className="flex items-center gap-2">
           <div className="h-1.5 flex-1 overflow-hidden rounded bg-muted">
-            <div
-              className={`h-full rounded transition-all ${onTimeBarColor(pct)}`}
-              style={{ width: `${pct}%` }}
-            />
+            <div className={`h-full rounded transition-all ${onTimeBarColor(pct)}`} style={{ width: `${pct}%` }} />
           </div>
           <span className={`w-8 text-right text-[10px] font-medium ${onTimeColor(pct)}`}>{pct}%</span>
         </div>
-
         <span className="text-right text-blue-600">{row.totalPlan}</span>
         <span className="text-right text-emerald-600">{row.totalOnTime || '—'}</span>
         <span className={`text-right ${row.totalOverdue > 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
           {row.totalOverdue || '—'}
         </span>
       </div>
-
       {expanded && hasBreakdown && <ResponsibleRows rows={row.byResponsible} />}
     </>
   )
 }
 
-// ─── Main Component ────────────────────────────────────────────────────────────
-
-export function MaintenancePlanActualCard() {
+export function MaintenancePlanActualCard({ maintenanceBy, year }: Props) {
   const { t } = useTranslation('checklist')
 
-  const [allRows, setAllRows]     = useState<MonthlySummary[]>([])
-  const [year, setYear]           = useState<number>(new Date().getFullYear())
-  const [years, setYears]         = useState<number[]>([new Date().getFullYear()])
-  const [loading, setLoading]     = useState(false)
-  const [expanded, setExpanded]   = useState<Set<number>>(new Set())
+  const [allRows,  setAllRows]  = useState<MonthlySummary[]>([])
+  const [loading,  setLoading]  = useState(false)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
-  const monthLabels = useMemo(
-    () => [
-      t('jan'), t('feb'), t('mar'), t('apr'), t('may_short'), t('jun'),
-      t('jul'), t('aug'), t('sep'), t('oct'), t('nov'), t('dec'),
-    ],
-    [t],
-  )
+  const monthLabels = useMemo(() => [
+    t('jan'), t('feb'), t('mar'), t('apr'), t('may_short'), t('jun'),
+    t('jul'), t('aug'), t('sep'), t('oct'), t('nov'), t('dec'),
+  ], [t])
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await api.get('/api/maintenance/monthly-summary') as unknown
-      // interceptor แปลง array → object {"0":{...},"1":{...}} ใช้ Object.values() แปลงกลับ
+      const params: Record<string, string> = { year: String(year) }
+      if (maintenanceBy !== 'ALL') params.maintenanceBy = maintenanceBy
+      const res = await api.get('/api/maintenance/monthly-summary', { params }) as unknown
       const rows: MonthlySummary[] = res != null && typeof res === 'object' && !Array.isArray(res)
         ? Object.values(res as Record<string, MonthlySummary>)
         : Array.isArray(res) ? (res as MonthlySummary[]) : []
-
       setAllRows(rows)
-      const distinct = [...new Set(rows.map(r => r.year).filter(y => y != null && !isNaN(y)))].sort() as number[]
-      if (distinct.length) {
-        setYears(distinct)
-        setYear(distinct[distinct.length - 1])
-      }
     } catch {
       toast.error(t('data_fetch_failed'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, maintenanceBy, year])
 
   useEffect(() => { fetchData() }, [fetchData])
 
   const monthly = useMemo(() => {
     const base = buildEmpty12(year)
-    allRows
-      .filter(r => r.year === year && r.year != null && r.month != null)
-      .forEach(r => {
-        const idx = r.month - 1
-        if (idx >= 0 && idx < 12) base[idx] = r
-      })
+    allRows.filter(r => r.year === year).forEach(r => {
+      const idx = r.month - 1
+      if (idx >= 0 && idx < 12) base[idx] = r
+    })
     return base
   }, [allRows, year])
 
   const chartRows: ChartRow[] = useMemo(() =>
     monthly.map((r, i) => ({
-      label:   monthLabels[i],
-      plan:    r.totalPlan,
-      onTime:  r.totalOnTime,
-      overdue: r.totalOverdue,
-    })),
-    [monthly, monthLabels],
-  )
+      label: monthLabels[i], plan: r.totalPlan, onTime: r.totalOnTime, overdue: r.totalOverdue,
+    })), [monthly, monthLabels])
 
-  const totalPlan      = monthly.reduce((s, r) => s + r.totalPlan,    0)
-  const totalOnTime    = monthly.reduce((s, r) => s + r.totalOnTime,  0)
-  const totalOverdue   = monthly.reduce((s, r) => s + r.totalOverdue, 0)
-  // on_time_rate = on_time / total_plan (แผนทั้งหมดในเดือน)
-  const onTimeRate     = totalPlan > 0 ? Math.round((totalOnTime / totalPlan) * 100) : null
+  const totalPlan    = monthly.reduce((s, r) => s + r.totalPlan,    0)
+  const totalOnTime  = monthly.reduce((s, r) => s + r.totalOnTime,  0)
+  const totalOverdue = monthly.reduce((s, r) => s + r.totalOverdue, 0)
+  const onTimeRate   = totalPlan > 0 ? Math.round((totalOnTime / totalPlan) * 100) : null
 
   const COLORS = { plan: '#378ADD', onTime: '#1D9E75', overdue: '#E24B4A' }
   const legend = [
@@ -242,48 +193,35 @@ export function MaintenancePlanActualCard() {
       return next
     })
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
-
   return (
     <Card className="mb-4 overflow-hidden p-0">
-
-      {/* Header */}
       <CardHeader className="flex flex-row items-center justify-between border-b px-5 py-4">
         <CardTitle className="flex items-center gap-2 font-bold text-sm">
           <CalendarCheck className="h-5 w-5 text-blue-600" />
           {t('plan_vs_actual')}
         </CardTitle>
-        <div className="flex items-center gap-4">
-          <div className="hidden items-center gap-3 text-xs text-muted-foreground sm:flex">
-            {legend.map(({ color, key }) => (
-              <span key={key} className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: color }} />
-                {t(key)}
-              </span>
-            ))}
-          </div>
-          <select
-            value={year}
-            onChange={e => setYear(Number(e.target.value))}
-            className="rounded border px-2 py-1 text-xs"
-            aria-label={t('select_year')}
-          >
-            {years.map((y, i) => <option key={`year-${y}-${i}`} value={y}>{y}</option>)}
-          </select>
+        <div className="hidden items-center gap-3 text-xs text-muted-foreground sm:flex">
+          {legend.map(({ color, key }) => (
+            <span key={key} className="flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: color }} />
+              {t(key)}
+            </span>
+          ))}
         </div>
       </CardHeader>
 
-      {/* Stat cards */}
       <div className="grid grid-cols-2 divide-x border-b sm:grid-cols-4">
         {[
           { label: t('total_planned'), value: totalPlan,    cls: '' },
           { label: t('completed'),     value: totalOnTime,  cls: 'text-emerald-600' },
           { label: t('overdue'),       value: totalOverdue, cls: totalOverdue > 0 ? 'text-red-500' : '' },
-          { label: t('on_time_rate'),  value: onTimeRate != null ? `${onTimeRate}%` : '—',
-            cls: onTimeRate != null
-              ? onTimeRate >= 80 ? 'text-emerald-600'
-              : onTimeRate >= 50 ? 'text-amber-500'
-              : 'text-red-500' : '' },
+          {
+            label: t('on_time_rate'),
+            value: onTimeRate != null ? `${onTimeRate}%` : '—',
+            cls:   onTimeRate != null
+              ? onTimeRate >= 80 ? 'text-emerald-600' : onTimeRate >= 50 ? 'text-amber-500' : 'text-red-500'
+              : '',
+          },
         ].map(s => (
           <div key={s.label} className="bg-muted/30 py-3 text-center">
             <p className="mb-0.5 text-xs text-muted-foreground">{s.label}</p>
@@ -292,7 +230,6 @@ export function MaintenancePlanActualCard() {
         ))}
       </div>
 
-      {/* Chart */}
       <div className="px-5 py-4">
         {loading ? (
           <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
@@ -318,25 +255,20 @@ export function MaintenancePlanActualCard() {
         )}
       </div>
 
-      {/* Monthly breakdown — collapsible with responsible sub-rows */}
       {!loading && totalPlan > 0 && (
         <div className="border-t text-xs">
-          {/* Table header */}
           <div className="grid grid-cols-[3rem_1fr_3.5rem_3.5rem_3.5rem] gap-2 bg-muted/30 px-5 py-1.5 text-muted-foreground">
             <span />
             <span>{t('on_time_rate')}</span>
-            <span className="text-right text-blue-600">แผน</span>
-            <span className="text-right text-emerald-600">ทันเวลา</span>
-            <span className="text-right text-red-500">เกินกำหนด</span>
+            <span className="text-right text-blue-600">{t('plan_due_date')}</span>
+            <span className="text-right text-emerald-600">{t('completed_on_time')}</span>
+            <span className="text-right text-red-500">{t('overdue')}</span>
           </div>
-
           {monthly.map((row, i) => {
             if (row.totalPlan === 0) return null
             return (
               <MonthRow
-                key={row.month}
-                row={row}
-                label={monthLabels[i]}
+                key={row.month} row={row} label={monthLabels[i]}
                 expanded={expanded.has(row.month)}
                 onToggle={() => toggleMonth(row.month)}
               />

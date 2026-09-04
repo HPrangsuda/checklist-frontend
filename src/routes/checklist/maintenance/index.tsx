@@ -36,7 +36,7 @@ export const Route = createFileRoute('/checklist/maintenance/')({
   component: Maintenance,
 })
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export type MaintenanceByFilter = 'ALL' | 'EXTERNAL' | 'CENTRAL' | 'RESPONSIBLE'
 
 interface MaintenanceDTO {
   id: number
@@ -60,15 +60,13 @@ interface FilterOptionsResponse {
 }
 
 interface MaintenanceFilters {
-  year: string
   department: string
-  status: string
+  status:     string
 }
 
 interface FilterOptions {
-  years: number[]
   departments: DepartmentOption[]
-  statuses: string[]
+  statuses:    string[]
 }
 
 // ─── LazySearchSelect ─────────────────────────────────────────────────────────
@@ -82,11 +80,11 @@ function LazySearchSelect<T>({
   items: T[]; getKey: (i: T) => string; getLabel: (i: T) => string
   onSelect: (v: string) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [open,   setOpen]   = useState(false)
   const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const listRef = useRef<HTMLDivElement>(null)
-  const debouncedSearch = useDebounce(search, 200)
+  const [page,   setPage]   = useState(1)
+  const listRef             = useRef<HTMLDivElement>(null)
+  const debouncedSearch     = useDebounce(search, 200)
 
   const filtered = items.filter(i => getLabel(i).toLowerCase().includes(debouncedSearch.toLowerCase()))
   const visible  = filtered.slice(0, page * PAGE_SIZE)
@@ -143,7 +141,7 @@ function LazySearchSelect<T>({
   )
 }
 
-// ─── MaintenanceFilterPanel ───────────────────────────────────────────────────
+// ─── MaintenanceFilterPanel — ไม่มี year selector แล้ว ──────────────────────
 
 function MaintenanceFilterPanel({
   filters, options, onChange, onClear, activeCount, t,
@@ -153,7 +151,6 @@ function MaintenanceFilterPanel({
   onClear: () => void; activeCount: number; t: (k: string) => string
 }) {
   const [open, setOpen] = useState(false)
-  const yearItems = options.years.map(y => String(y))
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -180,19 +177,12 @@ function MaintenanceFilterPanel({
               </Button>
             )}
           </div>
-          {activeCount > 0 && <p className="text-xs text-muted-foreground mt-0.5">{activeCount} {t('active_filters')}</p>}
+          {activeCount > 0 && (
+            <p className="text-xs text-muted-foreground mt-0.5">{activeCount} {t('active_filters')}</p>
+          )}
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('years')}</label>
-            <LazySearchSelect<string>
-              value={filters.year} placeholder={t('all')} allLabel={t('all')}
-              items={yearItems} getKey={y => y} getLabel={y => y}
-              onSelect={v => onChange('year', v)}
-            />
-          </div>
-          <Separator />
           <div className="space-y-2">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('department')}</label>
             <LazySearchSelect<DepartmentOption>
@@ -230,35 +220,33 @@ function MaintenanceFilterPanel({
 
 // ─── MaintenanceTable ─────────────────────────────────────────────────────────
 
-function MaintenanceTable() {
+function MaintenanceTable({ maintenanceBy, year }: { maintenanceBy: MaintenanceByFilter; year: number }) {
   const { t }  = useTranslation('checklist')
   const router = useRouter()
 
-  const currentYear = String(new Date().getFullYear())
+  const [pagination,   setPagination]   = useState({ pageIndex: 0, pageSize: 10 })
+  const [selectedIds,  setSelectedIds]  = useState<number[]>([])
+  const [data,         setData]         = useState<MaintenanceDTO[]>([])
+  const [loading,      setLoading]      = useState(false)
+  const [totalCount,   setTotalCount]   = useState(0)
+  const [keyword,      setKeyword]      = useState('')
+  const [searchValue,  setSearchValue]  = useState('')
+  const debouncedSearch                 = useDebounce(keyword, 500)
 
-  const [pagination, setPagination]   = useState({ pageIndex: 0, pageSize: 10 })
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
-  const [data, setData]               = useState<MaintenanceDTO[]>([])
-  const [loading, setLoading]         = useState(false)
-  const [totalCount, setTotalCount]   = useState(0)
-  const [keyword, setKeyword]         = useState('')
-  const [searchValue, setSearchValue] = useState('')
-  const debouncedSearch               = useDebounce(keyword, 500)
+  const [filters, setFilters] = useState<MaintenanceFilters>({ department: '', status: '' })
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ departments: [], statuses: [] })
 
-  const [filters, setFilters] = useState<MaintenanceFilters>({
-    year: currentYear, department: '', status: '',
-  })
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    years: [], departments: [], statuses: [],
-  })
+  const filtersRef       = useRef(filters)
+  const paginationRef    = useRef(pagination)
+  const searchValueRef   = useRef(searchValue)
+  const maintenanceByRef = useRef(maintenanceBy)
+  const yearRef          = useRef(year)
 
-  const filtersRef     = useRef(filters)
-  const paginationRef  = useRef(pagination)
-  const searchValueRef = useRef(searchValue)
-
-  useEffect(() => { filtersRef.current     = filters    }, [filters])
-  useEffect(() => { paginationRef.current  = pagination }, [pagination])
-  useEffect(() => { searchValueRef.current = searchValue }, [searchValue])
+  useEffect(() => { filtersRef.current       = filters       }, [filters])
+  useEffect(() => { paginationRef.current    = pagination    }, [pagination])
+  useEffect(() => { searchValueRef.current   = searchValue   }, [searchValue])
+  useEffect(() => { maintenanceByRef.current = maintenanceBy }, [maintenanceBy])
+  useEffect(() => { yearRef.current          = year          }, [year])
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length
 
@@ -312,8 +300,8 @@ function MaintenanceTable() {
     },
     { accessorKey: 'machineCode', header: t('machine_code'), cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div> },
     { accessorKey: 'machineName', header: t('machine_name'), cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
-    { accessorKey: 'years',       header: t('years'),         cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
-    { accessorKey: 'round',       header: t('round'),         cell: ({ row }) => <div className="text-sm">{row.original.round}</div> },
+    { accessorKey: 'years',       header: t('years'),        cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
+    { accessorKey: 'round',       header: t('round'),        cell: ({ row }) => <div className="text-sm">{row.original.round}</div> },
     {
       accessorKey: 'dueDate', header: t('due_date'),
       cell: ({ row }) => {
@@ -332,7 +320,11 @@ function MaintenanceTable() {
   ]
 
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
-  useEffect(() => { onFetchData(filtersRef.current) }, [searchValue, pagination.pageIndex, pagination.pageSize])
+
+  useEffect(() => {
+    onFetchData(filtersRef.current)
+  }, [searchValue, pagination.pageIndex, pagination.pageSize, maintenanceBy, year])
+
   useEffect(() => { fetchFilterOptions() }, [])
 
   const onFetchData = async (currentFilters: MaintenanceFilters) => {
@@ -340,14 +332,17 @@ function MaintenanceTable() {
       setLoading(true)
       const pg = paginationRef.current
       const sv = searchValueRef.current
+      const mb = maintenanceByRef.current
+      const yr = yearRef.current
 
       const params = new URLSearchParams()
       params.set('index', pg.pageIndex.toString())
       params.set('size',  pg.pageSize.toString())
-      if (sv.trim())               params.set('keyword',    sv.trim())
-      if (currentFilters.year)     params.set('year',       currentFilters.year)
-      if (currentFilters.department) params.set('department', currentFilters.department)
-      if (currentFilters.status)   params.set('status',     currentFilters.status)
+      params.set('year',  String(yr))
+      if (sv.trim())                 params.set('keyword',       sv.trim())
+      if (currentFilters.department) params.set('department',    currentFilters.department)
+      if (currentFilters.status)     params.set('status',        currentFilters.status)
+      if (mb !== 'ALL')              params.set('maintenanceBy', mb)
 
       const response = await api.get<PageResponse<MaintenanceDTO>>('/api/maintenance/get/page', { params })
       if (response?.success) {
@@ -371,7 +366,6 @@ function MaintenanceTable() {
       const response = await api.get<FilterOptionsResponse>('/api/maintenance/filter-options')
       if (response) {
         setFilterOptions({
-          years:       response.years       ?? [],
           departments: response.departments ?? [],
           statuses:    response.statuses    ?? [],
         })
@@ -389,7 +383,7 @@ function MaintenanceTable() {
   }, [])
 
   const handleClearFilters = useCallback(() => {
-    const reset: MaintenanceFilters = { year: currentYear, department: '', status: '' }
+    const reset: MaintenanceFilters = { department: '', status: '' }
     setFilters(reset)
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
     onFetchData(reset)
@@ -438,7 +432,8 @@ function MaintenanceTable() {
         </div>
         <div>
           {loading ? (
-            <DataTableSkeleton columnCount={columns.length} rowCount={10} filterCount={0} cellWidths={['auto']} withViewOptions={false} withPagination={true} shrinkZero={false} className="w-full" />
+            <DataTableSkeleton columnCount={columns.length} rowCount={10} filterCount={0}
+              cellWidths={['auto']} withViewOptions={false} withPagination={true} shrinkZero={false} className="w-full" />
           ) : (
             <DataTable table={table} emptyText={t('no_result')} />
           )}
@@ -449,16 +444,69 @@ function MaintenanceTable() {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-
 function Maintenance() {
+  const { t }   = useTranslation('checklist')
+  const [maintenanceBy, setMaintenanceBy] = useState<MaintenanceByFilter>('ALL')
+  const [year,          setYear]          = useState<number>(new Date().getFullYear())
+  const [yearOptions,   setYearOptions]   = useState<number[]>([new Date().getFullYear()])
+
+  useEffect(() => {
+    api.get<FilterOptionsResponse>('/api/maintenance/filter-options')
+      .then(res => {
+        if (res?.years?.length) {
+          setYearOptions(res.years) 
+          const currentYear = new Date().getFullYear()
+          if (!res.years.includes(currentYear)) setYear(res.years[0])
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const filters: { key: MaintenanceByFilter; label: string }[] = [
+    { key: 'ALL',         label: t('maintenance_by_all')         },
+    { key: 'EXTERNAL',    label: t('maintenance_by_external')    },
+    { key: 'CENTRAL',     label: t('maintenance_by_central')     },
+    { key: 'RESPONSIBLE', label: t('maintenance_by_responsible') },
+  ]
+
   return (
     <div className="min-h-screen bg-background">
       <main className="container mx-auto px-4 py-8">
-        <MaintenanceDepartmentDashboard />
-        <MaintenanceKanbanCard />
-        <MaintenanceCalendarCard />
-        <MaintenanceTable />
-        <MaintenancePlanActualCard />
+
+        <div className="flex items-center gap-2 flex-wrap mb-4 p-4 rounded-xl border bg-muted/20">
+          <span className="text-xs font-medium text-muted-foreground shrink-0">{t('filter_by')}:</span>
+          {filters.map(({ key, label }) => (
+            <Button
+              key={key}
+              variant={maintenanceBy === key ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 text-xs px-3"
+              onClick={() => setMaintenanceBy(key)}
+            >
+              {label}
+            </Button>
+          ))}
+
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">{t('years')}:</span>
+            <select
+              value={year}
+              onChange={e => setYear(Number(e.target.value))}
+              className="h-7 rounded-md border bg-background px-2 text-xs"
+            >
+              {yearOptions.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <MaintenanceDepartmentDashboard maintenanceBy={maintenanceBy} year={year} />
+        <MaintenancePlanActualCard      maintenanceBy={maintenanceBy} year={year} />
+        <MaintenanceKanbanCard          maintenanceBy={maintenanceBy} year={year} />
+        <MaintenanceCalendarCard        maintenanceBy={maintenanceBy} />
+        <MaintenanceTable               maintenanceBy={maintenanceBy} year={year} />
+
       </main>
     </div>
   )

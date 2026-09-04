@@ -14,7 +14,12 @@ import { useRouter } from '@tanstack/react-router'
 import { sessionStore } from '@/core/lib/store'
 import { useAuth } from '@/core/contexts/auth-context'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+type MaintenanceByFilter = 'ALL' | 'EXTERNAL' | 'CENTRAL' | 'RESPONSIBLE'
+
+interface Props {
+  maintenanceBy: MaintenanceByFilter
+  year: number
+}
 
 interface MaintenanceDTO {
   id: number
@@ -49,8 +54,6 @@ interface KanbanColumn {
   rows: MaintenanceDTO[]
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function rowUid(row: MaintenanceDTO): string {
   return `${row.machineCode}-${row.round}-${row.years}`
 }
@@ -76,95 +79,54 @@ function getColumnKey(row: MaintenanceDTO): ColumnKey {
   return 'todo'
 }
 
-// ─── Timeliness badge ─────────────────────────────────────────────────────────
-
 function TimelinessTag({ row, t }: { row: MaintenanceDTO; t: (k: string) => string }) {
   const due    = parseDate(row.dueDate)
   const actual = parseDate(row.actualDate)
   const today  = new Date(); today.setHours(0, 0, 0, 0)
-
   if (!due) return null
-
   if (actual) {
     const late = diffDays(actual, due)
-    if (late <= 0) {
-      return (
-        <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-          <CheckCircle2 className="w-2.5 h-2.5" />{t('on_time')}
-        </span>
-      )
-    }
+    if (late <= 0) return (
+      <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+        <CheckCircle2 className="w-2.5 h-2.5" />{t('on_time')}
+      </span>
+    )
     return (
       <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
         <AlertCircle className="w-2.5 h-2.5" />{t('overdue')} +{late}d
       </span>
     )
   }
-
   const late = diffDays(today, due)
-  if (late > 0) {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
-        <AlertCircle className="w-2.5 h-2.5" />{t('overdue')} +{late}d
-      </span>
-    )
-  }
-  if (late === 0) {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-        <Clock className="w-2.5 h-2.5" />Today
-      </span>
-    )
-  }
+  if (late > 0) return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
+      <AlertCircle className="w-2.5 h-2.5" />{t('overdue')} +{late}d
+    </span>
+  )
+  if (late === 0) return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+      <Clock className="w-2.5 h-2.5" />Today
+    </span>
+  )
   return null
 }
 
-// ─── Column config ────────────────────────────────────────────────────────────
-
 const COLUMN_CONFIG: Omit<KanbanColumn, 'rows'>[] = [
-  {
-    key:         'todo',
-    labelKey:    'kanban_todo',
-    icon:        <CircleDashed className="w-3.5 h-3.5" />,
-    headerClass: 'bg-slate-50 border-slate-200 text-slate-700',
-    dotClass:    'bg-slate-400',
-    cardClass:   'border-slate-200 hover:border-slate-400',
-  },
-  {
-    key:         'inprogress',
-    labelKey:    'kanban_inprogress',
-    icon:        <PlayCircle className="w-3.5 h-3.5" />,
-    headerClass: 'bg-blue-50 border-blue-200 text-blue-700',
-    dotClass:    'bg-blue-500',
-    cardClass:   'border-blue-200 hover:border-blue-400',
-  },
-  {
-    key:         'done',
-    labelKey:    'done',
-    icon:        <CheckCircle className="w-3.5 h-3.5" />,
-    headerClass: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-    dotClass:    'bg-emerald-500',
-    cardClass:   'border-emerald-200 hover:border-emerald-400',
-  },
+  { key: 'todo',       labelKey: 'kanban_todo',       icon: <CircleDashed className="w-3.5 h-3.5" />, headerClass: 'bg-slate-50 border-slate-200 text-slate-700',   dotClass: 'bg-slate-400',   cardClass: 'border-slate-200 hover:border-slate-400' },
+  { key: 'inprogress', labelKey: 'kanban_inprogress', icon: <PlayCircle   className="w-3.5 h-3.5" />, headerClass: 'bg-blue-50 border-blue-200 text-blue-700',     dotClass: 'bg-blue-500',    cardClass: 'border-blue-200 hover:border-blue-400' },
+  { key: 'done',       labelKey: 'done',              icon: <CheckCircle  className="w-3.5 h-3.5" />, headerClass: 'bg-emerald-50 border-emerald-200 text-emerald-700', dotClass: 'bg-emerald-500', cardClass: 'border-emerald-200 hover:border-emerald-400' },
 ]
-
-// ─── Detail Drawer ────────────────────────────────────────────────────────────
 
 function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: () => void }) {
   const { t }  = useTranslation('checklist')
   const router = useRouter()
   const ref    = useRef<HTMLDivElement>(null)
-
   const session  = sessionStore.state.session
   const memberId = session?.memberId ?? null
   const { role } = useAuth()
-  const isAdmin = role === 'ADMIN'
+  const isAdmin  = role === 'ADMIN'
+  const canEdit  = row != null && (isAdmin || (memberId != null && row.responsibleMaintenance === Number(memberId)))
 
-  const canEdit = row != null && (
-    isAdmin ||
-    (memberId != null && row.responsibleMaintenance === Number(memberId))
-  )
-  
   useEffect(() => {
     if (!row) return
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
@@ -194,13 +156,8 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
   return (
     <>
       <div className={`fixed inset-0 z-40 bg-black/20 transition-opacity duration-200 ${row ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} aria-hidden="true" />
-      <div
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('checklist_details')}
-        className={`fixed top-0 right-0 z-50 h-full w-80 bg-background border-l border-border shadow-xl flex flex-col transition-transform duration-200 ease-in-out ${row ? 'translate-x-0' : 'translate-x-full'}`}
-      >
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={t('checklist_details')}
+        className={`fixed top-0 right-0 z-50 h-full w-80 bg-background border-l border-border shadow-xl flex flex-col transition-transform duration-200 ease-in-out ${row ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
           <div className="flex items-center gap-2">
             <Wrench className="w-4 h-4 text-red-600" />
@@ -209,25 +166,15 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
           <div className="flex items-center gap-1">
             {row && (
               <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
+                <Button variant="ghost" size="icon" className="h-7 w-7"
                   onClick={() => router.navigate({ to: '/checklist/maintenance/view', search: { id: row.id } })}
-                  aria-label={t('view_document')}
-                >
+                  aria-label={t('view_document')}>
                   <Eye className="w-4 h-4" />
                 </Button>
-
-                {/* ✅ แสดงปุ่ม Edit เฉพาะ responsible maintenance */}
                 {canEdit && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
+                  <Button variant="ghost" size="icon" className="h-7 w-7"
                     onClick={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id: row.id } })}
-                    aria-label={t('edit')}
-                  >
+                    aria-label={t('edit')}>
                     <Pencil className="w-4 h-4" />
                   </Button>
                 )}
@@ -238,10 +185,8 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
             </Button>
           </div>
         </div>
-
         {row && (
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-            {/* Identity */}
             <div className={`rounded-lg px-4 py-3 border bg-white dark:bg-muted/20 ${col?.cardClass ?? ''}`}>
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">{t('machine_code')}</p>
               <p className="text-base font-semibold leading-tight">{row.machineCode}</p>
@@ -252,20 +197,13 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
                 </p>
               )}
             </div>
-
-            {/* Stage + timeliness badge */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${col?.headerClass}`}>
-                {col?.icon}
-                {t(col?.labelKey ?? '')}
+                {col?.icon}{t(col?.labelKey ?? '')}
               </div>
               <TimelinessTag row={row} t={t} />
             </div>
-
-            {/* Round + year */}
             <p className="text-xs text-muted-foreground">{t('round')} {row.round} · {t('years')} {row.years}</p>
-
-            {/* Timeline */}
             <div className="space-y-3">
               <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Timeline</p>
               <div className="space-y-2.5">
@@ -277,8 +215,6 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
                 ))}
               </div>
             </div>
-
-            {/* Duration */}
             {plan && due && (
               <div className="rounded-md bg-muted px-3 py-2.5 flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
@@ -290,8 +226,6 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
                 </span>
               </div>
             )}
-
-            {/* Responsible person */}
             {(row.responsibleMaintenanceName || row.maintenanceBy) && (
               <div className="space-y-2">
                 <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t('responsible_by')}</p>
@@ -300,9 +234,7 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
                     <User className="w-3.5 h-3.5 text-muted-foreground" />
                   </div>
                   <div>
-                    {row.responsibleMaintenanceName && (
-                      <p className="text-sm font-medium">{row.responsibleMaintenanceName}</p>
-                    )}
+                    {row.responsibleMaintenanceName && <p className="text-sm font-medium">{row.responsibleMaintenanceName}</p>}
                     {row.maintenanceBy && row.maintenanceBy !== row.responsibleMaintenanceName && (
                       <p className="text-[11px] text-muted-foreground">{t('maintenance_by')}: {row.maintenanceBy}</p>
                     )}
@@ -317,46 +249,32 @@ function DetailDrawer({ row, onClose }: { row: MaintenanceDTO | null; onClose: (
   )
 }
 
-// ─── MachineCard ──────────────────────────────────────────────────────────────
-
-function MachineCard({
-  row, colConfig, selected, onClick, t,
-}: {
-  row: MaintenanceDTO
-  colConfig: Omit<KanbanColumn, 'rows'>
-  selected: boolean
-  onClick: () => void
-  t: (key: string) => string
+function MachineCard({ row, colConfig, selected, onClick, t }: {
+  row: MaintenanceDTO; colConfig: Omit<KanbanColumn, 'rows'>
+  selected: boolean; onClick: () => void; t: (key: string) => string
 }) {
   const due    = parseDate(row.dueDate)
   const actual = parseDate(row.actualDate)
   const today  = new Date(); today.setHours(0, 0, 0, 0)
-
   const isOverdue       = !actual && due && due < today
   const responsibleName = row.responsibleMaintenanceName || row.maintenanceBy || null
   const deptLabel       = row.machineDepartmentName || row.machineDepartmentCode || null
 
   return (
-    <button
-      onClick={onClick}
+    <button onClick={onClick}
       className={`w-full text-left rounded-lg border px-3 py-2.5 space-y-2 transition-all bg-white dark:bg-muted/20
-        ${colConfig.cardClass}
-        ${selected ? 'ring-2 ring-offset-1 shadow-md' : 'hover:shadow-sm'}
-        ${isOverdue ? '!border-red-300 bg-red-50/50 dark:bg-red-950/20' : ''}
-      `}
-    >
+        ${colConfig.cardClass} ${selected ? 'ring-2 ring-offset-1 shadow-md' : 'hover:shadow-sm'}
+        ${isOverdue ? '!border-red-300 bg-red-50/50 dark:bg-red-950/20' : ''}`}>
       <div className="flex items-center justify-between gap-1">
         <p className="text-[11px] font-semibold">{row.machineCode} - {row.machineName}</p>
         <span className={`w-2 h-2 rounded-full shrink-0 ${isOverdue ? 'bg-red-500' : colConfig.dotClass}`} />
       </div>
-
       {responsibleName && (
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
           <User className="w-2.5 h-2.5 shrink-0" />
           <span className="truncate">{responsibleName}</span>
         </div>
       )}
-
       <div className="flex items-center justify-between gap-1 pt-0.5 flex-wrap">
         <div className="flex items-center gap-1 flex-wrap">
           {deptLabel && (
@@ -372,66 +290,44 @@ function MachineCard({
   )
 }
 
-// ─── KanbanColumnView ─────────────────────────────────────────────────────────
-
-function KanbanColumnView({
-  col, selectedUid, onSelect, t,
-}: {
-  col: KanbanColumn
-  selectedUid: string | null
-  onSelect: (row: MaintenanceDTO) => void
-  t: (key: string) => string
+function KanbanColumnView({ col, selectedUid, onSelect, t }: {
+  col: KanbanColumn; selectedUid: string | null
+  onSelect: (row: MaintenanceDTO) => void; t: (key: string) => string
 }) {
   return (
     <div className="flex flex-col rounded-xl border flex-1 min-w-0 bg-muted/30">
       <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-xl border-b ${col.headerClass}`}>
-        <div className="flex items-center gap-1.5 text-xs font-semibold">
-          {col.icon}
-          {t(col.labelKey)}
-        </div>
+        <div className="flex items-center gap-1.5 text-xs font-semibold">{col.icon}{t(col.labelKey)}</div>
         <span className="text-xs font-medium opacity-70">{col.rows.length}</span>
       </div>
-
       <div className="flex flex-col gap-2 p-2.5 overflow-y-auto" style={{ maxHeight: 480 }}>
         {col.rows.length === 0 ? (
           <p className="text-[11px] text-muted-foreground text-center py-6">{t('no_result')}</p>
-        ) : (
-          col.rows.map((row, idx) => {
-            const uid = `${rowUid(row)}-${idx}`
-            return (
-              <MachineCard
-                key={uid}
-                row={row}
-                colConfig={col}
-                selected={selectedUid === rowUid(row)}
-                onClick={() => onSelect(row)}
-                t={t}
-              />
-            )
-          })
-        )}
+        ) : col.rows.map((row, idx) => (
+          <MachineCard key={`${rowUid(row)}-${idx}`} row={row} colConfig={col}
+            selected={selectedUid === rowUid(row)} onClick={() => onSelect(row)} t={t} />
+        ))}
       </div>
     </div>
   )
 }
 
-// ─── MaintenanceKanbanCard ────────────────────────────────────────────────────
-
-export function MaintenanceKanbanCard() {
+export function MaintenanceKanbanCard({ maintenanceBy, year }: Props) {
   const { t } = useTranslation('checklist')
-  const [data, setData]         = useState<MaintenanceDTO[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [data,     setData]     = useState<MaintenanceDTO[]>([])
+  const [loading,  setLoading]  = useState(true)
   const [selected, setSelected] = useState<MaintenanceDTO | null>(null)
-  const [keyword, setKeyword]   = useState('')
+  const [keyword,  setKeyword]  = useState('')
   const debouncedKeyword        = useDebounce(keyword, 400)
 
-  useEffect(() => { fetchData(debouncedKeyword) }, [debouncedKeyword])
+  useEffect(() => { fetchData(debouncedKeyword, maintenanceBy, year) }, [debouncedKeyword, maintenanceBy, year])
 
-  const fetchData = async (kw: string) => {
+  const fetchData = async (kw: string, mb: MaintenanceByFilter, yr: number) => {
     try {
       setLoading(true)
-      const params: Record<string, unknown> = { index: 0, size: 200 }
-      if (kw.trim()) params.keyword = kw.trim()
+      const params: Record<string, unknown> = { index: 0, size: 200, year: yr }
+      if (kw.trim())    params.keyword       = kw.trim()
+      if (mb !== 'ALL') params.maintenanceBy = mb
       const response = await api.get('/api/maintenance/get/page', { params })
       if (response?.success) setData(response.data ?? [])
       else toast.error(response?.message ?? t('data_fetch_failed'))
@@ -445,39 +341,26 @@ export function MaintenanceKanbanCard() {
   const columns: KanbanColumn[] = useMemo(() => {
     const buckets: Record<ColumnKey, MaintenanceDTO[]> = { todo: [], inprogress: [], done: [] }
     data.forEach(row => { buckets[getColumnKey(row)].push(row) })
-
-    const sortByDueAsc = (arr: MaintenanceDTO[]) =>
-      [...arr].sort((a, b) => {
-        const da = parseDate(a.dueDate), db = parseDate(b.dueDate)
-        if (!da && !db) return 0
-        if (!da) return 1
-        if (!db) return -1
-        return da.getTime() - db.getTime()
-      })
-
-    const sortByActualDesc = (arr: MaintenanceDTO[]) =>
-      [...arr].sort((a, b) => {
-        const da = parseDate(a.actualDate), db = parseDate(b.actualDate)
-        if (!da && !db) return 0
-        if (!da) return 1
-        if (!db) return -1
-        return db.getTime() - da.getTime()
-      })
-
+    const sortByDueAsc = (arr: MaintenanceDTO[]) => [...arr].sort((a, b) => {
+      const da = parseDate(a.dueDate), db = parseDate(b.dueDate)
+      if (!da && !db) return 0; if (!da) return 1; if (!db) return -1
+      return da.getTime() - db.getTime()
+    })
+    const sortByActualDesc = (arr: MaintenanceDTO[]) => [...arr].sort((a, b) => {
+      const da = parseDate(a.actualDate), db = parseDate(b.actualDate)
+      if (!da && !db) return 0; if (!da) return 1; if (!db) return -1
+      return db.getTime() - da.getTime()
+    })
     return COLUMN_CONFIG.map(cfg => ({
       ...cfg,
-      rows: cfg.key === 'done'
-        ? sortByActualDesc(buckets[cfg.key])
-        : sortByDueAsc(buckets[cfg.key]),
+      rows: cfg.key === 'done' ? sortByActualDesc(buckets[cfg.key]) : sortByDueAsc(buckets[cfg.key]),
     }))
   }, [data])
 
   const selectedUid = selected ? rowUid(selected) : null
-
   const handleSelect = (row: MaintenanceDTO) => {
     setSelected(prev => (prev && rowUid(prev) === rowUid(row) ? null : row))
   }
-
   const summary = useMemo(() => ({
     todo:       columns.find(c => c.key === 'todo')?.rows.length       ?? 0,
     inprogress: columns.find(c => c.key === 'inprogress')?.rows.length ?? 0,
@@ -505,17 +388,11 @@ export function MaintenanceKanbanCard() {
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-              <Input
-                value={keyword}
-                onChange={e => setKeyword(e.target.value)}
-                placeholder={t('search')}
-                className="pl-8 h-8 text-xs w-48"
-              />
+              <Input value={keyword} onChange={e => setKeyword(e.target.value)}
+                placeholder={t('search')} className="pl-8 h-8 text-xs w-48" />
               {keyword && (
-                <button
-                  onClick={() => setKeyword('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
+                <button onClick={() => setKeyword('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -526,26 +403,16 @@ export function MaintenanceKanbanCard() {
             </div>
           </div>
         </CardHeader>
-
         <div className="flex gap-4 px-5 py-5 items-start">
           {loading ? (
-            [...Array(3)].map((_, i) => (
-              <div key={i} className="flex-1 h-72 rounded-xl bg-muted animate-pulse" />
-            ))
+            [...Array(3)].map((_, i) => <div key={i} className="flex-1 h-72 rounded-xl bg-muted animate-pulse" />)
           ) : (
             columns.map(col => (
-              <KanbanColumnView
-                key={col.key}
-                col={col}
-                selectedUid={selectedUid}
-                onSelect={handleSelect}
-                t={t}
-              />
+              <KanbanColumnView key={col.key} col={col} selectedUid={selectedUid} onSelect={handleSelect} t={t} />
             ))
           )}
         </div>
       </Card>
-
       <DetailDrawer row={selected} onClose={() => setSelected(null)} />
     </>
   )

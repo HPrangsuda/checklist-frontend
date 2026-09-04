@@ -12,6 +12,7 @@
   "group_management": "Management",
   "total_machines": "Total Machines",
   "available_machines": "Available Machines",
+  "total_maintenance": "Total Maintenance",
   "upcoming_maintenance": "Upcoming Maintenance",
   "upcoming_calibration": "Upcoming Calibration",
   "within_30_days": "Within 30 days",
@@ -442,5 +443,14 @@
   "machine_details": "Machine Details",
   "export_selected": "Export Selected",
   "export_selected_desc": "Export QR for {count} selected items",
-   "maintenance_calendar": "Maintenance Calendar"
+  "maintenance_calendar": "Maintenance Calendar",
+  "external": "External",
+  "central": "Central",
+  "responsible_person": "Responsible Person",
+  "pass": "Pass",
+  "not_pass": "Not Pass",
+  "maintenance_by_all": "All",
+  "maintenance_by_external": "External",
+  "maintenance_by_central": "Central",
+  "maintenance_by_responsible": "Responsible" 
 }

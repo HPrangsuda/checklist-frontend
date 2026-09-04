@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, Calendar, X } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -7,8 +7,6 @@ import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import { useRouter } from '@tanstack/react-router'
 import { cn } from '@/core/lib/utils'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CalibrationEvent {
   id: number
@@ -22,17 +20,14 @@ interface CalibrationEvent {
   department?: string
 }
 
-interface DayCell {
-  date: Date
-  isCurrentMonth: boolean
-  events: CalibrationEvent[]
-}
-
+interface DayCell { date: Date; isCurrentMonth: boolean; events: CalibrationEvent[] }
 interface PopupPos { top: number; left: number }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 const DAYS_OF_WEEK_KEYS = ['cal_mon','cal_tue','cal_wed','cal_thu','cal_fri','cal_sat','cal_sun']
+const MONTH_KEYS = [
+  'january','february','march','april','may','june',
+  'july','august','september','october','november','december',
+]
 
 function addMonths(year: number, month: number, delta: number) {
   const d = new Date(year, month + delta, 1)
@@ -59,20 +54,14 @@ function buildCalendarGrid(year: number, month: number, events: CalibrationEvent
   return cells
 }
 
-/** Compute a fixed-position popup that stays inside the viewport */
 function calcPopupPos(triggerRect: DOMRect, popupW: number, popupH: number): PopupPos {
-  const VW = window.innerWidth
-  const VH = window.innerHeight
-  let top  = triggerRect.bottom + 6
-  let left = triggerRect.left
+  const VW = window.innerWidth, VH = window.innerHeight
+  let top = triggerRect.bottom + 6, left = triggerRect.left
   if (top  + popupH > VH - 8) top  = triggerRect.top - popupH - 6
   if (left + popupW > VW - 8) left = VW - popupW - 8
-  if (left < 8) left = 8
-  if (top  < 8) top  = 8
+  if (left < 8) left = 8; if (top < 8) top = 8
   return { top, left }
 }
-
-// ─── Badge helpers ────────────────────────────────────────────────────────────
 
 function getEventDotClass(results?: string, calibrationStatus?: string) {
   const r = results?.toUpperCase()
@@ -102,31 +91,17 @@ function getResultBadgeClass(result?: string) {
   }
 }
 
-// ─── Global fixed popup portal ────────────────────────────────────────────────
-// Both "more" list and event detail render here so they're never clipped
-
-interface EventDetailPopupProps {
-  event: CalibrationEvent
-  pos: PopupPos
-  onClose: () => void
-  onOpen: (id: number) => void
-  t: (key: string) => string
-}
-
-function EventDetailPopup({ event, pos, onClose, onOpen, t }: EventDetailPopupProps) {
+function EventDetailPopup({ event, pos, onClose, onOpen, t }: {
+  event: CalibrationEvent; pos: PopupPos
+  onClose: () => void; onOpen: (id: number) => void; t: (k: string) => string
+}) {
   const [y, m, d] = event.dueDate.split('-')
   const dept = event.machineDepartmentName ?? event.department
-
   return (
-    <div
-      className="fixed z-[300] w-72 rounded-xl border bg-popover shadow-xl p-4 space-y-3 text-sm"
-      style={{ top: pos.top, left: pos.left }}
-      onClick={e => e.stopPropagation()}
-    >
+    <div className="fixed z-[300] w-72 rounded-xl border bg-popover shadow-xl p-4 space-y-3 text-sm"
+      style={{ top: pos.top, left: pos.left }} onClick={e => e.stopPropagation()}>
       <div className="flex items-start justify-between gap-2">
-        <p className="font-semibold leading-snug text-foreground">
-          {event.machineCode} – {event.machineName}
-        </p>
+        <p className="font-semibold leading-snug text-foreground">{event.machineCode} – {event.machineName}</p>
         <button onClick={onClose} className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground">
           <X className="w-3.5 h-3.5" />
         </button>
@@ -156,27 +131,19 @@ function EventDetailPopup({ event, pos, onClose, onOpen, t }: EventDetailPopupPr
         </div>
       </div>
       <Button size="sm" variant="outline" className="w-full h-7 text-xs" onClick={() => onOpen(event.id)}>
-        {t('view') || 'View'} →
+        {t('view')} →
       </Button>
     </div>
   )
 }
 
-interface MoreListPopupProps {
-  cell: DayCell
-  pos: PopupPos
-  onClose: () => void
-  onSelectEvent: (e: React.MouseEvent, ev: CalibrationEvent) => void
-  t: (key: string) => string
-}
-
-function MoreListPopup({ cell, pos, onClose, onSelectEvent, t }: MoreListPopupProps) {
+function MoreListPopup({ cell, pos, onClose, onSelectEvent, t }: {
+  cell: DayCell; pos: PopupPos; onClose: () => void
+  onSelectEvent: (e: React.MouseEvent, ev: CalibrationEvent) => void; t: (k: string) => string
+}) {
   return (
-    <div
-      className="fixed z-[300] w-52 max-h-52 overflow-y-auto rounded-lg border bg-popover shadow-xl p-2"
-      style={{ top: pos.top, left: pos.left }}
-      onClick={e => e.stopPropagation()}
-    >
+    <div className="fixed z-[300] w-52 max-h-52 overflow-y-auto rounded-lg border bg-popover shadow-xl p-2"
+      style={{ top: pos.top, left: pos.left }} onClick={e => e.stopPropagation()}>
       <div className="flex items-center justify-between mb-1 sticky top-0 bg-popover pb-1 border-b">
         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
           {cell.date.getDate()}/{cell.date.getMonth() + 1} · {cell.events.length} {t('cal_items')}
@@ -187,11 +154,8 @@ function MoreListPopup({ cell, pos, onClose, onSelectEvent, t }: MoreListPopupPr
       </div>
       <div className="space-y-0.5 pt-0.5">
         {cell.events.map((ev, i) => (
-          <button
-            key={`ml-${ev.id}-${i}`}
-            onClick={e => { onClose(); onSelectEvent(e, ev) }}
-            className="w-full flex items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-accent/60 transition-colors"
-          >
+          <button key={`ml-${ev.id}-${i}`} onClick={e => { onClose(); onSelectEvent(e, ev) }}
+            className="w-full flex items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-accent/60 transition-colors">
             <span className={cn('shrink-0 w-1.5 h-1.5 rounded-full', getEventDotClass(ev.results, ev.calibrationStatus))} />
             <span className="truncate text-[10px] leading-tight text-foreground/80 font-medium">
               {ev.machineName || ev.machineCode}
@@ -203,41 +167,25 @@ function MoreListPopup({ cell, pos, onClose, onSelectEvent, t }: MoreListPopupPr
   )
 }
 
-// ─── Single day cell ──────────────────────────────────────────────────────────
-
-function CalendarDayCell({
-  cell, isToday,
-  onEventClick, onShowMore, t,
-}: {
-  cell: DayCell
-  isToday: boolean
+function CalendarDayCell({ cell, isToday, onEventClick, onShowMore, t }: {
+  cell: DayCell; isToday: boolean
   onEventClick: (e: React.MouseEvent, ev: CalibrationEvent) => void
-  onShowMore: (e: React.MouseEvent, cell: DayCell) => void
-  t: (key: string) => string
+  onShowMore: (e: React.MouseEvent, cell: DayCell) => void; t: (k: string) => string
 }) {
   const MAX_VISIBLE = 2
   const visible  = cell.events.slice(0, MAX_VISIBLE)
   const overflow = cell.events.length - MAX_VISIBLE
-
   return (
-    <div className={cn(
-      'relative min-h-[80px] p-1 border-b border-r text-xs transition-colors select-none',
-      !cell.isCurrentMonth && 'bg-muted/30',
-    )}>
-      <span className={cn(
-        'flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium mb-0.5',
-        isToday && 'bg-red-600 text-white',
-        !cell.isCurrentMonth && 'text-muted-foreground/50',
-      )}>
+    <div className={cn('relative min-h-[80px] p-1 border-b border-r text-xs transition-colors select-none',
+      !cell.isCurrentMonth && 'bg-muted/30')}>
+      <span className={cn('flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium mb-0.5',
+        isToday && 'bg-red-600 text-white', !cell.isCurrentMonth && 'text-muted-foreground/50')}>
         {cell.date.getDate()}
       </span>
       <div className="space-y-0.5">
         {visible.map((ev, i) => (
-          <button
-            key={`${ev.id}-${i}`}
-            onClick={e => onEventClick(e, ev)}
-            className="w-full flex items-center gap-1 rounded px-0.5 py-0.5 text-left hover:bg-accent/60 transition-colors"
-          >
+          <button key={`${ev.id}-${i}`} onClick={e => onEventClick(e, ev)}
+            className="w-full flex items-center gap-1 rounded px-0.5 py-0.5 text-left hover:bg-accent/60 transition-colors">
             <span className={cn('shrink-0 w-1.5 h-1.5 rounded-full', getEventDotClass(ev.results, ev.calibrationStatus))} />
             <span className="truncate text-[10px] leading-tight text-foreground/80 font-medium">
               {ev.machineName || ev.machineCode}
@@ -245,10 +193,8 @@ function CalendarDayCell({
           </button>
         ))}
         {overflow > 0 && (
-          <button
-            onClick={e => onShowMore(e, cell)}
-            className="w-full px-0.5 text-[10px] text-blue-500 hover:text-blue-700 text-left font-medium"
-          >
+          <button onClick={e => onShowMore(e, cell)}
+            className="w-full px-0.5 text-[10px] text-blue-500 hover:text-blue-700 text-left font-medium">
             +{overflow} {t('cal_more')}
           </button>
         )}
@@ -257,27 +203,18 @@ function CalendarDayCell({
   )
 }
 
-// ─── Single month mini-calendar ───────────────────────────────────────────────
-
-function MonthCalendar({
-  year, month, events, today,
-  onEventClick, onShowMore, t,
-}: {
-  year: number
-  month: number
-  events: CalibrationEvent[]
-  today: Date
+function MonthCalendar({ year, month, events, today, onEventClick, onShowMore, t }: {
+  year: number; month: number; events: CalibrationEvent[]; today: Date
   onEventClick: (e: React.MouseEvent, ev: CalibrationEvent) => void
-  onShowMore: (e: React.MouseEvent, cell: DayCell) => void
-  t: (key: string) => string
+  onShowMore: (e: React.MouseEvent, cell: DayCell) => void; t: (k: string) => string
 }) {
   const cells = buildCalendarGrid(year, month, events)
-  const MONTH_KEYS = ['january','february','march','april','may','june','july','august','september','october','november','december']
-  const label = `${t(MONTH_KEYS[month])} ${year}`
-
   return (
     <div className="flex flex-col min-w-0">
-      <div className="py-2 px-3 text-center text-sm font-semibold border-b bg-muted/10">{label}</div>
+      {/* ── ใช้ t() สำหรับ i18n ── */}
+      <div className="py-2 px-3 text-center text-sm font-semibold border-b bg-muted/10">
+        {t(MONTH_KEYS[month])} {year}
+      </div>
       <div className="grid grid-cols-7 border-b">
         {DAYS_OF_WEEK_KEYS.map(key => (
           <div key={key} className="py-1.5 text-center text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
@@ -292,14 +229,8 @@ function MonthCalendar({
             cell.date.getMonth()    === today.getMonth()    &&
             cell.date.getFullYear() === today.getFullYear()
           return (
-            <CalendarDayCell
-              key={`${year}-${month}-${idx}`}
-              cell={cell}
-              isToday={isToday}
-              onEventClick={onEventClick}
-              onShowMore={onShowMore}
-              t={t}
-            />
+            <CalendarDayCell key={`${year}-${month}-${idx}`} cell={cell} isToday={isToday}
+              onEventClick={onEventClick} onShowMore={onShowMore} t={t} />
           )
         })}
       </div>
@@ -307,35 +238,28 @@ function MonthCalendar({
   )
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
 export function CalibrationCalendarCard() {
   const { t }  = useTranslation('checklist')
   const router = useRouter()
   const today  = new Date()
 
-  const [anchor, setAnchor] = useState(addMonths(today.getFullYear(), today.getMonth(), -1))
+  const [anchor,        setAnchor]        = useState(addMonths(today.getFullYear(), today.getMonth(), -1))
   const [eventsByMonth, setEventsByMonth] = useState<Record<string, CalibrationEvent[]>>({})
-  const [yearlyStats, setYearlyStats]     = useState({ total: 0, onTime: 0, pending: 0, overdue: 0 })
-  const [loading, setLoading] = useState(false)
+  const [yearlyStats,   setYearlyStats]   = useState({ total: 0, onTime: 0, pending: 0, overdue: 0 })
+  const [loading,       setLoading]       = useState(false)
+  const [detailPopup,   setDetailPopup]   = useState<{ event: CalibrationEvent; pos: PopupPos } | null>(null)
+  const [morePopup,     setMorePopup]     = useState<{ cell: DayCell; pos: PopupPos } | null>(null)
 
-  // Single popup state — only one open at a time
-  const [detailPopup, setDetailPopup] = useState<{ event: CalibrationEvent; pos: PopupPos } | null>(null)
-  const [morePopup,   setMorePopup]   = useState<{ cell: DayCell; pos: PopupPos } | null>(null)
+  const months     = [anchor, addMonths(anchor.year, anchor.month, 1), addMonths(anchor.year, anchor.month, 2)]
+  const centreYear = addMonths(anchor.year, anchor.month, 1).year
 
-  const months = [
-    anchor,
-    addMonths(anchor.year, anchor.month, 1),
-    addMonths(anchor.year, anchor.month, 2),
-  ]
-
-  const prev3   = () => { setAnchor(a => addMonths(a.year, a.month, -3)); closeAll() }
-  const next3   = () => { setAnchor(a => addMonths(a.year, a.month,  3)); closeAll() }
-  const goToday = () => { setAnchor(addMonths(today.getFullYear(), today.getMonth(), -1)); closeAll() }
+  const prev3    = () => { setAnchor(a => addMonths(a.year, a.month, -3)); closeAll() }
+  const next3    = () => { setAnchor(a => addMonths(a.year, a.month,  3)); closeAll() }
+  const goToday  = () => { setAnchor(addMonths(today.getFullYear(), today.getMonth(), -1)); closeAll() }
   const closeAll = () => { setDetailPopup(null); setMorePopup(null) }
 
-  // centre month = anchor + 1  →  that month's year is the "current" year for the view
-  const centreYear = addMonths(anchor.year, anchor.month, 1).year
+  // ── range label ใช้ t() เพื่อ i18n ──
+  const rangeLabel = `${t(MONTH_KEYS[months[0].month])} ${months[0].year} – ${t(MONTH_KEYS[months[2].month])} ${months[2].year}`
 
   const parseResponse = (res: unknown): CalibrationEvent[] => {
     if (Array.isArray(res)) return res as CalibrationEvent[]
@@ -353,33 +277,32 @@ export function CalibrationCalendarCard() {
   const fetchEvents = useCallback(async () => {
     try {
       setLoading(true)
-      const yr = addMonths(anchor.year, anchor.month, 1).year  // centre month year
-
-      // Fetch 3 visible months + all 12 months for yearly stats in parallel
-      const visibleTargets = [
+      const yr = addMonths(anchor.year, anchor.month, 1).year
+      const visibleTargets  = [
         addMonths(anchor.year, anchor.month, 0),
         addMonths(anchor.year, anchor.month, 1),
         addMonths(anchor.year, anchor.month, 2),
       ]
       const allMonthTargets = Array.from({ length: 12 }, (_, i) => ({ year: yr, month: i }))
 
+      const buildParams = (year: number, month: number) => {
+        const p = new URLSearchParams()
+        p.set('year',  String(year))
+        p.set('month', String(month + 1))
+        return p
+      }
+
       const [visibleResults, yearlyResults] = await Promise.all([
-        Promise.all(visibleTargets.map(({ year, month }) => {
-          const params = new URLSearchParams()
-          params.set('year',  String(year))
-          params.set('month', String(month + 1))
-          return api.get<unknown>('/api/calibration/calendar', { params })
+        Promise.all(visibleTargets.map(({ year, month }) =>
+          api.get<unknown>(`/api/calibration/calendar?${buildParams(year, month).toString()}`)
             .then(res => ({ year, month, data: parseResponse(res) }))
             .catch(() => ({ year, month, data: [] as CalibrationEvent[] }))
-        })),
-        Promise.all(allMonthTargets.map(({ year, month }) => {
-          const params = new URLSearchParams()
-          params.set('year',  String(year))
-          params.set('month', String(month + 1))
-          return api.get<unknown>('/api/calibration/calendar', { params })
+        )),
+        Promise.all(allMonthTargets.map(({ year, month }) =>
+          api.get<unknown>(`/api/calibration/calendar?${buildParams(year, month).toString()}`)
             .then(res => parseResponse(res))
             .catch(() => [] as CalibrationEvent[])
-        })),
+        )),
       ])
 
       const map: Record<string, CalibrationEvent[]> = {}
@@ -400,7 +323,6 @@ export function CalibrationCalendarCard() {
 
   useEffect(() => { fetchEvents() }, [fetchEvents])
 
-  // Close on outside click
   useEffect(() => {
     const handler = () => closeAll()
     document.addEventListener('click', handler)
@@ -408,78 +330,66 @@ export function CalibrationCalendarCard() {
   }, [])
 
   const handleEventClick = useCallback((e: React.MouseEvent, event: CalibrationEvent) => {
-    e.stopPropagation()
-    setMorePopup(null)
-    const pos = calcPopupPos((e.currentTarget as HTMLElement).getBoundingClientRect(), 288, 220)
+    e.stopPropagation(); setMorePopup(null)
+    const pos = calcPopupPos((e.currentTarget as HTMLElement).getBoundingClientRect(), 288, 240)
     setDetailPopup(prev => prev?.event.id === event.id ? null : { event, pos })
   }, [])
 
   const handleShowMore = useCallback((e: React.MouseEvent, cell: DayCell) => {
-    e.stopPropagation()
-    setDetailPopup(null)
+    e.stopPropagation(); setDetailPopup(null)
     const pos = calcPopupPos((e.currentTarget as HTMLElement).getBoundingClientRect(), 208, 220)
     setMorePopup(prev => prev?.cell === cell ? null : { cell, pos })
   }, [])
 
-  const handleOpenDetail = (id: number) => {
-    router.navigate({ to: '/checklist/calibration/view', search: { id } })
-  }
-
   const allEvents = Object.values(eventsByMonth).flat()
-  const { total: yearTotal, onTime, pending, overdue } = yearlyStats
-
-  const rangeLabel = `${new Date(months[0].year, months[0].month).toLocaleString('default', { month: 'short', year: 'numeric' })} – ${new Date(months[2].year, months[2].month).toLocaleString('default', { month: 'short', year: 'numeric' })}`
 
   return (
     <>
-      <Card className="p-0">
-        {/* ── Header ── */}
+      <Card className="p-0 mb-6">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b px-5 py-4">
           <CardTitle className="font-bold flex items-center gap-2">
             <Calendar className="w-5 h-5 text-red-600" />
             {t('calibration_calendar')}
           </CardTitle>
           <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground">
-            <span className="text-muted-foreground">{centreYear} ·</span>
+            <span>{centreYear} ·</span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-              {t('status_on_time')} <span className="font-semibold text-foreground">{onTime}</span>
+              {t('status_on_time')} <span className="font-semibold text-foreground">{yearlyStats.onTime}</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
-              {t('status_pending')} <span className="font-semibold text-foreground">{pending}</span>
+              {t('status_pending')} <span className="font-semibold text-foreground">{yearlyStats.pending}</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-              {t('status_overdue')} <span className="font-semibold text-foreground">{overdue}</span>
+              {t('status_overdue')} <span className="font-semibold text-foreground">{yearlyStats.overdue}</span>
             </span>
-            <span className="text-muted-foreground">/ {yearTotal} {t('cal_items')}</span>
+            <span>/ {yearlyStats.total} {t('cal_items')}</span>
           </div>
         </CardHeader>
 
-        {/* ── Nav ── */}
+        {/* ── nav ── */}
         <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/20">
           <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={goToday}>
-            {t('today') ?? 'Today'}
+            {t('today')}
           </Button>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={prev3}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm font-semibold min-w-[200px] text-center">{rangeLabel}</span>
+            {/* ── rangeLabel ใช้ t() แล้ว ── */}
+            <span className="text-sm font-semibold min-w-[220px] text-center">{rangeLabel}</span>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={next3}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <span className="text-xs text-muted-foreground">
-            {yearTotal} {t('cal_items')}
-          </span>
+          <span className="text-xs text-muted-foreground">{yearlyStats.total} {t('cal_items')}</span>
         </div>
 
-        {/* ── 3-month grid ── */}
         {loading ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-            {t('loading') ?? 'Loading…'}
+            {t('loading')}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -487,8 +397,7 @@ export function CalibrationCalendarCard() {
               {months.map(({ year, month }) => (
                 <MonthCalendar
                   key={`month-${year}-${month}`}
-                  year={year}
-                  month={month}
+                  year={year} month={month}
                   events={eventsByMonth[`${year}-${month + 1}`] ?? []}
                   today={today}
                   onEventClick={handleEventClick}
@@ -503,27 +412,23 @@ export function CalibrationCalendarCard() {
         {!loading && allEvents.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground text-sm">
             <Calendar className="w-8 h-8 opacity-30" />
-            <p>{t('no_result') ?? 'No calibrations in this period'}</p>
+            <p>{t('no_result')}</p>
           </div>
         )}
       </Card>
 
-      {/* ── Fixed popups — rendered outside Card so they're never clipped ── */}
       {morePopup && (
         <MoreListPopup
-          cell={morePopup.cell}
-          pos={morePopup.pos}
+          cell={morePopup.cell} pos={morePopup.pos}
           onClose={() => setMorePopup(null)}
-          onSelectEvent={handleEventClick}
-          t={t}
+          onSelectEvent={handleEventClick} t={t}
         />
       )}
       {detailPopup && (
         <EventDetailPopup
-          event={detailPopup.event}
-          pos={detailPopup.pos}
+          event={detailPopup.event} pos={detailPopup.pos}
           onClose={() => setDetailPopup(null)}
-          onOpen={handleOpenDetail}
+          onOpen={id => router.navigate({ to: '/checklist/calibration/view', search: { id } })}
           t={t}
         />
       )}

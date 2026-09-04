@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,8 +10,6 @@ import {
   TrendingUp, TrendingDown, Search, Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DepartmentSummaryRaw {
   department:     string
@@ -35,7 +33,7 @@ type SortField  = 'departmentName' | 'total' | 'passRate' | 'onTimeRate' | 'comp
 type SortOrder  = 'asc' | 'desc'
 type PerfFilter = 'all' | 'excellent' | 'good' | 'needsAttention'
 
-// ─── Rate calculator ──────────────────────────────────────────────────────────
+interface Props { year: number }
 
 function withRates(raw: DepartmentSummaryRaw): DepartmentSummary {
   const total = raw.total || 0
@@ -46,8 +44,6 @@ function withRates(raw: DepartmentSummaryRaw): DepartmentSummary {
     completedRate: total > 0 ? (raw.totalCompleted  / total) * 100 : 0,
   }
 }
-
-// ─── Response parser ──────────────────────────────────────────────────────────
 
 function parseResponse(response: unknown): DepartmentSummaryRaw[] {
   if (Array.isArray(response)) return response as DepartmentSummaryRaw[]
@@ -62,9 +58,7 @@ function parseResponse(response: unknown): DepartmentSummaryRaw[] {
   return []
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export function CalibrationDepartmentDashboard() {
+export function CalibrationDepartmentDashboard({ year }: Props) {
   const { t } = useTranslation('checklist')
 
   const [departmentData, setDepartmentData] = useState<DepartmentSummary[]>([])
@@ -75,14 +69,17 @@ export function CalibrationDepartmentDashboard() {
   const [sortOrder,      setSortOrder]      = useState<SortOrder>('desc')
   const [filterPerf,     setFilterPerf]     = useState<PerfFilter>('all')
 
-  useEffect(() => { fetchDepartmentSummary() }, [])
+  useEffect(() => { fetchDepartmentSummary() }, [year])
 
   const fetchDepartmentSummary = async () => {
     try {
       setLoading(true)
-      const response = await api.get<unknown>('/api/calibration/department-summary')
-      const raw = parseResponse(response)
-      setDepartmentData(raw.map(withRates))
+      const params = new URLSearchParams()
+      params.set('year', String(year))
+      const response = await api.get<unknown>(
+        `/api/calibration/department-summary?${params.toString()}`
+      )
+      setDepartmentData(parseResponse(response).map(withRates))
     } catch {
       toast.error(t('error_fetching_calibration_stats'))
       setDepartmentData([])
@@ -93,7 +90,6 @@ export function CalibrationDepartmentDashboard() {
 
   useEffect(() => {
     let f = [...departmentData]
-
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       f = f.filter(d =>
@@ -101,10 +97,9 @@ export function CalibrationDepartmentDashboard() {
         (d.departmentName ?? '').toLowerCase().includes(q)
       )
     }
-
     if (filterPerf !== 'all') {
       f = f.filter(d => {
-        const score = perfScore(d)
+        const score      = perfScore(d)
         const hasResults = d.totalPass + d.totalNotPass > 0
         const isPending  = !hasResults && d.completedRate === 0 && d.onTimeRate === 0
         if (filterPerf === 'excellent')      return !isPending && score >= 80
@@ -113,14 +108,12 @@ export function CalibrationDepartmentDashboard() {
         return true
       })
     }
-
     f.sort((a, b) => {
       const av = a[sortField] ?? 0
       const bv = b[sortField] ?? 0
       const cmp = av > bv ? 1 : av < bv ? -1 : 0
       return sortOrder === 'asc' ? cmp : -cmp
     })
-
     setFilteredData(f)
   }, [departmentData, searchTerm, sortField, sortOrder, filterPerf])
 
@@ -170,7 +163,7 @@ export function CalibrationDepartmentDashboard() {
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url
-    a.download = `calibration-department-summary-${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `calibration-department-summary-${year}-${new Date().toISOString().split('T')[0]}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -197,63 +190,46 @@ export function CalibrationDepartmentDashboard() {
     { key: 'needsAttention', label: t('needs_attention'), cls: 'text-red-700' },
   ]
 
-  const statCards = [
-    {
-      label: t('total_calibrations'),
-      value: String(totalCalibrations),
-      icon:  <PencilRuler  className="w-7 h-7 text-muted-foreground/30" />,
-      color: '',
-    },
-    {
-      label: t('total_overdue'),
-      value: String(totalOverdueAll),
-      icon:  <AlertCircle  className="w-7 h-7 text-red-400" />,
-      color: totalOverdueAll > 0 ? 'text-red-700' : '',
-    },
-    {
-      label: t('avg_pass_rate'),
-      value: `${avgPassRate.toFixed(1)}%`,
-      icon:  <CheckCircle2 className="w-7 h-7 text-emerald-400" />,
-      color: rateColor(avgPassRate),
-    },
-    {
-      label: t('avg_completion'),
-      value: `${avgCompletedRate.toFixed(1)}%`,
-      icon:  <Clock        className="w-7 h-7 text-amber-400" />,
-      color: rateColor(avgCompletedRate),
-    },
-  ]
-
   return (
     <div className="space-y-4 mb-4">
 
-      {/* ── Header — เปลี่ยนเป็นสีแดง เหมือน Machine dashboard ── */}
-      <Card className="p-0 overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3 border-b px-5 py-4 bg-gradient-to-r from-red-50 dark:from-red-950/30 to-red-100/60 dark:to-red-900/20">
+      {/* ── Header ── */}
+      <div className="rounded-2xl border border-red-200 dark:border-red-800 bg-gradient-to-r from-red-50 dark:from-red-950/30 to-red-100/60 dark:to-red-900/20 px-6 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/40 shrink-0">
+            <PencilRuler className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
           <div>
-            <CardTitle className="font-bold text-lg flex items-center gap-2">
-              <PencilRuler className="w-5 h-5 text-red-600" />
+            <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 leading-tight">
               {t('calibration_performance_dashboard')}
-            </CardTitle>
+            </h2>
             {!loading && (
-              <p className="text-[12px] text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {t('overview_cal_departments').replace('{count}', String(filteredData.length))}
               </p>
             )}
           </div>
-          <Button variant="outline" size="sm" onClick={exportToCSV}>
-            <Download className="w-4 h-4 mr-1" />{t('export')}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportToCSV}>
+            <Download className="w-3.5 h-3.5 mr-1.5" />
+            {t('export')}
           </Button>
-        </CardHeader>
-      </Card>
+        </div>
+      </div>
 
       {/* ── Stat cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {statCards.map(({ label, value, icon, color }) => (
+        {[
+          { label: t('total_calibrations'), value: String(totalCalibrations), icon: <PencilRuler  className="w-7 h-7 text-muted-foreground/30" />, color: '' },
+          { label: t('total_overdue'),      value: String(totalOverdueAll),   icon: <AlertCircle  className="w-7 h-7 text-red-400" />,            color: totalOverdueAll > 0 ? 'text-red-700' : '' },
+          { label: t('avg_pass_rate'),      value: `${avgPassRate.toFixed(1)}%`,      icon: <CheckCircle2 className="w-7 h-7 text-emerald-400" />, color: rateColor(avgPassRate) },
+          { label: t('avg_completion'),     value: `${avgCompletedRate.toFixed(1)}%`, icon: <Clock        className="w-7 h-7 text-amber-400" />,   color: rateColor(avgCompletedRate) },
+        ].map(({ label, value, icon, color }) => (
           <Card key={label} className="p-4">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-sm text-muted-foreground">{label}</p>
+                <p className="text-xs text-muted-foreground">{label}</p>
                 <p className={`text-xl font-bold mt-0.5 ${color}`}>{value}</p>
               </div>
               {icon}

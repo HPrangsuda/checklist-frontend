@@ -49,10 +49,7 @@ interface CalibrationDTO {
   calibrationStatus?: string
 }
 
-interface DepartmentOption {
-  code: string
-  name: string
-}
+interface DepartmentOption { code: string; name: string }
 
 interface FilterOptionsResponse {
   years: number[]
@@ -62,16 +59,14 @@ interface FilterOptionsResponse {
 }
 
 interface CalibrationFilters {
-  year: string
-  department: string
-  results: string
+  department:        string
+  results:           string
   calibrationStatus: string
 }
 
 interface FilterOptions {
-  years: number[]
-  departments: DepartmentOption[]
-  results: string[]
+  departments:         DepartmentOption[]
+  results:             string[]
   calibrationStatuses: string[]
 }
 
@@ -79,30 +74,22 @@ interface FilterOptions {
 
 const PAGE_SIZE = 10
 
-interface LazySearchSelectProps<T> {
-  value: string
-  placeholder: string
-  allLabel: string
-  items: T[]
-  getKey: (item: T) => string
-  getLabel: (item: T) => string
-  onSelect: (value: string) => void
-}
-
 function LazySearchSelect<T>({
   value, placeholder, allLabel, items, getKey, getLabel, onSelect,
-}: LazySearchSelectProps<T>) {
-  const [open, setOpen] = useState(false)
+}: {
+  value: string; placeholder: string; allLabel: string
+  items: T[]; getKey: (i: T) => string; getLabel: (i: T) => string
+  onSelect: (v: string) => void
+}) {
+  const [open,   setOpen]   = useState(false)
   const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const listRef = useRef<HTMLDivElement>(null)
-  const debouncedSearch = useDebounce(search, 200)
+  const [page,   setPage]   = useState(1)
+  const listRef             = useRef<HTMLDivElement>(null)
+  const debouncedSearch     = useDebounce(search, 200)
 
-  const filtered = items.filter(item =>
-    getLabel(item).toLowerCase().includes(debouncedSearch.toLowerCase())
-  )
-  const visible = filtered.slice(0, page * PAGE_SIZE)
-  const hasMore = visible.length < filtered.length
+  const filtered = items.filter(i => getLabel(i).toLowerCase().includes(debouncedSearch.toLowerCase()))
+  const visible  = filtered.slice(0, page * PAGE_SIZE)
+  const hasMore  = visible.length < filtered.length
 
   useEffect(() => { setPage(1) }, [debouncedSearch])
 
@@ -120,9 +107,7 @@ function LazySearchSelect<T>({
     <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) { setSearch(''); setPage(1) } }}>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">
-          <span className={cn('truncate', !value && 'text-muted-foreground')}>
-            {value ? selectedLabel : placeholder}
-          </span>
+          <span className={cn('truncate', !value && 'text-muted-foreground')}>{value ? selectedLabel : placeholder}</span>
           <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
@@ -133,8 +118,7 @@ function LazySearchSelect<T>({
             <CommandEmpty>-</CommandEmpty>
             <CommandGroup>
               <CommandItem value="__ALL__" onSelect={() => { onSelect(''); setOpen(false); setSearch('') }}>
-                <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
-                {allLabel}
+                <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />{allLabel}
               </CommandItem>
               {visible.map(item => {
                 const key = getKey(item)
@@ -158,20 +142,16 @@ function LazySearchSelect<T>({
   )
 }
 
-// ─── CalibrationFilterPanel ───────────────────────────────────────────────────
+// ─── CalibrationFilterPanel — ไม่มี year selector แล้ว ──────────────────────
 
 function CalibrationFilterPanel({
   filters, options, onChange, onClear, activeCount, t,
 }: {
-  filters: CalibrationFilters
-  options: FilterOptions
+  filters: CalibrationFilters; options: FilterOptions
   onChange: (key: keyof CalibrationFilters, value: string) => void
-  onClear: () => void
-  activeCount: number
-  t: (key: string) => string
+  onClear: () => void; activeCount: number; t: (k: string) => string
 }) {
   const [open, setOpen] = useState(false)
-  const yearItems = options.years.map(y => String(y))
 
   const STATUS_I18N_MAP: Record<string, string> = {
     'pass': 'status_pass', 'not pass': 'status_not_pass',
@@ -191,13 +171,11 @@ function CalibrationFilterPanel({
           )}
         </Button>
       </SheetTrigger>
-
       <SheetContent side="right" className="w-80 flex flex-col gap-0 p-0">
         <SheetHeader className="px-6 py-4 border-b">
           <div className="flex items-center justify-between">
             <SheetTitle className="flex items-center gap-2 text-base">
-              <Filter className="w-4 h-4" />
-              {t('filter_by')}
+              <Filter className="w-4 h-4" />{t('filter_by')}
             </SheetTitle>
             {activeCount > 0 && (
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive" onClick={onClear}>
@@ -211,15 +189,6 @@ function CalibrationFilterPanel({
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('years')}</label>
-            <LazySearchSelect<string>
-              value={filters.year} placeholder={t('all')} allLabel={t('all')}
-              items={yearItems} getKey={y => y} getLabel={y => y}
-              onSelect={v => onChange('year', v)}
-            />
-          </div>
-          <Separator />
           <div className="space-y-2">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('department')}</label>
             <LazySearchSelect<DepartmentOption>
@@ -266,42 +235,39 @@ function CalibrationFilterPanel({
   )
 }
 
-// ─── Calibration Table ────────────────────────────────────────────────────────
+// ─── CalibrationTable ─────────────────────────────────────────────────────────
 
-function CalibrationTable() {
+function CalibrationTable({ year }: { year: number }) {
   const { t }  = useTranslation('checklist')
   const router = useRouter()
 
-  const [pagination, setPagination]             = useState({ pageIndex: 0, pageSize: 10 })
+  const [pagination,       setPagination]       = useState({ pageIndex: 0, pageSize: 10 })
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [selectedIds, setSelectedIds]           = useState<number[]>([])
-  const [data, setData]                         = useState<CalibrationDTO[]>([])
-  const [loading, setLoading]                   = useState(false)
-  const [totalCount, setTotalCount]             = useState(0)
-  const [keyword, setKeyword]                   = useState('')
-  const [searchValue, setSearchValue]           = useState('')
+  const [selectedIds,      setSelectedIds]      = useState<number[]>([])
+  const [data,             setData]             = useState<CalibrationDTO[]>([])
+  const [loading,          setLoading]          = useState(false)
+  const [totalCount,       setTotalCount]       = useState(0)
+  const [keyword,          setKeyword]          = useState('')
+  const [searchValue,      setSearchValue]      = useState('')
   const debouncedSearch                         = useDebounce(keyword, 500)
 
-  const currentYear = String(new Date().getFullYear())
-  const [filters, setFilters] = useState<CalibrationFilters>({
-    year: currentYear, department: '', results: '', calibrationStatus: '',
-  })
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    years: [], departments: [], results: [], calibrationStatuses: [],
-  })
+  const [filters, setFilters] = useState<CalibrationFilters>({ department: '', results: '', calibrationStatus: '' })
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ departments: [], results: [], calibrationStatuses: [] })
 
   const filtersRef     = useRef(filters)
   const paginationRef  = useRef(pagination)
   const searchValueRef = useRef(searchValue)
+  const yearRef        = useRef(year)
 
-  useEffect(() => { filtersRef.current    = filters    }, [filters])
-  useEffect(() => { paginationRef.current = pagination }, [pagination])
+  useEffect(() => { filtersRef.current     = filters     }, [filters])
+  useEffect(() => { paginationRef.current  = pagination  }, [pagination])
   useEffect(() => { searchValueRef.current = searchValue }, [searchValue])
+  useEffect(() => { yearRef.current        = year        }, [year])
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length
 
   const getResultBadge = (result?: string) => {
-    if (!result) return '-'
+    if (!result) return <>-</>
     const cfg: Record<string, string> = {
       'NOT PASS': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
       'PASS':     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -313,7 +279,7 @@ function CalibrationTable() {
   }
 
   const getStatusBadge = (status?: string) => {
-    if (!status) return '-'
+    if (!status) return <>-</>
     const cfg: Record<string, string> = {
       'ON TIME': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
       'OVERDUE': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -348,9 +314,9 @@ function CalibrationTable() {
       ),
       size: 32,
     },
-    { accessorKey: 'machineCode', header: t('machine_code'), cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div> },
-    { accessorKey: 'machineName', header: t('machine_name'), cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
-    { accessorKey: 'years',       header: t('years'),         cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
+    { accessorKey: 'machineCode', header: t('machine_code'),       cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div> },
+    { accessorKey: 'machineName', header: t('machine_name'),       cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
+    { accessorKey: 'years',       header: t('years'),              cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
     {
       accessorKey: 'dueDate',
       header: t('calibration_due_date'),
@@ -361,19 +327,10 @@ function CalibrationTable() {
         return <div className="text-sm">{`${day}-${m}-${y}`}</div>
       },
     },
+    { accessorKey: 'results',           header: t('results'),           cell: ({ row }) => getResultBadge(row.original.results) },
+    { accessorKey: 'calibrationStatus', header: t('calibration_status'), cell: ({ row }) => getStatusBadge(row.original.calibrationStatus) },
     {
-      accessorKey: 'results',
-      header: t('results'),
-      cell: ({ row }) => getResultBadge(row.original.results),
-    },
-    {
-      accessorKey: 'calibrationStatus',
-      header: t('calibration_status'),
-      cell: ({ row }) => getStatusBadge(row.original.calibrationStatus),
-    },
-    {
-      id: 'action',
-      header: t('action'),
+      id: 'action', header: t('action'),
       cell: ({ row }) => (
         <TblAction
           view edit delete
@@ -387,7 +344,11 @@ function CalibrationTable() {
   ]
 
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
-  useEffect(() => { onFetchData(filtersRef.current) }, [searchValue, pagination.pageIndex, pagination.pageSize])
+
+  useEffect(() => {
+    onFetchData(filtersRef.current)
+  }, [searchValue, pagination.pageIndex, pagination.pageSize, year])
+
   useEffect(() => { fetchFilterOptions() }, [])
 
   const onFetchData = async (currentFilters: CalibrationFilters) => {
@@ -395,12 +356,13 @@ function CalibrationTable() {
       setLoading(true)
       const pg = paginationRef.current
       const sv = searchValueRef.current
+      const yr = yearRef.current
 
       const params = new URLSearchParams()
       params.set('index', pg.pageIndex.toString())
       params.set('size',  pg.pageSize.toString())
+      params.set('year',  String(yr))
       if (sv.trim())                        params.set('keyword',           sv.trim())
-      if (currentFilters.year)              params.set('year',              currentFilters.year)
       if (currentFilters.department)        params.set('department',        currentFilters.department)
       if (currentFilters.results)           params.set('results',           currentFilters.results)
       if (currentFilters.calibrationStatus) params.set('calibrationStatus', currentFilters.calibrationStatus)
@@ -427,7 +389,6 @@ function CalibrationTable() {
       const response = await api.get<FilterOptionsResponse>('/api/calibration/filter-options')
       if (response) {
         setFilterOptions({
-          years:               response.years               ?? [],
           departments:         response.departments         ?? [],
           results:             response.results             ?? [],
           calibrationStatuses: response.calibrationStatuses ?? [],
@@ -446,7 +407,7 @@ function CalibrationTable() {
   }, [])
 
   const handleClearFilters = useCallback(() => {
-    const reset: CalibrationFilters = { year: currentYear, department: '', results: '', calibrationStatus: '' }
+    const reset: CalibrationFilters = { department: '', results: '', calibrationStatus: '' }
     setFilters(reset)
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
     onFetchData(reset)
@@ -511,7 +472,8 @@ function CalibrationTable() {
         </div>
         <div>
           {loading ? (
-            <DataTableSkeleton columnCount={columns.length} rowCount={10} filterCount={0} cellWidths={['auto']} withViewOptions={false} withPagination={true} shrinkZero={false} className="w-full" />
+            <DataTableSkeleton columnCount={columns.length} rowCount={10} filterCount={0}
+              cellWidths={['auto']} withViewOptions={false} withPagination={true} shrinkZero={false} className="w-full" />
           ) : (
             <DataTable table={table} emptyText={t('no_result')} />
           )}
@@ -534,14 +496,47 @@ function CalibrationTable() {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function Calibration() {
+  const { t }         = useTranslation('checklist')
+  const [year, setYear]             = useState<number>(new Date().getFullYear())
+  const [yearOptions, setYearOptions] = useState<number[]>([new Date().getFullYear()])
+
+  // ── ดึง years จาก filter-options ──
+  useEffect(() => {
+    api.get<FilterOptionsResponse>('/api/calibration/filter-options')
+      .then(res => {
+        if (res?.years?.length) {
+          setYearOptions(res.years)
+          const currentYear = new Date().getFullYear()
+          if (!res.years.includes(currentYear)) setYear(res.years[0])
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <div className="w-full max-w-full overflow-x-hidden bg-background">
       <div className="flex flex-col gap-4 px-4 py-6 sm:px-6">
-        <CalibrationDepartmentDashboard />
-        <CalibrationKanbanCard />
+
+        {/* ── Global year selector ── */}
+        <div className="flex items-center gap-2 flex-wrap p-4 rounded-xl border bg-muted/20">
+          <span className="text-xs font-medium text-muted-foreground shrink-0">{t('years')}:</span>
+          <select
+            value={year}
+            onChange={e => setYear(Number(e.target.value))}
+            className="h-7 rounded-md border bg-background px-2 text-xs"
+          >
+            {yearOptions.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+
+        <CalibrationDepartmentDashboard year={year} />
+        <CalibrationPlanActualCard      year={year} />
+        <CalibrationKanbanCard          year={year} />
         <CalibrationCalendarCard />
-        <CalibrationTable />
-        <CalibrationPlanActualCard />
+        <CalibrationTable               year={year} />
+
       </div>
     </div>
   )
