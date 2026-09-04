@@ -363,7 +363,6 @@ function RouteComponent({ data }: any) {
 
   const machineStatusOptions = [
     { value: 'OPERATIONAL',       label: t('status_operational') },
-    { value: 'NON-OPERATIONAL',   label: t('status_non_operational') },
     { value: 'UNDER MAINTENANCE', label: t('status_under_maintenance') },
   ]
   const maintenanceOptions = [

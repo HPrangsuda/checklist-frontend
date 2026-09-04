@@ -295,7 +295,6 @@
   "machine_code_required": "Please enter machine code",
   "responsible_required": "Please select responsible person",
   "status_operational": "OPERATIONAL",
-  "status_non_operational": "NON-OPERATIONAL",
   "status_under_maintenance": "UNDER MAINTENANCE",
   "status_transfer": "TRANSFER",
   "status_canceled": "CANCELED",

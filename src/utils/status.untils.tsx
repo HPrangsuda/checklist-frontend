@@ -15,7 +15,6 @@ export const getStatusColor = (status: string): string => {
       return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
 
     // ── Yellow ─────────────────────────────────────────────────────────────
-    case 'non-operational':
     case 'pending manager':
     case 'not ready (waiting for repair)':
     case 'scheduled':

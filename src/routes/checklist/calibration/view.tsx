@@ -84,7 +84,6 @@ export const getStatusColor = (status: string) => {
     case 'pass':
     case 'on time':
       return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-    case 'non-operational':
     case 'pending manager':
     case 'not ready (waiting for repair)':
       return 'bg-yellow-100 text-yellow-600 dark:text-yellow-100'

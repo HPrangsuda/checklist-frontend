@@ -47,7 +47,7 @@ interface QuestionOption {
 
 type MachineEditSearch = { id: number; step?: string }
 
-const ACTIVE_STATUSES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER MAINTENANCE'] as const
+const ACTIVE_STATUSES = ['OPERATIONAL', 'UNDER MAINTENANCE'] as const
 const isNonActiveStatus = (status: string): boolean =>
   !!status && !(ACTIVE_STATUSES as readonly string[]).includes(status)
 
@@ -555,7 +555,6 @@ function MachineEdit() {
   // ── i18n options — value = API string, label = translated ─────────────────
   const machineStatusOptions = [
     { value: 'OPERATIONAL',       label: t('status_operational')       },
-    { value: 'NON-OPERATIONAL',   label: t('status_non_operational')   },
     { value: 'UNDER MAINTENANCE', label: t('status_under_maintenance') },
     ...(role === 'ADMIN' ? [
       { value: 'CANCELED',  label: t('status_canceled')  },

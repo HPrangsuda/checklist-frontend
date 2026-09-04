@@ -50,7 +50,7 @@ interface FileUploadResponse {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MACHINE_STATUSES = ['OPERATIONAL', 'NON-OPERATIONAL', 'UNDER MAINTENANCE']
+const MACHINE_STATUSES = ['OPERATIONAL', 'UNDER MAINTENANCE']
 const CHOICES = [
   'Ready to use',
   'Not ready (Waiting for repair)',
