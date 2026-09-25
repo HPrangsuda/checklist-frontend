@@ -455,5 +455,6 @@
   "is_new": "New Machine",
   "is_new_required": "Please select whether it is a new machine",
   "is_new_yes": "Yes",
-  "is_new_no": "No"
+  "is_new_no": "No",
+  "please_select_department_first": "Please select a department first"
 }

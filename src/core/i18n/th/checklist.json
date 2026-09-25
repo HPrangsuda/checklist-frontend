@@ -456,5 +456,6 @@
   "is_new": "เครื่องซื้อใหม่",
   "is_new_required": "กรุณาเลือกว่าเป็นเครื่องซื้อใหม่หรือไม่",
   "is_new_yes": "ใช่",
-  "is_new_no": "ไม่ใช่"
+  "is_new_no": "ไม่ใช่",
+  "please_select_department_first": "กรุณาเลือกแผนกก่อน"
 }
