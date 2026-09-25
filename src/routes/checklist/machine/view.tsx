@@ -13,7 +13,7 @@ import { MaintenanceTbl } from '@/module/checklist/maintenance/history-table'
 import { CalibrationTbl } from '@/module/checklist/calibration/history-table'
 import { ChecklistTab } from '@/module/checklist/machine/checklist-tab'
 import { MaintenanceChecklistTab } from '@/module/checklist/machine/maintenance-checklist-tab'
-import { useAuth } from '@/core/contexts/auth-context' 
+import { useAuth } from '@/core/contexts/auth-context'
 
 export const Route = createFileRoute('/checklist/machine/view')({
   component: MachineView,
@@ -66,6 +66,8 @@ interface MachineResponseDTO {
   warrantyNote?:        string
   warrantyExpireDate?:  string | null
   warrantyFiles?:       string
+  // ── new machine ─────────────────────────────────────────────────────────────
+  isNew?:               boolean | null
   createdBy?:           { id: number; firstName: string; lastName: string }
   updatedBy?:           { id: number; firstName: string; lastName: string }
   calibrationRecords?:  any[]
@@ -287,6 +289,9 @@ function MachineView() {
     return translated !== key ? translated : status
   }
 
+  const getIsNewLabel = (isNew?: boolean | null) =>
+    isNew === true ? t('is_new_yes') : isNew === false ? t('is_new_no') : '-'
+
   const fetchMachineDetail = async () => {
     try {
       setLoading(true)
@@ -389,6 +394,7 @@ function MachineView() {
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                 <InfoRow label={t('machine_code')}       value={machine.machineCode} />
                 <InfoRow label={t('machine_name')}       value={machine.machineName} />
+                <InfoRow label={t('is_new')}             value={getIsNewLabel(machine.isNew)} />
                 <InfoRow label={t('brand')}              value={machine.brand} />
                 <InfoRow label={t('model')}              value={machine.model} />
                 <InfoRow label={t('serial_number')}      value={machine.serialNumber} />

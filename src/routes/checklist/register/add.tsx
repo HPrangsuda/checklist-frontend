@@ -90,6 +90,10 @@ function RouteComponent({ data }: any) {
     { value: 'YES', label: t('yes') },
     { value: 'NO',  label: t('no')  },
   ]
+  const isNewOptions = [
+    { value: 'YES', label: t('is_new_yes') },
+    { value: 'NO',  label: t('is_new_no')  },
+  ]
 
   const [formData, setFormData] = useState({
     name:                data?.name                || '',
@@ -123,14 +127,15 @@ function RouteComponent({ data }: any) {
     watt:                data?.watt                || '',
     horsePower:          data?.horsePower          || '',
     note:                data?.note                || '',
-    hasWarranty:        data?.hasWarranty        || '',
-    warrantyNote:       data?.warrantyNote       || '',
-    warrantyExpireDate: data?.warrantyExpireDate || '',
+    hasWarranty:         data?.hasWarranty         || '',
+    warrantyNote:        data?.warrantyNote        || '',
+    warrantyExpireDate:  data?.warrantyExpireDate  || '',
+    // เริ่มต้นเป็นค่าว่างเสมอ — ผู้ใช้ต้องเลือกเอง
+    isNew:               '',
   })
 
   useEffect(() => { if (refId) fetchRegisterData(refId) }, [refId])
   useEffect(() => {
-    fetchResponsible('', 0)
     fetchSupervisor('', 0)
     fetchManager('', 0)
   }, [])
@@ -295,6 +300,7 @@ function RouteComponent({ data }: any) {
         } catch {}
       }
 
+      // isNew ไม่ดึงจาก register ต้นทาง — คงค่าว่างไว้ให้ผู้ใช้เลือกเอง
       setFormData(prev => ({
         ...prev,
         name:         d.machineName  || '',
@@ -338,6 +344,7 @@ function RouteComponent({ data }: any) {
     if (formData.hasWarranty === 'YES' && !String(formData.warrantyNote ?? '').trim()) {
       e.warrantyNote = t('warranty_note_required')
     }
+    if (!String(formData.isNew        ?? '').trim()) e.isNew        = t('is_new_required')
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -349,7 +356,8 @@ function RouteComponent({ data }: any) {
       String(formData.responsible  ?? '').trim() &&
       String(formData.quantity     ?? '').trim() &&
       String(formData.serialNumber ?? '').trim() &&
-      String(formData.hasWarranty  ?? '').trim()
+      String(formData.hasWarranty  ?? '').trim() &&
+      String(formData.isNew        ?? '').trim()
     )
     if (formData.hasWarranty === 'YES') {
       return base && !!String(formData.warrantyNote ?? '').trim()
@@ -361,7 +369,7 @@ function RouteComponent({ data }: any) {
     if (stepId !== 'general') return 'empty'
     const hasErrors = Object.keys(errors).some(k =>
       ['name', 'department', 'responsible', 'quantity', 'serialNumber',
-       'hasWarranty', 'warrantyNote'].includes(k)
+       'hasWarranty', 'warrantyNote', 'isNew'].includes(k)
     )
     if (hasErrors) return 'error'
     return isFormValid() ? 'complete' : 'incomplete'
@@ -440,6 +448,7 @@ function RouteComponent({ data }: any) {
       hasWarranty:        formData.hasWarranty || null,
       warrantyNote:       formData.hasWarranty === 'YES' ? (formData.warrantyNote       || null) : null,
       warrantyExpireDate: formData.hasWarranty === 'YES' ? formatDateToISO(formData.warrantyExpireDate) : null,
+      isNew:              formData.isNew === 'YES',
     }
   }
 
@@ -503,9 +512,56 @@ function RouteComponent({ data }: any) {
     return all
   }
 
+  // ─── Department change ─────────────────────────────────────────────────────
+  // ผู้รับผิดชอบกรองจาก 2 หลักแรกของรหัสแผนก เช่น 611 → member.department_id LIKE '61%'
+  const deptPrefix = (code: string) => (code ? code.trim().slice(0, 2) : '')
+
+  const extractDeptCode = (val: any): string => {
+    if (val && typeof val === 'object' && !Array.isArray(val)) return toStr(val.value ?? val.departmentCode)
+    return getDeptCode(val)
+  }
+
+  const handleDepartmentChange = (val: any) => {
+    const code = extractDeptCode(val)
+    if (errors.department) { const e = { ...errors }; delete e.department; setErrors(e) }
+
+    const clearPeople = {
+      responsible: '', responsibleName: '',
+      supervisor:  '', supervisorName:  '',
+      manager:     '', managerName:     '',
+    }
+
+    if (!code) {
+      setFormData(prev => ({ ...prev, department: '', businessUnit: '', ...clearPeople }))
+      return
+    }
+
+    const found = cachedDepartments.current.find(d => String(d.value) === code)
+    setFormData(prev => {
+      const prefixChanged = deptPrefix(code) !== deptPrefix(getDeptCode(prev.department))
+      return {
+        ...prev,
+        department:   code,
+        businessUnit: found?.businessUnit || prev.businessUnit,
+        // กลุ่มแผนก (2 หลักแรก) เปลี่ยน → ล้างผู้รับผิดชอบ/หัวหน้า/ผู้จัดการ
+        ...(prefixChanged ? clearPeople : {}),
+      }
+    })
+  }
+
+  // ─── ผู้รับผิดชอบ: เฉพาะสมาชิกที่ department_id ขึ้นต้นด้วย 2 หลักแรกของแผนกที่เลือก ─
   const fetchResponsible = async (kw: string, idx: number) => {
+    const code = getDeptCode(formData.department)
+    if (!code) return { data: [], hasMore: false }
     try {
-      const d = await fetchMembers(kw, idx)
+      const params: any = { departmentCode: code, index: idx, size: 100 }
+      if (kw.trim()) params.keyword = kw.trim()
+      const r = await api.get<any>('/api/user/get/by-department', { params })
+      const d = (r?.data || []).map((m: any) => ({
+        label:    `${m.firstName} ${m.lastName}`,
+        value:    String(m.id),
+        fullName: `${m.firstName} ${m.lastName}`,
+      }))
       if (!kw) setCachedResponsible(d)
       return { data: d, hasMore: false }
     } catch { toast.error(t('data_fetch_failed')); return { data: [], hasMore: false } }
@@ -609,6 +665,11 @@ function RouteComponent({ data }: any) {
           <TextField id="name" label={t('name')} value={formData.name}
             onChange={v => handleInputChange('name', v)} error={errors.name} required />
 
+          <SingleSelectField id="isNew" label={t('is_new')}
+            value={formData.isNew ? [formData.isNew] : []}
+            onChange={v => handleInputChange('isNew', v[0] || '')}
+            options={isNewOptions} error={errors.isNew} required />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <TextField id="serialNumber" label={t('serial_number')} value={formData.serialNumber}
               onChange={v => handleInputChange('serialNumber', v)} error={errors.serialNumber} required />
@@ -628,21 +689,26 @@ function RouteComponent({ data }: any) {
             <ServerSingleSelect id="department-select" title="department"
               label={t('select_department')} placeholder={t('select_department')}
               value={formData.department}
-              onChange={(val) => {
-                const code = toStr(val)
-                const found = cachedDepartments.current.find(d => d.value === code)
-                setFormData(prev => ({ ...prev, department: code, businessUnit: found?.businessUnit || prev.businessUnit }))
-                if (errors.department) { const e = { ...errors }; delete e.department; setErrors(e) }
-              }}
+              onChange={handleDepartmentChange}
               fetchOptions={fetchDepartments} error={errors.department} required />
 
-            <ServerSingleSelect
-              key={`resp-${formData.responsible || 'e'}`}
-              id="responsible" title="responsible" label={t('responsible')}
-              placeholder={t('select_responsible')} value={formData.responsible}
-              initialLabel={formData.responsibleName}
-              onChange={handleResponsibleChange}
-              fetchOptions={fetchResponsible} error={errors.responsible} required />
+            {getDeptCode(formData.department) ? (
+              <ServerSingleSelect
+                key={`resp-${deptPrefix(getDeptCode(formData.department))}-${formData.responsible || 'e'}`}
+                id="responsible" title="responsible" label={t('responsible')}
+                placeholder={t('select_responsible')} value={formData.responsible}
+                initialLabel={formData.responsibleName}
+                onChange={handleResponsibleChange}
+                fetchOptions={fetchResponsible} error={errors.responsible} required />
+            ) : (
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">{t('responsible')} <span className="text-red-500">*</span></label>
+                <div className="p-3 bg-muted/40 border border-border rounded-lg text-muted-foreground text-sm">
+                  {t('please_select_department_first')}
+                </div>
+                {errors.responsible && <p className="text-sm text-destructive">{errors.responsible}</p>}
+              </div>
+            )}
 
             <ReadOnlyField label={t('supervisor')} value={formData.supervisorName} />
             <ReadOnlyField label={t('manager')}    value={formData.managerName} />

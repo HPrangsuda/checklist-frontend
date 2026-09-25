@@ -575,6 +575,13 @@ function MachineEdit() {
     { value: 'ON TIME', label: t('status_on_time') },
     { value: 'OVERDUE', label: t('status_overdue') },
   ]
+  const isNewOptions = [
+    { value: 'YES', label: t('is_new_yes') },
+    { value: 'NO',  label: t('is_new_no')  },
+  ]
+
+  // รหัสแผนกจริงของเครื่อง (formData.department เก็บชื่อแผนกไว้แสดงผล)
+  const deptCode = String(machineData?.department ?? '').trim()
 
   // ── State ─────────────────────────────────────────────────────────────────
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -621,12 +628,13 @@ function MachineEdit() {
     manager:     '', managerName:     '',
     machineStatus: '', resetPeriod: '', note: '', calibrationStatus: '',
     cancelDate: '', reasonCancel: '',
+    isNew: '',
   })
 
   // ── Load machine data ─────────────────────────────────────────────────────
   useEffect(() => {
     window.scrollTo(0, 0)
-    if (step) setCurrentStep(step)   // ← เพิ่มบรรทัดนี้
+    if (step) setCurrentStep(step)
   }, [])
 
   useEffect(() => {
@@ -685,6 +693,7 @@ function MachineEdit() {
         calibrationStatus: cal.calibrationStatus             ?? '',
         cancelDate:       toDateString(machineData.cancelDate),
         reasonCancel:     machineData.reasonCancel           ?? '',
+        isNew: machineData.isNew === true ? 'YES' : machineData.isNew === false ? 'NO' : '',
       })
     } catch (e) {
       console.error('Error loading machine data:', e)
@@ -904,14 +913,15 @@ function MachineEdit() {
   const validateRequiredFields = () => {
     const e: Record<string, string> = {}
     if (!formData.machineStatus.trim()) e.machineStatus = t('machine_status_required')
+    if (!formData.isNew.trim())         e.isNew         = t('is_new_required')
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
-  const isFormValid   = () => !!formData.machineStatus
+  const isFormValid   = () => !!formData.machineStatus && !!formData.isNew
   const getStepStatus = (stepId: string): 'complete' | 'error' | 'incomplete' | 'empty' => {
     if (stepId === 'general') {
-      if (errors.machineStatus) return 'error'
+      if (errors.machineStatus || errors.isNew) return 'error'
       return isFormValid() ? 'complete' : 'incomplete'
     }
     return 'empty'
@@ -994,6 +1004,7 @@ function MachineEdit() {
       workInstruction: toFileJson(resolvedInstrs),
       maintenanceList:  maintenanceList.length ? maintenanceList : null,
       calibration:      calibrationDTO,
+      isNew:            formData.isNew ? formData.isNew === 'YES' : null,
     }
   }
 
@@ -1050,6 +1061,7 @@ function MachineEdit() {
 
   // ─── Member fetch ──────────────────────────────────────────────────────────
 
+  // รายชื่อทั้งหมด — ใช้หาชื่อหัวหน้า/ผู้จัดการจาก ID
   const fetchMembers = async (keyword: string, index: number) => {
     const params: Record<string, unknown> = { index, size: 100 }
     if (keyword.trim()) params.keyword = keyword.trim()
@@ -1066,9 +1078,21 @@ function MachineEdit() {
     return all
   }
 
+  // ผู้รับผิดชอบ — เฉพาะสมาชิกที่ department_id ขึ้นต้นด้วย 2 หลักแรกของแผนกเครื่อง
   const fetchResponsible = async (kw: string, idx: number) => {
-    try { const d = await fetchMembers(kw, idx); if (!kw) setCachedResponsible(d); return { data: d, hasMore: false } }
-    catch { return { data: [], hasMore: false } }
+    if (!deptCode) return { data: [], hasMore: false }
+    try {
+      const params: Record<string, unknown> = { departmentCode: deptCode, index: idx, size: 100 }
+      if (kw.trim()) params.keyword = kw.trim()
+      const r = await api.get<any>('/api/user/get/by-department', { params })
+      const d = (r?.data || []).map((m: any) => ({
+        label:    `${m.firstName} ${m.lastName}`,
+        value:    String(m.id),
+        fullName: `${m.firstName} ${m.lastName}`,
+      }))
+      if (!kw) setCachedResponsible(d)
+      return { data: d, hasMore: false }
+    } catch { return { data: [], hasMore: false } }
   }
   const fetchSupervisor = async (kw: string, idx: number) => {
     try { const d = await fetchMembers(kw, idx); if (!kw) setCachedSupervisor(d); return { data: d, hasMore: false } }
@@ -1203,6 +1227,16 @@ function MachineEdit() {
         return (
           <div className="px-2 pt-2 space-y-4">
             <ReadOnlyField label={t('name')} value={formData.name} />
+            <SingleSelectField
+              key={`isNew-${formData.isNew || 'empty'}`}
+              id="isNew"
+              label={t('is_new')}
+              value={formData.isNew ? [formData.isNew] : []}
+              onChange={v => setField('isNew', v[0] || '')}
+              options={isNewOptions}
+              error={errors.isNew}
+              required
+            />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <ReadOnlyField label={t('machine_code')}  value={formData.machineCode} />
               <ReadOnlyField label={t('serial_number')} value={formData.serialNumber} />
@@ -1212,7 +1246,7 @@ function MachineEdit() {
               <ReadOnlyField label={t('machine_type')}  value={formData.machineType} />
               <ReadOnlyField label={t('department')}    value={formData.department} />
               <ServerSingleSelect
-                key={`resp-${formData.responsible || 'e'}`}
+                key={`resp-${deptCode.slice(0, 2)}-${formData.responsible || 'e'}`}
                 id="responsible"
                 title={t('responsible')}
                 label={t('responsible')}

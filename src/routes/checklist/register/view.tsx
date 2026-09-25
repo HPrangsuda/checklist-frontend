@@ -83,6 +83,7 @@ interface RegisterRequest {
   warrantyNote?: string
   warrantyExpireDate?: string | null
   warrantyFiles?: string | AttachmentItem[]
+  isNew?: boolean | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -609,6 +610,25 @@ function RegisterView() {
           <CardContent className="p-6 pt-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
               <InfoRow label={t('machine_name')}  value={record.machineName ?? '-'} />
+              <InfoRow
+                label={t('is_new')}
+                value={
+                  <span className={[
+                    'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                    record.isNew === true
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                      : record.isNew === false
+                        ? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+                        : 'bg-gray-100 text-gray-600',
+                  ].join(' ')}>
+                    {record.isNew === true
+                      ? t('is_new_yes')
+                      : record.isNew === false
+                        ? t('is_new_no')
+                        : '-'}
+                  </span>
+                }
+              />
               <InfoRow label={t('department')}    value={record.departmentName  ?? record.department  ?? '-'} />
               <InfoRow label={t('brand')}         value={record.brand ?? '-'} />
               <InfoRow label={t('model')}         value={record.model ?? '-'} />

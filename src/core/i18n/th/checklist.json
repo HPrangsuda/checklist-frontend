@@ -452,5 +452,9 @@
   "maintenance_by_central": "ส่วนกลาง",
   "maintenance_by_responsible": "ผู้รับผิดชอบ",
   "pass": "ผ่าน",
-  "not_pass": "ไม่ผ่าน"
+  "not_pass": "ไม่ผ่าน",
+  "is_new": "เครื่องซื้อใหม่",
+  "is_new_required": "กรุณาเลือกว่าเป็นเครื่องซื้อใหม่หรือไม่",
+  "is_new_yes": "ใช่",
+  "is_new_no": "ไม่ใช่"
 }

@@ -451,5 +451,9 @@
   "maintenance_by_all": "All",
   "maintenance_by_external": "External",
   "maintenance_by_central": "Central",
-  "maintenance_by_responsible": "Responsible" 
+  "maintenance_by_responsible": "Responsible",
+  "is_new": "New Machine",
+  "is_new_required": "Please select whether it is a new machine",
+  "is_new_yes": "Yes",
+  "is_new_no": "No"
 }
