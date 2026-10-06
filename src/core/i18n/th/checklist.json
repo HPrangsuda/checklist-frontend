@@ -457,5 +457,7 @@
   "is_new_required": "กรุณาเลือกว่าเป็นเครื่องซื้อใหม่หรือไม่",
   "is_new_yes": "ใช่",
   "is_new_no": "ไม่ใช่",
-  "please_select_department_first": "กรุณาเลือกแผนกก่อน"
+  "please_select_department_first": "กรุณาเลือกแผนกก่อน",
+  "start_date_required_with_certificate": "กรุณาระบุวันที่เริ่ม เมื่อมีวันที่รับใบรับรองแล้ว",
+  "start_date_after_certificate": "วันที่เริ่มต้องไม่อยู่หลังวันที่รับใบรับรอง"
 }

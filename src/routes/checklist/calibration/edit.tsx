@@ -3,10 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
 import { ArrowLeft, Save, X, PencilRuler, FileText, CheckCircle2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import { toast } from 'sonner'
@@ -60,10 +61,52 @@ interface CalibrationFormData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+type CalStatus = 'On Time' | 'Overdue' | 'Pending'
+
+const STATUS_LABEL_KEY: Record<CalStatus, string> = {
+  'On Time': 'status_on_time',
+  Overdue:   'status_overdue',
+  Pending:   'status_pending',
+}
+
+const STATUS_BADGE_CLASS: Record<CalStatus, string> = {
+  'On Time': 'bg-emerald-100 text-emerald-600 dark:text-emerald-100',
+  Overdue:   'bg-red-100 text-red-600 dark:text-red-100',
+  Pending:   'bg-zinc-100 text-zinc-600 dark:text-zinc-100',
+}
+
+/** Date -> 'YYYY-MM-DD' ตามเวลาท้องถิ่น (toISOString จะเลื่อนถอย 1 วันในเวลาไทย) */
+const toDateStr = (d?: Date | null) =>
+  d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : ''
+
+/** 'YYYY-MM-DD' -> Date เวลาท้องถิ่น 00:00 */
+const parseDateStr = (s?: string | null) => {
+  if (!s) return null
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number)
+  return y && m && d ? new Date(y, m - 1, d) : null
+}
+
+/** ทันเวลา/เลยกำหนด จาก due date + certificate date (เกณฑ์เดียวกับ kanban) */
+const computeCalibrationStatus = (due?: string | null, cert?: string | null): CalStatus | null => {
+  const dd = due?.slice(0, 10), cc = cert?.slice(0, 10)
+  if (!dd) return null
+  if (cc) return cc <= dd ? 'On Time' : 'Overdue'
+  return dd < toDateStr(new Date()) ? 'Overdue' : 'Pending'
+}
+
 const parseAttachments = (raw?: string | null): FileUploadResponse[] => {
   if (!raw) return []
   if (Array.isArray(raw)) return raw
   try { return JSON.parse(raw) } catch { return [] }
+}
+
+/** คืน error key ถ้าวันที่ไม่สอดคล้องกัน */
+const validateDates = (f: CalibrationFormData): string | null => {
+  const start = f.startDate?.slice(0, 10)
+  const cert  = f.certificateDate?.slice(0, 10)
+  if (cert && !start)                 return 'start_date_required_with_certificate'
+  if (start && cert && start > cert)  return 'start_date_after_certificate'
+  return null
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -77,12 +120,17 @@ function CalibrationEdit() {
     id: 0,
     machineCode: '',
     years: new Date().getFullYear(),
-    calibrationStatus: 'PENDING'
   })
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const { t }  = useTranslation('checklist')
   const router = useRouter()
+
+  // สถานะทันเวลา/เลยกำหนด คำนวณจาก due date + certificate date เสมอ
+  const computedStatus = useMemo(
+    () => computeCalibrationStatus(formData.dueDate, formData.certificateDate),
+    [formData.dueDate, formData.certificateDate]
+  )
 
   // ─── File upload state ─────────────────────────────────────────────────────
   const [newFiles,         setNewFiles]         = useState<File[]>([])
@@ -200,12 +248,39 @@ function CalibrationEdit() {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
+  const handleDateChange = (field: 'dueDate' | 'startDate' | 'certificateDate', date: Date | null) => {
+    const next = { ...formData, [field]: toDateStr(date) }
+    setFormData(next)
+
+    // เตือนทันทีเมื่อ cert เกิน due
+    if (field !== 'startDate') {
+      const st = computeCalibrationStatus(next.dueDate, next.certificateDate)
+      if (next.certificateDate && st === 'Overdue') {
+        toast.warning(t('cert_exceeds_due_date'), { duration: 4000 })
+      }
+    }
+    // เตือนเมื่อวันที่เริ่มอยู่หลังวันที่ได้ cert
+    const err = validateDates(next)
+    if (err === 'start_date_after_certificate') toast.warning(t(err))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    const dateError = validateDates(formData)
+    if (dateError) {
+      toast.error(t(dateError))
+      return
+    }
+
     try {
       setSaving(true)
       const payload = {
         ...formData,
+        dueDate:           formData.dueDate         || null,
+        startDate:         formData.startDate       || null,
+        certificateDate:   formData.certificateDate || null,
+        calibrationStatus: computedStatus ?? formData.calibrationStatus ?? null,
         attachment: uploadedFiles.length > 0 ? JSON.stringify(uploadedFiles) : null
       }
       const response = await api.put(`/api/calibration/update`, payload)
@@ -277,53 +352,50 @@ function CalibrationEdit() {
               <PencilRuler className="h-5 w-5 text-primary" />
               {t('calibration_information')}
               {formData.years ? ` - ${formData.years}` : ''}
+              {computedStatus && (
+                <Badge className={STATUS_BADGE_CLASS[computedStatus]}>
+                  {t(STATUS_LABEL_KEY[computedStatus])}
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 pt-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
+              {/* Due date — แก้ได้เฉพาะ ADMIN */}
               <div className="space-y-2">
                 <div className={!isAdmin ? 'pointer-events-none opacity-50' : ''}>
-  <DatePickerField
-    id="dueDate"
-    label={t('due_date')}
-    value={formData.dueDate ? new Date(formData.dueDate) : null}
-    onChange={(date) => {
-      const isoDate = date ? date.toISOString().split('T')[0] : ''
-      handleInputChange('dueDate', isoDate)
-      if (formData.certificateDate && isoDate) {
-        if (new Date(formData.certificateDate) > new Date(isoDate)) {
-          handleInputChange('calibrationStatus', 'Overdue')
-          toast.warning(t('cert_exceeds_due_date'))
-        } else if (formData.calibrationStatus === 'Overdue') {
-          handleInputChange('calibrationStatus', 'On Time')
-        }
-      }
-    }}
-  />
-</div>
+                  <DatePickerField
+                    id="dueDate"
+                    label={t('due_date')}
+                    value={parseDateStr(formData.dueDate)}
+                    onChange={(date) => handleDateChange('dueDate', date)}
+                  />
+                </div>
               </div>
 
+              {/* Start date — ใช้หยุดการแจ้งเตือนรายวัน */}
+              <div className="space-y-2">
+                <DatePickerField
+                  id="startDate"
+                  label={t('start_date')}
+                  value={parseDateStr(formData.startDate)}
+                  onChange={(date) => handleDateChange('startDate', date)}
+                />
+              </div>
+
+              {/* Certificate date — ใช้ตัดสินทันเวลา/เลยกำหนด */}
               <div className="space-y-2">
                 <DatePickerField
                   id="certificateDate"
                   label={t('certificate_date')}
-                  value={formData.certificateDate ? new Date(formData.certificateDate) : null}
-                  onChange={(date) => {
-                    const isoDate = date ? date.toISOString().split('T')[0] : ''
-                    handleInputChange('certificateDate', isoDate)
-                    if (formData.dueDate && isoDate) {
-                      if (new Date(isoDate) > new Date(formData.dueDate)) {
-                        handleInputChange('calibrationStatus', 'Overdue')
-                        toast.warning(t('cert_exceeds_due_date'), { duration: 4000 })
-                      } else if (formData.calibrationStatus === 'Overdue') {
-                        handleInputChange('calibrationStatus', 'On Time')
-                      }
-                    }
-                  }}
+                  value={parseDateStr(formData.certificateDate)}
+                  onChange={(date) => handleDateChange('certificateDate', date)}
                 />
               </div>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6">
               <div className="space-y-2">
                 <Label>{t('results')}</Label>
                 <Select value={formData.results || ''} onValueChange={v => handleInputChange('results', v)}>
@@ -337,17 +409,18 @@ function CalibrationEdit() {
                 </Select>
               </div>
 
+              {/* สถานะคำนวณอัตโนมัติ — ไม่ให้เลือกเอง */}
               <div className="space-y-2">
                 <Label>{t('calibration_status')}</Label>
-                <Select value={formData.calibrationStatus || ''} onValueChange={v => handleInputChange('calibrationStatus', v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t('please_select')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="On Time">{t('status_on_time')}</SelectItem>
-                    <SelectItem value="Overdue">{t('status_overdue')}</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex h-9 items-center rounded-md border border-input bg-muted/40 px-3">
+                  {computedStatus ? (
+                    <Badge className={STATUS_BADGE_CLASS[computedStatus]}>
+                      {t(STATUS_LABEL_KEY[computedStatus])}
+                    </Badge>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">-</span>
+                  )}
+                </div>
               </div>
 
               {([
