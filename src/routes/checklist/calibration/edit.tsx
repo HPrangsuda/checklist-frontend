@@ -302,7 +302,7 @@ function CalibrationEdit() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
+      <div className="relative p-6">
         <Skeleton className="h-12 w-64 mb-4" />
         <Skeleton className="h-96 w-full" />
       </div>
@@ -310,7 +310,7 @@ function CalibrationEdit() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="relative bg-background">
 
       {/* Header */}
       <div className="bg-card border-b border-border px-6 py-4 shadow-sm sticky top-0 z-10">
