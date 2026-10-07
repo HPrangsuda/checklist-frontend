@@ -458,5 +458,8 @@
   "is_new_no": "No",
   "please_select_department_first": "Please select a department first",
   "start_date_required_with_certificate": "Please enter a start date when a certificate date is set",
-  "start_date_after_certificate": "Start date must not be after the certificate date"
+  "start_date_after_certificate": "Start date must not be after the certificate date",
+  "checklist_optional_hint": "Optional (filled by the responsible person)",
+  "failed_to_update_maintenance": "Failed to update maintenance"
+  
 }

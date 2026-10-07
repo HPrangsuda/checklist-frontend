@@ -459,5 +459,7 @@
   "is_new_no": "ไม่ใช่",
   "please_select_department_first": "กรุณาเลือกแผนกก่อน",
   "start_date_required_with_certificate": "กรุณาระบุวันที่เริ่ม เมื่อมีวันที่รับใบรับรองแล้ว",
-  "start_date_after_certificate": "วันที่เริ่มต้องไม่อยู่หลังวันที่รับใบรับรอง"
+  "start_date_after_certificate": "วันที่เริ่มต้องไม่อยู่หลังวันที่รับใบรับรอง",
+  "checklist_optional_hint": "ไม่บังคับ (ผู้รับผิดชอบเป็นผู้กรอก)",
+  "failed_to_update_maintenance": "อัปเดตการซ่อมบำรุงล้มเหลว"
 }
