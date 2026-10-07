@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { api } from "@/core/interceptor/api.interceptor"
 import { toast } from "sonner"
 import { useTranslation } from "@/core/contexts/language-context"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+// ตรงกับ ChecklistStatsDTO เดิม (ดูความหมาย field ใน ChecklistService → STATS MAPPING)
 interface ChecklistStatsData {
   department: string
   month: number
@@ -13,231 +14,240 @@ interface ChecklistStatsData {
   weeklyCheckDone: number
   weeklyCheckWaitLeader: number
   weeklyCheckWaitManager: number
-  weeklyCheckPercent: number
-  weeklyApprovePercent: number
+  weeklyCheckPercent: number | null
+  weeklyApprovePercent: number | null
   notCheckDone: number
   notCheckDoneNotCheck: number
   notCheckWaitLeader: number
   notCheckWaitManager: number
-  notCheckApprovePercent: number
-  notCheckApprovePercentFinal: number
+  notCheckApprovePercent: number | null
+  notCheckApprovePercentFinal: number | null
 }
 
+// ค่าที่แสดงในตาราง (คำนวณจาก DTO)
+interface ReportRow {
+  month: number
+  noData: boolean
+  dailyUse: number
+  checkAll: number
+  checked: number
+  approved: number
+  waitSupervisor: number
+  waitManager: number
+  missed: number
+  autoNotPerformed: number
+  offCycle: number
+  checkPercent: number | null
+  approvePercent: number | null
+  missedPercent: number | null
+}
+
+type CountKey =
+  | "checkAll" | "checked" | "approved" | "waitSupervisor" | "waitManager"
+  | "missed" | "autoNotPerformed" | "offCycle"
+type PercentKey = "checkPercent" | "approvePercent" | "missedPercent"
+
+const ALL_KEY = "__ALL__"
+const UNASSIGNED_KEY = "UNASSIGNED"
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function toRow(d: ChecklistStatsData): ReportRow {
+  const checked = d.weeklyCheckDone + d.weeklyCheckWaitLeader + d.weeklyCheckWaitManager
+  return {
+    month: d.month,
+    noData: d.weeklyCheckPercent === null,
+    dailyUse: d.dailyUse,
+    checkAll: checked + d.notCheckDone,
+    checked,
+    approved: d.weeklyCheckDone,
+    waitSupervisor: d.weeklyCheckWaitLeader,
+    waitManager: d.weeklyCheckWaitManager,
+    missed: d.notCheckDone,
+    autoNotPerformed: d.notCheckDoneNotCheck,
+    offCycle: Math.max(d.dailyUse - checked - d.notCheckDoneNotCheck, 0),
+    checkPercent: d.weeklyCheckPercent,
+    approvePercent: d.weeklyApprovePercent,
+    missedPercent: d.notCheckApprovePercent,
+  }
+}
 
 function parseResponse(res: any): ChecklistStatsData[] {
   if (res?.success && Array.isArray(res.data)) return res.data
   if (Array.isArray(res)) return res
-  if (res?.data && Array.isArray(res.data)) return res.data
   return []
 }
 
-const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-
-function getMonthName(m: number) {
-  return MONTH_NAMES[(m - 1) % 12]
-}
-
-function PercentBar({ value, color }: { value: number; color: "green" | "red" | "blue" }) {
-  const colors = {
-    green: "bg-emerald-500",
-    red:   "bg-rose-400",
-    blue:  "bg-blue-500",
-  }
+function PercentBar({ value, color }: { value: number | null; color: "green" | "red" }) {
+  if (value === null) return <span className="block text-center text-gray-300">-</span>
+  const bar = color === "green" ? "bg-emerald-500" : "bg-rose-400"
   return (
     <div className="flex items-center gap-1.5 w-full">
       <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${colors[color]}`}
-          style={{ width: `${Math.min(value, 100)}%` }}
-        />
+        <div className={`h-full rounded-full ${bar}`} style={{ width: `${Math.min(value, 100)}%` }} />
       </div>
-      <span className="text-xs font-semibold tabular-nums w-8 text-right">{value}%</span>
+      <span className="text-xs font-semibold tabular-nums w-9 text-right">{value}%</span>
     </div>
   )
 }
 
-// ─── Section Header ───────────────────────────────────────────────────────────
-
-function SectionLabel({ label, color }: { label: string; color: string }) {
+function SectionDivider({ label, tone, colSpan }: { label: string; tone: "green" | "red"; colSpan: number }) {
+  // ใช้ class เต็ม เพื่อให้ Tailwind สร้าง CSS ได้ (ห้ามต่อ string)
+  const fromL = tone === "green" ? "from-emerald-200" : "from-rose-200"
+  const text = tone === "green" ? "text-emerald-600" : "text-rose-500"
   return (
-    <div
-      className="flex items-center justify-center font-semibold text-white text-[11px] tracking-wide uppercase"
-      style={{ background: color, writingMode: "vertical-rl", transform: "rotate(180deg)", padding: "8px 6px", borderRadius: "6px 0 0 6px", minHeight: 80 }}
-    >
-      {label}
-    </div>
+    <tr>
+      <td colSpan={colSpan} className="pt-4 pb-0">
+        <div className="flex items-center gap-2 px-3 mb-1">
+          <div className={`h-px flex-1 bg-gradient-to-r ${fromL} to-transparent`} />
+          <span className={`text-[11px] font-bold ${text}`}>{label}</span>
+          <div className={`h-px flex-1 bg-gradient-to-l ${fromL} to-transparent`} />
+        </div>
+      </td>
+    </tr>
   )
 }
 
-// ─── DepartmentTable ──────────────────────────────────────────────────────────
+// ─── ReportTable ──────────────────────────────────────────────────────────────
 
-function DepartmentTable({ deptData }: { deptData: ChecklistStatsData[] }) {
+function ReportTable({ rows, currentMonth }: { rows: ReportRow[]; currentMonth: number | null }) {
   const { t } = useTranslation("checklist")
-  const months = [...deptData].sort((a, b) => a.month - b.month)
+  const months = [...rows].sort((a, b) => a.month - b.month)
+  const colSpan = months.length + 1
 
-  type NumKey = keyof Pick<ChecklistStatsData,
-    "dailyUse"|"weeklyCheckDone"|"weeklyCheckWaitLeader"|"weeklyCheckWaitManager"|
-    "weeklyCheckPercent"|"weeklyApprovePercent"|"notCheckDone"|"notCheckDoneNotCheck"|
-    "notCheckWaitLeader"|"notCheckWaitManager"|"notCheckApprovePercent"|"notCheckApprovePercentFinal">
+  const monthBg = (m: number) => (m === currentMonth ? "bg-blue-50/60" : "")
 
-  const cell = (item: ChecklistStatsData, key: NumKey) => item[key] as number
+  const countRow = (
+    key: CountKey,
+    label: string,
+    opts: { sub?: boolean; strong?: boolean; alert?: boolean } = {},
+  ) => (
+    <tr key={key} className="group">
+      <td
+        className={`sticky left-0 z-10 bg-white py-2 px-3 border-b border-gray-50 group-hover:bg-gray-50/60 ${
+          opts.sub ? "pl-8 text-gray-500" : opts.strong ? "font-semibold text-gray-800" : "text-gray-600"
+        }`}
+      >
+        {label}
+      </td>
+      {months.map((item) => {
+        const value = item[key]
+        const noData = item.noData
+        return (
+          <td
+            key={item.month}
+            className={`py-2 px-2 text-center border-b border-gray-50 group-hover:bg-gray-50/60 tabular-nums ${monthBg(item.month)} ${
+              opts.strong ? "font-semibold text-gray-800" : "font-medium text-gray-700"
+            } ${opts.alert && value > 0 ? "text-rose-600" : ""}`}
+          >
+            {noData ? (
+              <span className="text-gray-300">-</span>
+            ) : (
+              value
+            )}
+          </td>
+        )
+      })}
+    </tr>
+  )
+
+  const percentRow = (key: PercentKey, label: string, tone: "green" | "red") => {
+    const rowBg = tone === "green" ? "bg-emerald-50/50" : "bg-rose-50/50"
+    const labelCls = tone === "green"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+      : "bg-rose-50 text-rose-600 border-rose-100"
+    const border = tone === "green" ? "border-emerald-100" : "border-rose-100"
+    return (
+      <tr key={key} className={rowBg}>
+        <td className={`sticky left-0 z-10 py-2 px-3 font-semibold border-b ${labelCls}`}>
+          {label}
+        </td>
+        {months.map((item) => (
+          <td key={item.month} className={`py-2 px-3 border-b ${border}`}>
+            <PercentBar value={item.noData ? null : item[key]} color={tone} />
+          </td>
+        ))}
+      </tr>
+    )
+  }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs border-separate border-spacing-0">
-        {/* ── Header ── */}
+      <table className="w-full min-w-[980px] text-xs border-separate border-spacing-0">
         <thead>
           <tr>
-            <th className="sticky left-0 z-10 bg-white w-5" />
-            <th className="sticky left-5 z-10 bg-white w-36 text-left py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
+            <th className="sticky left-0 z-10 bg-white w-48 text-left py-2 px-3 text-[11px] font-semibold text-gray-500 border-b border-gray-200">
               {t("metric")}
             </th>
-            {months.map(m => (
+            {months.map((m) => (
               <th
                 key={m.month}
-                className="py-2 px-2 text-center font-semibold text-gray-600 border-b border-gray-200 min-w-[72px]"
+                className={`py-2 px-2 text-center font-semibold text-gray-600 border-b border-gray-200 min-w-[72px] ${monthBg(m.month)}`}
               >
-                <span className="block text-[11px] text-gray-400 font-normal">{getMonthName(m.month)}</span>
+                <span className="block text-[11px] text-gray-400 font-normal">{MONTH_NAMES[m.month - 1]}</span>
                 <span className="text-sm">{m.month}</span>
+                {m.month === currentMonth && (
+                  <span className="block text-[10px] font-normal text-blue-600">{t("current_month")}</span>
+                )}
               </th>
             ))}
           </tr>
         </thead>
 
         <tbody>
-          {/* ── Daily Use ── */}
+          {/* ── Daily use ── */}
           <tr className="group">
-            <td className="sticky left-0 z-10 bg-white" />
-            <td className="sticky left-5 z-10 bg-white py-2.5 px-3 font-semibold text-gray-700 border-b border-gray-100 group-hover:bg-gray-50/80 transition-colors">
+            <td className="sticky left-0 z-10 bg-white py-2.5 px-3 font-semibold text-gray-700 border-b border-gray-100">
               {t("daily_use")}
             </td>
-            {months.map(item => (
-              <td key={item.month} className="py-2.5 px-2 text-center border-b border-gray-100 group-hover:bg-gray-50/80 transition-colors">
-                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-700 font-bold text-sm">
-                  {cell(item, "dailyUse")}
-                </span>
+            {months.map((item) => (
+              <td key={item.month} className={`py-2.5 px-2 text-center border-b border-gray-100 ${monthBg(item.month)}`}>
+                {item.noData ? (
+                  <span className="text-gray-300">-</span>
+                ) : (
+                  <span className="inline-flex items-center justify-center min-w-8 h-8 px-1.5 rounded-full bg-blue-50 text-blue-700 font-bold text-sm">
+                    {item.dailyUse}
+                  </span>
+                )}
               </td>
             ))}
           </tr>
 
-          {/* ── Weekly Check section ── */}
-          {/* divider */}
-          <tr>
-            <td colSpan={2 + months.length} className="pt-3 pb-0">
-              <div className="flex items-center gap-2 px-3 mb-1">
-                <div className="h-px flex-1 bg-gradient-to-r from-emerald-200 to-transparent" />
-                <span className="text-[10px] font-bold tracking-widest text-emerald-600 uppercase">{t("weekly_check")}</span>
-                <div className="h-px flex-1 bg-gradient-to-l from-emerald-200 to-transparent" />
-              </div>
-            </td>
-          </tr>
+          {/* ── Weekly check ── */}
+          <SectionDivider label={t("weekly_check")} tone="green" colSpan={colSpan} />
+          {countRow("checkAll", t("target_checks"))}
+          {countRow("checked", t("checked_total"), { strong: true })}
+          {countRow("approved", t("approved"), { sub: true })}
+          {countRow("waitSupervisor", t("wait_leader"), { sub: true })}
+          {countRow("waitManager", t("wait_manager"), { sub: true })}
+          {percentRow("checkPercent", t("percent_check"), "green")}
+          {percentRow("approvePercent", t("percent_approve"), "green")}
 
-          {(
-            [
-              { key: "weeklyCheckDone",        label: t("done"),         highlight: false },
-              { key: "weeklyCheckWaitLeader",  label: t("wait_leader"),  highlight: false },
-              { key: "weeklyCheckWaitManager", label: t("wait_manager"), highlight: false },
-            ] as { key: NumKey; label: string; highlight: boolean }[]
-          ).map(({ key, label }) => (
-            <tr key={key} className="group">
-              <td className="sticky left-0 z-10 bg-white" />
-              <td className="sticky left-5 z-10 bg-white py-2 px-3 text-gray-600 border-b border-gray-50 group-hover:bg-gray-50/60 transition-colors pl-5">
-                {label}
-              </td>
-              {months.map(item => (
-                <td key={item.month} className="py-2 px-2 text-center border-b border-gray-50 group-hover:bg-gray-50/60 transition-colors text-gray-700 font-medium">
-                  {cell(item, key)}
-                </td>
-              ))}
-            </tr>
-          ))}
-
-          {/* percent rows */}
-          {(
-            [
-              { key: "weeklyCheckPercent",   label: t("percent_check") },
-              { key: "weeklyApprovePercent", label: t("percent_approve") },
-            ] as { key: NumKey; label: string }[]
-          ).map(({ key, label }) => (
-            <tr key={key} className="group bg-emerald-50/50">
-              <td className="sticky left-0 z-10 bg-emerald-50/50" />
-              <td className="sticky left-5 z-10 bg-emerald-50/60 py-2 px-3 text-emerald-700 font-semibold border-b border-emerald-100 pl-5">
-                {label}
-              </td>
-              {months.map(item => (
-                <td key={item.month} className="py-2 px-3 border-b border-emerald-100">
-                  <PercentBar value={cell(item, key)} color="green" />
-                </td>
-              ))}
-            </tr>
-          ))}
-
-          {/* ── Not Check section ── */}
-          <tr>
-            <td colSpan={2 + months.length} className="pt-4 pb-0">
-              <div className="flex items-center gap-2 px-3 mb-1">
-                <div className="h-px flex-1 bg-gradient-to-r from-rose-200 to-transparent" />
-                <span className="text-[10px] font-bold tracking-widest text-rose-500 uppercase">{t("not_check")}</span>
-                <div className="h-px flex-1 bg-gradient-to-l from-rose-200 to-transparent" />
-              </div>
-            </td>
-          </tr>
-
-          {(
-            [
-              { key: "notCheckDone",        label: t("done") },
-              { key: "notCheckDoneNotCheck",label: t("done_not_check") },
-              { key: "notCheckWaitLeader",  label: t("wait_leader") },
-              { key: "notCheckWaitManager", label: t("wait_manager") },
-            ] as { key: NumKey; label: string }[]
-          ).map(({ key, label }) => (
-            <tr key={key} className="group">
-              <td className="sticky left-0 z-10 bg-white" />
-              <td className="sticky left-5 z-10 bg-white py-2 px-3 text-gray-600 border-b border-gray-50 group-hover:bg-gray-50/60 transition-colors pl-5">
-                {label}
-              </td>
-              {months.map(item => (
-                <td key={item.month} className="py-2 px-2 text-center border-b border-gray-50 group-hover:bg-gray-50/60 transition-colors text-gray-700 font-medium">
-                  {cell(item, key)}
-                </td>
-              ))}
-            </tr>
-          ))}
-
-          {(
-            [
-              { key: "notCheckApprovePercent",      label: t("percent_approve") },
-              { key: "notCheckApprovePercentFinal",  label: t("percent_approve_final") },
-            ] as { key: NumKey; label: string }[]
-          ).map(({ key, label }) => (
-            <tr key={key} className="group bg-rose-50/50">
-              <td className="sticky left-0 z-10 bg-rose-50/50" />
-              <td className="sticky left-5 z-10 bg-rose-50/60 py-2 px-3 text-rose-600 font-semibold border-b border-rose-100 pl-5">
-                {label}
-              </td>
-              {months.map(item => (
-                <td key={item.month} className="py-2 px-3 border-b border-rose-100">
-                  <PercentBar value={cell(item, key)} color="red" />
-                </td>
-              ))}
-            </tr>
-          ))}
+          {/* ── Not checked ── */}
+          <SectionDivider label={t("not_check")} tone="red" colSpan={colSpan} />
+          {countRow("missed", t("missed_checks"), { strong: true, alert: true })}
+          {countRow("autoNotPerformed", t("auto_not_performed"), { sub: true })}
+          {countRow("offCycle", t("off_cycle"))}
+          {percentRow("missedPercent", t("percent_missed"), "red")}
         </tbody>
       </table>
 
       {/* Legend */}
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-gray-500">
         {[
-          { label: t("daily_use"),       note: t("note_daily_use"),       dot: "bg-blue-400" },
-          { label: t("weekly_check"),    note: t("note_weekly_check"),    dot: "bg-emerald-400" },
-          { label: t("not_check"),       note: t("note_not_check"),       dot: "bg-rose-400" },
-          { label: t("percent_check"),   note: t("note_percent_check"),   dot: "bg-emerald-600" },
-          { label: t("percent_approve"), note: t("note_percent_approve"), dot: "bg-rose-600" },
+          { label: t("daily_use"), note: t("note_daily_use"), dot: "bg-blue-400" },
+          { label: t("weekly_check"), note: t("note_weekly_check"), dot: "bg-emerald-400" },
+          { label: t("percent_check"), note: t("note_percent_check"), dot: "bg-emerald-600" },
+          { label: t("percent_approve"), note: t("note_percent_approve"), dot: "bg-emerald-600" },
+          { label: t("missed_checks"), note: t("note_missed_checks"), dot: "bg-rose-400" },
+          { label: t("off_cycle"), note: t("note_off_cycle"), dot: "bg-gray-400" },
         ].map(({ label, note, dot }) => (
           <div key={label} className="flex items-start gap-2">
-            <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
-            <span><span className="font-semibold text-gray-600">{label}:</span> {note}</span>
+            <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
+            <span>
+              <span className="font-semibold text-gray-600">{label}:</span> {note}
+            </span>
           </div>
         ))}
       </div>
@@ -267,131 +277,109 @@ function TableSkeleton() {
 
 export function ChecklistStats() {
   const { t } = useTranslation("checklist")
-  const [checklistData, setChecklistData] = useState<ChecklistStatsData[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [activeTab, setActiveTab] = useState<string>("all")
+  const now = new Date()
+  const currentYear = now.getFullYear()
+
+  const [year, setYear] = useState(currentYear)
+  const [data, setData] = useState<ChecklistStatsData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<string>(ALL_KEY)
 
   useEffect(() => {
+    let cancelled = false
     const fetchData = async () => {
       try {
         setLoading(true)
-        const res = await api.get("/api/checklist/stats")
-        setChecklistData(parseResponse(res))
+        const res = await api.get(`/api/checklist/stats?year=${year}`)
+        if (!cancelled) setData(parseResponse(res))
       } catch {
-        toast.error(t("error_fetching_checklist_stats"))
-        setChecklistData([])
+        if (!cancelled) {
+          toast.error(t("error_fetching_checklist_stats"))
+          setData([])
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     fetchData()
-  }, [])
+    return () => {
+      cancelled = true
+    }
+  }, [year])
 
-  const groupedByDept = checklistData.reduce((acc, item) => {
-    if (!acc[item.department]) acc[item.department] = []
-    acc[item.department].push(item)
-    return acc
-  }, {} as Record<string, ChecklistStatsData[]>)
+  const grouped = useMemo(
+    () =>
+      data.reduce((acc, d) => {
+        ;(acc[d.department] ??= []).push(toRow(d))
+        return acc
+      }, {} as Record<string, ReportRow[]>),
+    [data],
+  )
 
-  const departments = Object.keys(groupedByDept).sort()
+  const departments = Object.keys(grouped)
+    .filter((d) => d !== ALL_KEY)
+    .sort((a, b) => (a === UNASSIGNED_KEY ? 1 : b === UNASSIGNED_KEY ? -1 : a.localeCompare(b)))
 
-  const averageData = (): ChecklistStatsData[] => {
-    const months = [...new Set(checklistData.map(d => d.month))].sort((a, b) => a - b)
-    return months.map(month => {
-      const md = checklistData.filter(d => d.month === month)
-      const n  = md.length || 1
-      const avg = (key: keyof ChecklistStatsData) =>
-        Math.round(md.reduce((s, d) => s + (d[key] as number), 0) / n)
-      return {
-        department: "All", month, year: md[0]?.year ?? new Date().getFullYear(),
-        dailyUse: avg("dailyUse"),
-        weeklyCheckDone: avg("weeklyCheckDone"),
-        weeklyCheckWaitLeader: avg("weeklyCheckWaitLeader"),
-        weeklyCheckWaitManager: avg("weeklyCheckWaitManager"),
-        weeklyCheckPercent: avg("weeklyCheckPercent"),
-        weeklyApprovePercent: avg("weeklyApprovePercent"),
-        notCheckDone: avg("notCheckDone"),
-        notCheckDoneNotCheck: avg("notCheckDoneNotCheck"),
-        notCheckWaitLeader: avg("notCheckWaitLeader"),
-        notCheckWaitManager: avg("notCheckWaitManager"),
-        notCheckApprovePercent: avg("notCheckApprovePercent"),
-        notCheckApprovePercentFinal: avg("notCheckApprovePercentFinal"),
-      }
-    })
-  }
+  const tabLabel = (key: string) =>
+    key === ALL_KEY ? t("all") : key === UNASSIGNED_KEY ? t("unassigned_department") : key
 
-  const tabs = [{ key: "all", label: t("all") }, ...departments.map(d => ({ key: d, label: d }))]
+  const tabs = [ALL_KEY, ...departments]
+  const selected = grouped[activeTab] ? activeTab : ALL_KEY
+  const hasData = (grouped[ALL_KEY] ?? []).some((r) => !r.noData)
+  const yearOptions = [currentYear - 2, currentYear - 1, currentYear]
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       {/* ── Header ── */}
-      <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-gray-900">{t("checklist_stats")}</h2>
-          {!loading && checklistData.length > 0 && (
-            <p className="text-xs text-gray-400 mt-0.5">
-              {departments.length} {t("departments")} · {[...new Set(checklistData.map(d => d.month))].length} {t("months")}
-            </p>
-          )}
+          <p className="text-xs text-gray-400 mt-0.5">{t("checklist_stats_subtitle")}</p>
         </div>
-        {/* colored pill legend */}
-        <div className="hidden sm:flex items-center gap-3 text-[11px]">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-            <span className="text-gray-500">{t("weekly_check")}</span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-            <span className="text-gray-500">{t("not_check")}</span>
-          </span>
-        </div>
+        <select
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+          aria-label={t("year")}
+          className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+        >
+          {yearOptions.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* ── Body ── */}
       <div className="p-6">
         {loading ? (
           <TableSkeleton />
-        ) : checklistData.length === 0 ? (
+        ) : !hasData ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-300 text-2xl">
-              📋
-            </div>
             <p className="text-sm text-gray-400">{t("no_data_available")}</p>
           </div>
         ) : (
           <>
-            {/* ── Tab bar ── */}
             <div className="flex gap-1.5 flex-wrap mb-6">
-              {tabs.map(tab => (
+              {tabs.map((key) => (
                 <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                  key={key}
+                  onClick={() => setActiveTab(key)}
                   className={[
-                    "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150",
-                    activeTab === tab.key
+                    "px-3.5 py-1.5 rounded-lg text-xs font-semibold",
+                    selected === key
                       ? "bg-gray-900 text-white shadow-sm"
                       : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700",
                   ].join(" ")}
                 >
-                  {tab.label}
+                  {tabLabel(key)}
                 </button>
               ))}
             </div>
 
-            {/* ── Active tab banner (for "all") ── */}
-            {activeTab === "all" && departments.length > 1 && (
-              <div className="mb-4 flex items-center gap-2 text-xs text-gray-400">
-                <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 rounded-md font-medium">
-                  📊 {t("average_all_departments")}
-                </span>
-                <span className="text-gray-300">·</span>
-                <span>{departments.join(" · ")}</span>
-              </div>
-            )}
-
-            {/* ── Table ── */}
-            <DepartmentTable
-              deptData={activeTab === "all" ? averageData() : groupedByDept[activeTab] ?? []}
+            <ReportTable
+              rows={grouped[selected] ?? []}
+              currentMonth={year === currentYear ? now.getMonth() + 1 : null}
             />
           </>
         )}

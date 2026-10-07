@@ -461,5 +461,19 @@
   "start_date_required_with_certificate": "กรุณาระบุวันที่เริ่ม เมื่อมีวันที่รับใบรับรองแล้ว",
   "start_date_after_certificate": "วันที่เริ่มต้องไม่อยู่หลังวันที่รับใบรับรอง",
   "checklist_optional_hint": "ไม่บังคับ (ผู้รับผิดชอบเป็นผู้กรอก)",
-  "failed_to_update_maintenance": "อัปเดตการซ่อมบำรุงล้มเหลว"
+  "failed_to_update_maintenance": "อัปเดตการซ่อมบำรุงล้มเหลว",
+  "checklist_stats_subtitle": "ตัวเลขเดียวกับตาราง KPI การตรวจเช็ค แยกตามแผนกของผู้รับผิดชอบ",
+  "current_month": "เดือนปัจจุบัน",
+  "unassigned_department": "ไม่ระบุแผนก",
+  "target_checks": "ต้องตรวจ",
+  "checked_total": "ตรวจแล้ว",
+  "approved": "อนุมัติแล้ว",
+  "missed_checks": "ขาดตรวจ",
+  "auto_not_performed": "ระบบบันทึกว่าไม่ได้ทำ",
+  "off_cycle": "ตรวจนอกรอบ",
+  "percent_missed": "% ขาดตรวจ",
+  "kpi_out_of_sync": "ค่าในตาราง KPI ยังไม่อัปเดต",
+  "note_missed_checks": "ต้องตรวจ - ตรวจแล้ว",
+  "note_off_cycle": "บันทึกที่ไม่นับเป็น KPI เช่น ผู้อื่นตรวจ ตรวจวันหยุด หรือตรวจซ้ำ",
+  "note_out_of_sync": "จุดสีส้ม: ตาราง KPI จะอัปเดตเป็นค่านี้ในรอบคำนวณถัดไป (00:05 น.)"
 }

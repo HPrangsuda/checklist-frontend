@@ -460,6 +460,18 @@
   "start_date_required_with_certificate": "Please enter a start date when a certificate date is set",
   "start_date_after_certificate": "Start date must not be after the certificate date",
   "checklist_optional_hint": "Optional (filled by the responsible person)",
-  "failed_to_update_maintenance": "Failed to update maintenance"
-  
+  "failed_to_update_maintenance": "Failed to update maintenance",
+  "current_month": "Current",
+  "unassigned_department": "No department",
+  "target_checks": "Required",
+  "checked_total": "Checked",
+  "approved": "Approved",
+  "missed_checks": "Missed",
+  "auto_not_performed": "Auto-logged as not done",
+  "off_cycle": "Off-cycle checks",
+  "percent_missed": "% missed",
+  "kpi_out_of_sync": "KPI table not yet updated",
+  "note_missed_checks": "Required − checked",
+  "note_off_cycle": "Records not counted for KPI, such as checks by others, on weekends, or repeats",
+  "note_out_of_sync": "Orange dot: the KPI table will update to this value at the next run (00:05)"
 }
