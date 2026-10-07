@@ -87,21 +87,26 @@ interface SubmittedChecklist {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CHOICE_KEYS = [
-  'choice_ready',
-  'choice_not_ready_repair',
-  'choice_not_ready_under_repair',
-  'choice_not_ready_modification',
-  'choice_others',
+/** ค่าที่ใช้จริงใน maintenance_record.maintenance_by */
+const MAINTENANCE_BY_OPTIONS = [
+  { value: 'RESPONSIBLE', labelKey: 'maintenance_by_responsible' },
+  { value: 'CENTRAL',     labelKey: 'maintenance_by_central' },
+  { value: 'EXTERNAL',    labelKey: 'maintenance_by_external' },
 ] as const
 
-const MACHINE_STATUS_KEYS = [
-  'status_operational',
-  'status_non_operational',
-  'status_under_maintenance',
+/** เก็บค่าเป็นภาษาอังกฤษ (ตรงกับหน้า add) แสดงผลตามภาษา */
+const CHOICE_OPTIONS = [
+  { value: 'Ready to use',                       labelKey: 'choice_ready' },
+  { value: 'Not ready (Waiting for repair)',     labelKey: 'choice_not_ready_repair' },
+  { value: 'Not ready (Under repair)',           labelKey: 'choice_not_ready_under_repair' },
+  { value: 'Not ready (Equipment modification)', labelKey: 'choice_not_ready_modification' },
+  { value: 'Others',                             labelKey: 'choice_others' },
 ] as const
 
-const MACHINE_STATUS_VALUES = ['OPERATIONAL', 'UNDER MAINTENANCE'] as const
+const MACHINE_STATUS_OPTIONS = [
+  { value: 'OPERATIONAL',       labelKey: 'status_operational' },
+  { value: 'UNDER MAINTENANCE', labelKey: 'status_under_maintenance' },
+] as const
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
@@ -158,6 +163,10 @@ function MaintenanceEdit() {
   const { id } = useSearch({ from: '/checklist/maintenance/edit' })
   const { t }  = useTranslation('checklist')
 
+  // member id ของผู้ใช้ที่ login (ตรวจชื่อ field ใน session ให้ตรงกับโปรเจกต์)
+  const session    = sessionStore.state.session as any
+  const myMemberId = String(session?.memberId ?? session?.id ?? '')
+
   const [formData, setFormData] = useState<MaintenanceRecord>({
     id: 0, machineCode: '', machineName: '', years: '', round: 0,
     dueDate: '', planDate: '', startDate: '', actualDate: '',
@@ -173,22 +182,23 @@ function MaintenanceEdit() {
   const [responsibleName,       setResponsibleName]       = useState<string>('')
 
   // ── files ─────────────────────────────────────────────────────────────────
-  // allFiles = existing (from server) + newly uploaded (via /api/files/upload)
-  // ทั้งหมดเก็บเป็น FileUploadResponse — อัปโหลดทันทีเมื่อเลือก, ลบทันทีเมื่อกด X
   const [allFiles,     setAllFiles]     = useState<FileUploadResponse[]>([])
   const [isUploading,  setIsUploading]  = useState(false)
   const fileQueueRef = useRef<Set<string>>(new Set())
 
   // ── checklist (editable template) ────────────────────────────────────────
-  const [checklist,               setChecklist]               = useState<ChecklistItem[]>([])
-  const [checklistErrors,         setChecklistErrors]         = useState<Record<string, string>>({})
-  const [formErrors,              setFormErrors]              = useState<Record<string, string>>({})
-  const [selectedStatus,          setSelectedStatus]          = useState('')
-  const [maintenanceBy,           setMaintenanceBy]           = useState<'INTERNAL' | 'EXTERNAL'>('INTERNAL')
-  const [responsibleMaintenance2, setResponsibleMaintenance2] = useState('')
+  const [checklist,       setChecklist]       = useState<ChecklistItem[]>([])
+  const [checklistErrors, setChecklistErrors] = useState<Record<string, string>>({})
+  const [formErrors,      setFormErrors]      = useState<Record<string, string>>({})
+  const [selectedStatus,  setSelectedStatus]  = useState('')
 
   // ── submitted checklist (read-only) ──────────────────────────────────────
   const [submittedChecklist, setSubmittedChecklist] = useState<SubmittedChecklist | null>(null)
+
+  // บังคับกรอก checklist เฉพาะผู้รับผิดชอบงานซ่อมบำรุงของ record นี้
+  // supervisor / manager / admin แก้ข้อมูลได้โดยไม่ต้องกรอก checklist
+  const isResponsible     = !!myMemberId && myMemberId === originalResponsibleId
+  const checklistRequired = !submittedChecklist && isResponsible && checklist.length > 0
 
   const formSteps: FormStep[] = [
     { id: 'general', title: t('general'), description: t('maintenance_information'), required: true },
@@ -221,7 +231,6 @@ function MaintenanceEdit() {
         }
       }
 
-      // โหลด existing files จาก server เข้า allFiles โดยตรง
       setAllFiles(parseAttachment(data?.attachment))
 
       await fetchChecklistByMaintenanceId(
@@ -352,7 +361,7 @@ function MaintenanceEdit() {
     if (val) setFormErrors(prev => { const n = { ...prev }; delete n.responsible; return n })
   }
 
-  // ── File upload: อัปโหลดทันทีเมื่อเลือกไฟล์ ─────────────────────────────
+  // ── File upload ─────────────────────────────────────────────────────────
 
   const uploadFileSingle = async (file: File): Promise<FileUploadResponse | null> => {
     const fd = new FormData()
@@ -371,7 +380,6 @@ function MaintenanceEdit() {
     const realFiles = files.filter(f => f instanceof File)
     if (!realFiles.length || isUploading) return
 
-    // กรองซ้ำด้วย queue ref
     const toUpload = realFiles.filter(f => {
       const key = `${f.name}-${f.size}-${f.lastModified}`
       if (fileQueueRef.current.has(key)) return false
@@ -390,54 +398,66 @@ function MaintenanceEdit() {
       }
       if (results.length) {
         setAllFiles(prev => [...prev, ...results])
-        toast.success(t('files_uploaded')?.replace('{count}', String(results.length)) ?? `อัปโหลดสำเร็จ ${results.length} ไฟล์`)
+        toast.success(t('files_uploaded').replace('{count}', String(results.length)))
       }
     } catch {
-      toast.error(t('failed_to_upload_files') ?? 'อัปโหลดไฟล์ล้มเหลว')
+      toast.error(t('failed_to_upload_files'))
     } finally {
       toUpload.forEach(f => fileQueueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`))
       setIsUploading(false)
     }
   }
 
-  // ── File delete: ลบจาก server ทันทีเมื่อกด X ────────────────────────────
+  // ── File delete ─────────────────────────────────────────────────────────
 
   const handleDeleteFile = async (fileId: any) => {
     const idStr = String(fileId)
     const target = allFiles.find(f => f.fileName === idStr || idStr.includes(f.fileName ?? ''))
     if (!target) return
 
-    // ลบออกจาก UI ก่อน (optimistic)
     setAllFiles(prev => prev.filter(f => f.fileName !== target.fileName))
 
-    // ลบจาก server (ถ้า fileUrl มีค่า = เคยอัปโหลดจริง)
     if (target.fileName) {
       try {
         await api.delete(`/api/files/delete/${encodeURIComponent(target.fileName)}`)
-      } catch {
-        // ไม่ต้อง rollback — ไฟล์อาจลบได้จาก server แต่ response fail
-        // หรือเป็น existing file ที่ไม่มี endpoint delete ก็ยังคือ remove จาก attachment ได้
-      }
+      } catch { /* UI already updated */ }
     }
   }
+
+  // ─── Checklist helpers ────────────────────────────────────────────────────
+
+  const getAnswer = (item: ChecklistItem) => item.answer ?? ''
+
+  const updateAnswer = (itemId: number, value: string) => {
+    setChecklist(prev => prev.map(item => item.id === itemId ? { ...item, answer: value } : item))
+    setChecklistErrors(prev => { const n = { ...prev }; delete n[`item_${itemId}`]; return n })
+  }
+
+  /** เริ่มกรอก checklist แล้วหรือยัง (เลือกสถานะ หรือ ตอบข้อใดข้อหนึ่ง) */
+  const checklistStarted = () =>
+    !!selectedStatus || checklist.some(item => getAnswer(item).trim() !== '')
 
   // ─── Submit ───────────────────────────────────────────────────────────────
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validate required fields
     const fErrs: Record<string, string> = {}
-    if (!responsibleId.trim()) fErrs.responsible = t('responsible_required') || 'กรุณาเลือกผู้รับผิดชอบ'
+    if (!responsibleId.trim()) fErrs.responsible = t('responsible_required')
     setFormErrors(fErrs)
     if (Object.keys(fErrs).length) {
-      toast.error(t('fill_required_fields') || 'กรุณากรอกข้อมูลที่จำเป็น')
+      toast.error(t('fill_required_fields'))
       return
     }
 
-    if (!submittedChecklist) {
+    // ผู้รับผิดชอบ → ต้องกรอกครบ
+    // คนอื่น (supervisor/manager/admin) → ไม่บังคับ แต่ถ้าเริ่มกรอกแล้วต้องกรอกให้ครบ
+    const mustValidateChecklist =
+      !submittedChecklist && checklist.length > 0 && (checklistRequired || checklistStarted())
+
+    if (mustValidateChecklist) {
       const errs: Record<string, string> = {}
-      if (checklist.length > 0 && !selectedStatus) errs.selectedStatus = t('please_select')
+      if (!selectedStatus) errs.selectedStatus = t('please_select')
       checklist.forEach(item => {
         if (!getAnswer(item).trim()) errs[`item_${item.id}`] = t('field_required')
       })
@@ -450,7 +470,6 @@ function MaintenanceEdit() {
 
     setSaving(true)
     try {
-      // dedup allFiles → JSON string ส่งใน attachment
       const seen = new Set<string>()
       const deduped = allFiles
         .filter(f => f.fileName && !seen.has(f.fileName) && seen.add(f.fileName))
@@ -476,26 +495,23 @@ function MaintenanceEdit() {
         status:        formData.status        || null,
         maintenanceBy: formData.maintenanceBy || null,
         note:          formData.note          || null,
-        // ส่ง attachment เป็น JSON string (ไม่มี multipart files อีกต่อไป)
         attachment:    deduped.length > 0 ? JSON.stringify(deduped) : undefined,
       }
       if (resolvedResponsible !== undefined) payload.responsibleMaintenance = resolvedResponsible
 
-      // ─── PUT แบบ JSON ล้วน (ไม่มี multipart) ─────────────────────────────
       const res = await api.put('/api/maintenance/update', payload, {
         headers: { 'Content-Type': 'application/json' },
       })
 
       if (!res?.success) {
-        toast.error(res?.error ?? res?.message ?? t('data_fetch_failed'))
+        toast.error(res?.error ?? res?.message ?? t('failed_to_update_maintenance'))
         return
       }
 
       if (responsibleChanged) setOriginalResponsibleId(responsibleId)
 
-      // Save checklist only when not yet submitted
+      // บันทึก checklist เมื่อกรอกครบแล้วเท่านั้น
       if (!submittedChecklist && checklist.length > 0 && selectedStatus) {
-        const session = sessionStore.state.session
         const request = {
           maintenanceRecordId:    formData.id,
           machineCode:            formData.machineCode,
@@ -514,11 +530,11 @@ function MaintenanceEdit() {
           userName:               `${session?.firstName ?? ''} ${session?.lastName ?? ''}`.trim(),
           supervisor: '', manager: '',
           jobDetail:              `Maintenance Round ${formData.round}/${formData.years}`,
-          actualDate:             toLocalDateString(formData.actualDate)
-                                    ?? new Date().toISOString().split('T')[0],
+          actualDate:             toLocalDateString(formData.actualDate) ?? toLocalDateString(new Date()),
           dueDate:                toLocalDateString(formData.dueDate),
-          maintenanceBy,
-          responsibleMaintenance: maintenanceBy === 'INTERNAL' ? responsibleMaintenance2 : '',
+          // ใช้ค่าจากฟอร์มจริง (เดิม hardcode 'INTERNAL' และผู้รับผิดชอบว่าง)
+          maintenanceBy:          formData.maintenanceBy || null,
+          responsibleMaintenance: responsibleId || '',
         }
         const clFd = new FormData()
         clFd.append('request', new Blob([JSON.stringify(request)], { type: 'application/json' }))
@@ -537,25 +553,25 @@ function MaintenanceEdit() {
     }
   }
 
-  // ─── Checklist helpers ────────────────────────────────────────────────────
-
-  const getAnswer = (item: ChecklistItem) => item.answer ?? ''
-
-  const updateAnswer = (itemId: number, value: string) => {
-    setChecklist(prev => prev.map(item => item.id === itemId ? { ...item, answer: value } : item))
-    setChecklistErrors(prev => { const n = { ...prev }; delete n[`item_${itemId}`]; return n })
-  }
-
   // ─── Loading ──────────────────────────────────────────────────────────────
 
   if (loading) return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="relative p-6">
       <Skeleton className="h-12 w-64 mb-4" />
       <Skeleton className="h-96 w-full" />
     </div>
   )
 
   const cancelLink = `/checklist/maintenance/view?id=${id}` as any
+
+  // ค่าเดิมใน DB ที่ไม่อยู่ในรายการ (เช่น INTERNAL) ให้แสดงไว้ ไม่ให้หาย
+  const legacyMaintenanceBy =
+    formData.maintenanceBy &&
+    !MAINTENANCE_BY_OPTIONS.some(o => o.value === formData.maintenanceBy)
+      ? formData.maintenanceBy
+      : null
+
+  const req = (show: boolean) => show ? <span className="text-red-500"> *</span> : null
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -574,7 +590,7 @@ function MaintenanceEdit() {
       submitText={t('update')}
       cancelLink={cancelLink}
     >
-      <div className="px-2 pt-2 space-y-6">
+      <div className="relative px-2 pt-2 space-y-6">
 
         {/* ── Dates & basic fields ──────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -603,14 +619,18 @@ function MaintenanceEdit() {
 
           {/* Maintenance By */}
           <div className="space-y-2">
-            <Label>{t('maintenance')}</Label>
+            <Label>{t('maintenance_by')}</Label>
             <div className="relative">
-              <select value={formData.maintenanceBy}
+              <select value={formData.maintenanceBy || ''}
                 onChange={e => handleInputChange('maintenanceBy', e.target.value)}
                 className="w-full appearance-none border rounded-lg px-3 py-2.5 pr-9 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-border">
                 <option value="">-- {t('please_select')} --</option>
-                <option value="INTERNAL">INTERNAL</option>
-                <option value="EXTERNAL">EXTERNAL</option>
+                {MAINTENANCE_BY_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
+                ))}
+                {legacyMaintenanceBy && (
+                  <option value={legacyMaintenanceBy}>{legacyMaintenanceBy}</option>
+                )}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             </div>
@@ -652,10 +672,14 @@ function MaintenanceEdit() {
             <CardTitle className="flex items-center gap-2 font-semibold">
               <ClipboardList className="h-5 w-5 text-primary" />
               {t('checklist_records')}
-              {submittedChecklist && (
+              {submittedChecklist ? (
                 <span className="ml-auto flex items-center gap-1 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  {t('already_submitted') || 'บันทึกแล้ว'}
+                  {t('already_submitted')}
+                </span>
+              ) : !checklistRequired && checklist.length > 0 && (
+                <span className="ml-auto text-xs font-normal text-muted-foreground">
+                  {t('checklist_optional_hint')}
                 </span>
               )}
             </CardTitle>
@@ -671,7 +695,7 @@ function MaintenanceEdit() {
                     <p className="text-sm font-medium">{submittedChecklist.machineStatus || '—'}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">{t('maintenance')}</p>
+                    <p className="text-xs text-muted-foreground">{t('maintenance_by')}</p>
                     <p className="text-sm font-medium">{submittedChecklist.maintenanceBy || '—'}</p>
                   </div>
                 </div>
@@ -716,7 +740,7 @@ function MaintenanceEdit() {
               /* ── EDITABLE ────────────────────────────────────────────── */
               <>
                 <div className="space-y-1.5">
-                  <Label>{t('machine_status')} <span className="text-red-500">*</span></Label>
+                  <Label>{t('machine_status')}{req(checklistRequired)}</Label>
                   <div className="relative">
                     <select value={selectedStatus}
                       onChange={e => {
@@ -727,8 +751,8 @@ function MaintenanceEdit() {
                         checklistErrors.selectedStatus ? 'border-red-400' : 'border-border'
                       }`}>
                       <option value="">-- {t('please_select')} --</option>
-                      {MACHINE_STATUS_VALUES.map((value, idx) => (
-                        <option key={value} value={value}>{t(MACHINE_STATUS_KEYS[idx])}</option>
+                      {MACHINE_STATUS_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
                       ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -753,8 +777,7 @@ function MaintenanceEdit() {
                         <div key={item.id}
                           className={`p-4 rounded-xl border ${hasError ? 'border-red-400 bg-red-50/10' : 'border-border bg-muted/20'}`}>
                           <p className="text-sm mb-0.5">
-                            {idx + 1}. {item.questionDescription ?? 'N/A'}{' '}
-                            <span className="text-red-500">*</span>
+                            {idx + 1}. {item.questionDescription ?? 'N/A'}{req(checklistRequired)}
                           </p>
                           {item.questionDetail && (
                             <p className="text-xs text-muted-foreground mb-2">{item.questionDetail}</p>
@@ -766,8 +789,8 @@ function MaintenanceEdit() {
                                   hasError ? 'border-red-400' : 'border-border'
                                 }`}>
                                 <option value="">-- {t('please_select')} --</option>
-                                {CHOICE_KEYS.map(key => (
-                                  <option key={key} value={t(key)}>{t(key)}</option>
+                                {CHOICE_OPTIONS.map(o => (
+                                  <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
                                 ))}
                               </select>
                               <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -803,14 +826,12 @@ function MaintenanceEdit() {
               {t('attachments')}
               {isUploading && (
                 <span className="ml-auto text-xs font-normal text-muted-foreground animate-pulse">
-                  {t('uploading') || 'กำลังอัปโหลด...'}
+                  {t('uploading')}
                 </span>
               )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
-
-            {/* ใช้ FileUploadField เดียว — ส่ง allFiles map เป็น { name, size, type, url } เหมือน machine */}
             <FileUploadField
               id="attachments"
               maxFiles={10}
@@ -827,7 +848,6 @@ function MaintenanceEdit() {
                 toast.error(m, { description: `"${f.name}" ${t('could_not_be_uploaded')}` })
               }
             />
-
           </CardContent>
         </Card>
 
