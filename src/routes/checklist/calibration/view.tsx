@@ -78,6 +78,14 @@ const parseAttachments = (raw?: string | null): AttachmentItem[] => {
   } catch { return [] }
 }
 
+/** ผลการสอบเทียบ: value ใน DB -> i18n key */
+const RESULT_LABEL_KEY: Record<string, string> = {
+  'Pass ISO17025': 'status_pass_iso17025',
+  'Pass ISO9001':  'status_pass_iso9001',
+  'Not Pass':      'status_not_pass',
+  'Pass':          'status_pass',
+}
+
 /** value ใน DB -> i18n key (ค่าเก่าที่ไม่อยู่ในรายการแสดงตามเดิม) */
 const MPE_REFER_LABEL_KEY: Record<string, string> = {
   'Standard':          'mpe_refer_standard',
@@ -94,6 +102,8 @@ export const getStatusColor = (status: string) => {
     case 'completed':
     case 'ready to use':
     case 'pass':
+    case 'pass iso17025':
+    case 'pass iso9001':
     case 'on time':
       return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
     case 'pending manager':
@@ -351,7 +361,7 @@ function CalibrationView() {
               )}
               {record.result && (
                 <Badge className={getStatusColor(record.result)}>
-                  {record.result}
+                  {RESULT_LABEL_KEY[record.result] ? t(RESULT_LABEL_KEY[record.result]) : record.result}
                 </Badge>
               )}
             </CardTitle>
@@ -361,7 +371,7 @@ function CalibrationView() {
               <InfoRow label={t('due_date')}         value={record.dueDate} />
               <InfoRow label={t('start_date')}       value={record.startDate} />
               <InfoRow label={t('certificate_date')} value={record.certificateDate} />
-              <InfoRow label={t('result')}           value={record.result} />
+              <InfoRow label={t('result')}           value={record.result ? (RESULT_LABEL_KEY[record.result] ? t(RESULT_LABEL_KEY[record.result]) : record.result) : null} />
               <InfoRow label={t('calibration_by')}   value={record.calibrationBy} />
               {record.isCanceled && (
                 <InfoRow label={t('canceled_at')}    value={record.canceledAt} />

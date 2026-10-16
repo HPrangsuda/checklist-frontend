@@ -274,6 +274,7 @@ function LazySearchSelect<T>({
 
 const STATUS_I18N_MAP: Record<string, string> = {
   'pass': 'status_pass', 'not pass': 'status_not_pass',
+  'pass iso17025': 'status_pass_iso17025', 'pass iso9001': 'status_pass_iso9001',
   'on time': 'status_on_time', 'overdue': 'status_overdue', 'pending': 'status_pending',
 }
 
@@ -369,7 +370,9 @@ function CalibrationFilterPanel({
 
 const RESULT_BADGE_CLASS: Record<string, string> = {
   'NOT PASS': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  'PASS':     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  'PASS':          'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  'PASS ISO17025': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  'PASS ISO9001':  'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
 }
 
 const STATUS_BADGE_CLASS: Record<string, string> = {

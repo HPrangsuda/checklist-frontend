@@ -65,7 +65,8 @@ function getColumnKey(row: CalibrationDTO): ColumnKey {
   return 'todo'
 }
 
-const isPass = (result?: string) => result?.trim().toUpperCase() === 'PASS'
+/** Pass ISO17025 / Pass ISO9001 / Pass (เก่า) */
+const isPass = (result?: string) => !!result?.trim().toUpperCase().startsWith('PASS')
 
 function TimelinessTag({ row, t }: { row: CalibrationDTO; t: (k: string) => string }) {
   const due   = parseDate(row.dueDate)

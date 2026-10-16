@@ -91,6 +91,8 @@ const EMPTY_FILTERS: CalibrationFilters = { year: '', department: '', result: ''
 
 const STATUS_I18N_MAP: Record<string, string> = {
   'pass':     'status_pass',
+  'pass iso17025': 'status_pass_iso17025',
+  'pass iso9001':  'status_pass_iso9001',
   'not pass': 'status_not_pass',
   'on time':  'status_on_time',
   'overdue':  'status_overdue',

@@ -203,7 +203,6 @@
   "measuring_range": "Measuring Range",
   "accuracy": "Accuracy",
   "calibration_range": "Calibration Range",
-  "calibration_status": "Calibration Status",
   "register_new_machine": "Register New Machine",
   "register_new_machine_subtitle": "Register a new machine record",
   "basic_information": "Basic information",
@@ -490,5 +489,7 @@
   "reject_failed": "Could not save the rejection",
   "status_reject": "Rejected",
   "register_rejected_notice": "This registration was rejected and will not proceed",
-  "rejected_at": "Rejected at"
+  "rejected_at": "Rejected at",
+  "status_pass_iso17025": "Pass ISO 17025",
+  "status_pass_iso9001": "Pass ISO 9001"
 }

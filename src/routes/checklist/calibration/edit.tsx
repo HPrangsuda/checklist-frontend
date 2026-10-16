@@ -75,6 +75,13 @@ const STATUS_BADGE_CLASS: Record<CalStatus, string> = {
   Pending:   'bg-zinc-100 text-zinc-600 dark:text-zinc-100',
 }
 
+/** ผลการสอบเทียบ — value ที่เก็บใน DB */
+const RESULT_OPTIONS: { value: string; labelKey: string }[] = [
+  { value: 'Pass ISO17025', labelKey: 'status_pass_iso17025' },
+  { value: 'Pass ISO9001',  labelKey: 'status_pass_iso9001' },
+  { value: 'Not Pass',      labelKey: 'status_not_pass' },
+]
+
 /** ค่าที่เก็บใน DB (value) ตรงกับ backend CalibrationService.MPE_REFER_STANDARD */
 const MPE_REFER_STANDARD = 'Standard'
 const MPE_REFER_OPTIONS: { value: string; labelKey: string }[] = [
@@ -284,6 +291,10 @@ function CalibrationEdit() {
   const isStandardRefer   = formData.mpeRefer === MPE_REFER_STANDARD
   const referFileMissing  = isStandardRefer && referFiles.uploadedFiles.length === 0
   const isUploadingAny    = attachments.isUploading || referFiles.isUploading
+
+  // ค่าเก่าที่ไม่อยู่ในตัวเลือก (เช่น "Pass" เดิม) — แสดงไว้ไม่ให้หาย
+  const legacyResult = formData.result && !RESULT_OPTIONS.some(o => o.value === formData.result)
+    ? formData.result : null
 
   // ค่าเก่าที่ไม่อยู่ในตัวเลือก (ข้อมูลก่อนเปลี่ยนเป็น dropdown) — แสดงไว้ไม่ให้หาย
   const legacyMpeRefer = formData.mpeRefer && !MPE_REFER_OPTIONS.some(o => o.value === formData.mpeRefer)
@@ -504,8 +515,12 @@ function CalibrationEdit() {
                     <SelectValue placeholder={t('please_select')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Pass">{t('status_pass')}</SelectItem>
-                    <SelectItem value="Not Pass">{t('status_not_pass')}</SelectItem>
+                    {RESULT_OPTIONS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{t(o.labelKey)}</SelectItem>
+                    ))}
+                    {legacyResult && (
+                      <SelectItem value={legacyResult}>{legacyResult}</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

@@ -69,7 +69,7 @@ function calcPopupPos(triggerRect: DOMRect, popupW: number, popupH: number): Pop
 
 function getEventDotClass(result?: string, calibrationStatus?: string) {
   const r = norm(result)
-  if (r === 'PASS')                       return 'bg-emerald-500'
+  if (r?.startsWith('PASS'))              return 'bg-emerald-500'
   if (r === 'NOT PASS' || r === 'FAILED') return 'bg-red-500'
   const s = norm(calibrationStatus)
   if (s === 'ON TIME')  return 'bg-emerald-500'
@@ -88,8 +88,9 @@ function getStatusBadgeClass(status?: string) {
 }
 
 function getResultBadgeClass(result?: string) {
-  switch (norm(result)) {
-    case 'PASS':     return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+  const r = norm(result)
+  if (r?.startsWith('PASS')) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+  switch (r) {
     case 'NOT PASS':
     case 'FAILED':   return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
     default:         return 'bg-zinc-100 text-zinc-600'
