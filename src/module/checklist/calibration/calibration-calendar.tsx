@@ -13,7 +13,9 @@ interface CalibrationEvent {
   machineCode: string
   machineName: string
   dueDate: string
-  results?: string
+  certificateDate?: string
+  result?: string
+  /** backend คำนวณ: On Time / Overdue / Pending */
   calibrationStatus?: string
   machineDepartmentCode?: string
   machineDepartmentName?: string
@@ -28,6 +30,8 @@ const MONTH_KEYS = [
   'january','february','march','april','may','june',
   'july','august','september','october','november','december',
 ]
+
+const norm = (s?: string) => s?.trim().toUpperCase()
 
 function addMonths(year: number, month: number, delta: number) {
   const d = new Date(year, month + delta, 1)
@@ -63,11 +67,11 @@ function calcPopupPos(triggerRect: DOMRect, popupW: number, popupH: number): Pop
   return { top, left }
 }
 
-function getEventDotClass(results?: string, calibrationStatus?: string) {
-  const r = results?.toUpperCase()
-  if (r === 'PASS')     return 'bg-emerald-500'
-  if (r === 'NOT PASS') return 'bg-red-500'
-  const s = calibrationStatus?.toUpperCase()
+function getEventDotClass(result?: string, calibrationStatus?: string) {
+  const r = norm(result)
+  if (r === 'PASS')                       return 'bg-emerald-500'
+  if (r === 'NOT PASS' || r === 'FAILED') return 'bg-red-500'
+  const s = norm(calibrationStatus)
   if (s === 'ON TIME')  return 'bg-emerald-500'
   if (s === 'OVERDUE')  return 'bg-red-500'
   if (s === 'PENDING')  return 'bg-amber-400'
@@ -75,7 +79,7 @@ function getEventDotClass(results?: string, calibrationStatus?: string) {
 }
 
 function getStatusBadgeClass(status?: string) {
-  switch (status?.toUpperCase()) {
+  switch (norm(status)) {
     case 'ON TIME': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
     case 'OVERDUE': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
     case 'PENDING': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
@@ -84,9 +88,10 @@ function getStatusBadgeClass(status?: string) {
 }
 
 function getResultBadgeClass(result?: string) {
-  switch (result?.toUpperCase()) {
+  switch (norm(result)) {
     case 'PASS':     return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-    case 'NOT PASS': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    case 'NOT PASS':
+    case 'FAILED':   return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
     default:         return 'bg-zinc-100 text-zinc-600'
   }
 }
@@ -95,7 +100,7 @@ function EventDetailPopup({ event, pos, onClose, onOpen, t }: {
   event: CalibrationEvent; pos: PopupPos
   onClose: () => void; onOpen: (id: number) => void; t: (k: string) => string
 }) {
-  const [y, m, d] = event.dueDate.split('-')
+  const [y, m, d] = event.dueDate.slice(0, 10).split('-')
   const dept = event.machineDepartmentName ?? event.department
   return (
     <div className="fixed z-[300] w-72 rounded-xl border bg-popover shadow-xl p-4 space-y-3 text-sm"
@@ -118,9 +123,9 @@ function EventDetailPopup({ event, pos, onClose, onOpen, t }: {
           </div>
         )}
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground">{t('results')}:</span>
-          {event.results
-            ? <Badge className={cn('text-[10px] h-5', getResultBadgeClass(event.results))}>{event.results}</Badge>
+          <span className="text-muted-foreground">{t('result')}:</span>
+          {event.result
+            ? <Badge className={cn('text-[10px] h-5', getResultBadgeClass(event.result))}>{event.result}</Badge>
             : <span className="text-muted-foreground">-</span>}
         </div>
         <div className="flex items-center gap-2">
@@ -156,7 +161,7 @@ function MoreListPopup({ cell, pos, onClose, onSelectEvent, t }: {
         {cell.events.map((ev, i) => (
           <button key={`ml-${ev.id}-${i}`} onClick={e => { onClose(); onSelectEvent(e, ev) }}
             className="w-full flex items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-accent/60 transition-colors">
-            <span className={cn('shrink-0 w-1.5 h-1.5 rounded-full', getEventDotClass(ev.results, ev.calibrationStatus))} />
+            <span className={cn('shrink-0 w-1.5 h-1.5 rounded-full', getEventDotClass(ev.result, ev.calibrationStatus))} />
             <span className="truncate text-[10px] leading-tight text-foreground/80 font-medium">
               {ev.machineName || ev.machineCode}
             </span>
@@ -186,7 +191,7 @@ function CalendarDayCell({ cell, isToday, onEventClick, onShowMore, t }: {
         {visible.map((ev, i) => (
           <button key={`${ev.id}-${i}`} onClick={e => onEventClick(e, ev)}
             className="w-full flex items-center gap-1 rounded px-0.5 py-0.5 text-left hover:bg-accent/60 transition-colors">
-            <span className={cn('shrink-0 w-1.5 h-1.5 rounded-full', getEventDotClass(ev.results, ev.calibrationStatus))} />
+            <span className={cn('shrink-0 w-1.5 h-1.5 rounded-full', getEventDotClass(ev.result, ev.calibrationStatus))} />
             <span className="truncate text-[10px] leading-tight text-foreground/80 font-medium">
               {ev.machineName || ev.machineCode}
             </span>
@@ -211,7 +216,6 @@ function MonthCalendar({ year, month, events, today, onEventClick, onShowMore, t
   const cells = buildCalendarGrid(year, month, events)
   return (
     <div className="flex flex-col min-w-0">
-      {/* ── ใช้ t() สำหรับ i18n ── */}
       <div className="py-2 px-3 text-center text-sm font-semibold border-b bg-muted/10">
         {t(MONTH_KEYS[month])} {year}
       </div>
@@ -258,7 +262,6 @@ export function CalibrationCalendarCard() {
   const goToday  = () => { setAnchor(addMonths(today.getFullYear(), today.getMonth(), -1)); closeAll() }
   const closeAll = () => { setDetailPopup(null); setMorePopup(null) }
 
-  // ── range label ใช้ t() เพื่อ i18n ──
   const rangeLabel = `${t(MONTH_KEYS[months[0].month])} ${months[0].year} – ${t(MONTH_KEYS[months[2].month])} ${months[2].year}`
 
   const parseResponse = (res: unknown): CalibrationEvent[] => {
@@ -312,9 +315,9 @@ export function CalibrationCalendarCard() {
       const allYear = yearlyResults.flat()
       setYearlyStats({
         total:   allYear.length,
-        onTime:  allYear.filter(e => e.calibrationStatus?.toUpperCase() === 'ON TIME').length,
-        pending: allYear.filter(e => e.calibrationStatus?.toUpperCase() === 'PENDING').length,
-        overdue: allYear.filter(e => e.calibrationStatus?.toUpperCase() === 'OVERDUE').length,
+        onTime:  allYear.filter(e => norm(e.calibrationStatus) === 'ON TIME').length,
+        pending: allYear.filter(e => norm(e.calibrationStatus) === 'PENDING').length,
+        overdue: allYear.filter(e => norm(e.calibrationStatus) === 'OVERDUE').length,
       })
     } finally {
       setLoading(false)
@@ -369,7 +372,6 @@ export function CalibrationCalendarCard() {
           </div>
         </CardHeader>
 
-        {/* ── nav ── */}
         <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/20">
           <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={goToday}>
             {t('today')}
@@ -378,7 +380,6 @@ export function CalibrationCalendarCard() {
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={prev3}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            {/* ── rangeLabel ใช้ t() แล้ว ── */}
             <span className="text-sm font-semibold min-w-[220px] text-center">{rangeLabel}</span>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={next3}>
               <ChevronRight className="h-4 w-4" />

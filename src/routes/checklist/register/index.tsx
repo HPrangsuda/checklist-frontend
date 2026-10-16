@@ -1,7 +1,7 @@
 import { getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { DataTableSkeleton } from '@/components/data-table/data-table-skeleton'
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar'
-import type { PageResponse, ResponseDTO } from '@/core/types/common'
+import type { PageResponse } from '@/core/types/common'
 import { useTranslation } from '@/core/contexts/language-context'
 import { TblContainer } from '@/components/layout/tbl-container'
 import { DataTable } from '@/components/data-table/data-table'
@@ -12,6 +12,7 @@ import { useDebounce } from '@/core/hooks/use-debounce'
 import { toast } from 'sonner'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/core/contexts/auth-context'
+import { XCircle } from 'lucide-react'
 
 export const Route = createFileRoute('/checklist/register/')({
   component: DataTbl,
@@ -23,6 +24,8 @@ interface CreatedByDTO {
   id:   number
   name: string | null
 }
+
+type RegisterStatus = 'PENDING' | 'REJECT'
 
 interface RegisterDTO {
   id:               number
@@ -43,6 +46,7 @@ interface RegisterDTO {
   updatedBy?:       CreatedByDTO | null
   hasMachine?:      boolean
   machineCount?:    number
+  status?:          RegisterStatus
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -61,6 +65,43 @@ function formatDate(value?: string | null): string {
   } catch {
     return value
   }
+}
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ row, showMachineCount }: { row: RegisterDTO; showMachineCount: boolean }) {
+  const { t } = useTranslation('checklist')
+
+  if (row.status === 'REJECT') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-300">
+        <XCircle className="h-3 w-3" />
+        {t('status_reject')}
+      </span>
+    )
+  }
+
+  const count = row.machineCount ?? 0
+  if (showMachineCount && count > 0) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+        <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+          <path
+            fillRule="evenodd"
+            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+            clipRule="evenodd"
+          />
+        </svg>
+        {t('has_machine')} {count}
+      </span>
+    )
+  }
+
+  return (
+    <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
+      {t('pending')}
+    </span>
+  )
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -111,31 +152,13 @@ function DataTbl() {
         <div className="text-sm">{row.original.createdBy?.name ?? '-'}</div>
       ),
     },
-    // ── คอลัมน์สถานะเครื่องจักร (เฉพาะ ADMIN) ──────────────────────────────
-    ...(isAdmin ? [{
-      id: 'hasMachine',
-      header: t('add_machine_status'),
-      cell: ({ row }: { row: { original: RegisterDTO } }) => {
-        const count = row.original.machineCount ?? 0
-        return count > 0 ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-            {t('has_machine')} {count}
-          </span>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
-            {t('pending')}
-          </span>
-        )
-      },
+    // ── สถานะ: ทุก role เห็นว่าถูกปฏิเสธหรือไม่ / ADMIN เห็นจำนวนเครื่องจักรเพิ่ม ──
+    {
+      id: 'status',
+      header: isAdmin ? t('add_machine_status') : t('status'),
+      cell: ({ row }) => <StatusBadge row={row.original} showMachineCount={isAdmin} />,
       size: 160,
-    } satisfies ColumnDef<RegisterDTO>] : []),
+    },
   ]
 
   // ─── Effects ──────────────────────────────────────────────────────────────

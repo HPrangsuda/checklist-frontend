@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, Save, X, PencilRuler, FileText, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Save, X, PencilRuler, FileText, Gauge } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
@@ -15,6 +15,7 @@ import { DatePickerField } from '@/components/form/DatePickerField'
 import { FileUploadField } from '@/components/form/FileUploadField'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/core/contexts/auth-context'
+import { cn } from '@/core/lib/utils'
 
 export const Route = createFileRoute('/checklist/calibration/edit')({
   component: CalibrationEdit,
@@ -37,27 +38,26 @@ interface CalibrationFormData {
   id: number
   machineCode: string
   machineName?: string
-  years: number
+  years?: string
   dueDate?: string
   startDate?: string
   certificateDate?: string
-  results?: string
-  criteria?: string
-  measuringRange?: string
-  accuracy?: string
-  calibrationRange?: string
-  calibrationStatus?: string
-  note?: string
-  permissibleCapacity?: string
-  comment?: string
-  resolution?: string
-  maxUncertainty?: string
   mpe?: string
-  checkMpe?: string
-  checkResolution?: string
-  checkResult?: string
-  reasonNotPass?: string
+  internalMpe?: string
+  maxRepeatability?: string
+  resolution?: string
+  minCapacity?: string
+  maxCapacity?: string
+  mpeRefer?: string
+  calibrationBy?: string
+  result?: string
+  correctionFactor?: string
+  measurementRange?: string
+  remark?: string
 }
+
+type SpecField = 'mpe' | 'internalMpe' | 'maxRepeatability' | 'measurementRange' | 'resolution'
+  | 'minCapacity' | 'maxCapacity' | 'correctionFactor'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -75,6 +75,15 @@ const STATUS_BADGE_CLASS: Record<CalStatus, string> = {
   Pending:   'bg-zinc-100 text-zinc-600 dark:text-zinc-100',
 }
 
+/** ค่าที่เก็บใน DB (value) ตรงกับ backend CalibrationService.MPE_REFER_STANDARD */
+const MPE_REFER_STANDARD = 'Standard'
+const MPE_REFER_OPTIONS: { value: string; labelKey: string }[] = [
+  { value: MPE_REFER_STANDARD,  labelKey: 'mpe_refer_standard' },
+  { value: 'Procedure',         labelKey: 'mpe_refer_procedure' },
+  { value: 'Resolution (3-5x)', labelKey: 'mpe_refer_resolution' },
+  { value: 'Manual',            labelKey: 'mpe_refer_manual' },
+]
+
 /** Date -> 'YYYY-MM-DD' ตามเวลาท้องถิ่น (toISOString จะเลื่อนถอย 1 วันในเวลาไทย) */
 const toDateStr = (d?: Date | null) =>
   d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : ''
@@ -86,7 +95,7 @@ const parseDateStr = (s?: string | null) => {
   return y && m && d ? new Date(y, m - 1, d) : null
 }
 
-/** ทันเวลา/เลยกำหนด จาก due date + certificate date (เกณฑ์เดียวกับ kanban) */
+/** ทันเวลา/เลยกำหนด จาก due date + certificate date (เกณฑ์เดียวกับ backend) */
 const computeCalibrationStatus = (due?: string | null, cert?: string | null): CalStatus | null => {
   const dd = due?.slice(0, 10), cc = cert?.slice(0, 10)
   if (!dd) return null
@@ -94,11 +103,40 @@ const computeCalibrationStatus = (due?: string | null, cert?: string | null): Ca
   return dd < toDateStr(new Date()) ? 'Overdue' : 'Pending'
 }
 
+/** JSON string ของไฟล์ -> array (ข้อความเก่าที่ไม่ใช่ JSON จะได้ []) */
 const parseAttachments = (raw?: string | null): FileUploadResponse[] => {
   if (!raw) return []
   if (Array.isArray(raw)) return raw
-  try { return JSON.parse(raw) } catch { return [] }
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
 }
+
+const numToStr = (v: unknown) => (v === null || v === undefined ? '' : String(v))
+
+/** response จาก API -> state ของฟอร์ม */
+const toFormData = (data: any): CalibrationFormData => ({
+  id:               data.id,
+  machineCode:      data.machineCode ?? '',
+  machineName:      data.machineName ?? '',
+  years:            numToStr(data.years),
+  dueDate:          data.dueDate ?? '',
+  startDate:        data.startDate ?? '',
+  certificateDate:  data.certificateDate ?? '',
+  mpe:              data.mpe ?? '',
+  internalMpe:      data.internalMpe ?? '',
+  maxRepeatability: data.maxRepeatability ?? '',
+  resolution:       data.resolution ?? '',
+  minCapacity:      data.minCapacity ?? '',
+  maxCapacity:      data.maxCapacity ?? '',
+  mpeRefer:         data.mpeRefer ?? '',
+  calibrationBy:    data.calibrationBy ?? '',
+  result:           data.result ?? '',
+  correctionFactor: data.correctionFactor ?? '',
+  measurementRange: data.measurementRange ?? '',
+  remark:           data.remark ?? '',
+})
 
 /** คืน error key ถ้าวันที่ไม่สอดคล้องกัน */
 const validateDates = (f: CalibrationFormData): string | null => {
@@ -109,66 +147,37 @@ const validateDates = (f: CalibrationFormData): string | null => {
   return null
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+/** ทุกช่องเป็นข้อความอิสระ — รองรับทศนิยม, ±, หน่วย (เช่น "±0.05 mm") */
+const SPEC_FIELDS: { id: SpecField; labelKey: string }[] = [
+  { id: 'mpe',              labelKey: 'mpe' },
+  { id: 'internalMpe',      labelKey: 'internal_mpe' },
+  { id: 'maxRepeatability', labelKey: 'max_repeatability' },
+  { id: 'measurementRange', labelKey: 'measurement_range' },
+  { id: 'resolution',       labelKey: 'resolution' },
+  { id: 'minCapacity',      labelKey: 'min_capacity' },
+  { id: 'maxCapacity',      labelKey: 'max_capacity' },
+  { id: 'correctionFactor', labelKey: 'correction_factor' },
+]
 
-function CalibrationEdit() {
-  const { role } = useAuth()
-  const isAdmin  = role === 'ADMIN'
+// ─── useFileUploads (ใช้ทั้ง Attachment และ Refer Standard) ───────────────────
 
-  const { id } = useSearch({ from: '/checklist/calibration/edit' })
-  const [formData, setFormData] = useState<CalibrationFormData>({
-    id: 0,
-    machineCode: '',
-    years: new Date().getFullYear(),
-  })
-  const [loading, setLoading] = useState(true)
-  const [saving,  setSaving]  = useState(false)
-  const { t }  = useTranslation('checklist')
-  const router = useRouter()
+function useFileUploads(t: (k: string) => string) {
+  const [newFiles,      setNewFiles]      = useState<File[]>([])
+  const [uploadedFiles, setUploadedFiles] = useState<FileUploadResponse[]>([])
+  const [isUploading,   setIsUploading]   = useState(false)
 
-  // สถานะทันเวลา/เลยกำหนด คำนวณจาก due date + certificate date เสมอ
-  const computedStatus = useMemo(
-    () => computeCalibrationStatus(formData.dueDate, formData.certificateDate),
-    [formData.dueDate, formData.certificateDate]
-  )
+  const uploadedRef  = useRef<FileUploadResponse[]>([])
+  const queueRef     = useRef<Set<string>>(new Set())
+  const timeoutRef   = useRef<NodeJS.Timeout | null>(null)
+  const uploadingRef = useRef(false)
 
-  // ─── File upload state ─────────────────────────────────────────────────────
-  const [newFiles,         setNewFiles]         = useState<File[]>([])
-  const [uploadedFiles,    setUploadedFiles]    = useState<FileUploadResponse[]>([])
-  const [isUploadingFiles, setIsUploadingFiles] = useState(false)
+  useEffect(() => { uploadedRef.current = uploadedFiles }, [uploadedFiles])
 
-  const uploadedFilesRef = useRef<FileUploadResponse[]>([])
-  const fileQueueRef     = useRef<Set<string>>(new Set())
-  const fileTimeoutRef   = useRef<NodeJS.Timeout | null>(null)
-
-  useEffect(() => { uploadedFilesRef.current = uploadedFiles }, [uploadedFiles])
-
-  // ─── Fetch detail ──────────────────────────────────────────────────────────
-  useEffect(() => { if (id) fetchCalibrationDetail() }, [id])
-
-  const fetchCalibrationDetail = async () => {
-    try {
-      setLoading(true)
-      const response = await api.get<any>(`/api/calibration/${id}`)
-      if (response) {
-        const data = response.data || response
-        const attachments = parseAttachments(data.attachment)
-        setUploadedFiles(attachments)
-        uploadedFilesRef.current = attachments
-        const { attachment, ...rest } = data
-        setFormData(rest)
-      } else {
-        toast.error(t('failed_to_load_calibration'))
-      }
-    } catch (error) {
-      console.error('Fetch error:', error)
-      toast.error(t('failed_to_load_calibration'))
-    } finally {
-      setLoading(false)
-    }
+  const reset = (files: FileUploadResponse[]) => {
+    uploadedRef.current = files
+    setUploadedFiles(files)
   }
 
-  // ─── File upload core ──────────────────────────────────────────────────────
   const uploadFile = async (file: File): Promise<FileUploadResponse> => {
     const fd = new FormData()
     fd.append('file', file)
@@ -178,27 +187,29 @@ function CalibrationEdit() {
     return res.data
   }
 
+  const fileKey = (f: File) => `${f.name}-${f.size}-${f.lastModified}`
+
   const handleFilesChange = (files: File[]) => {
     const realFiles = files.filter(f => f instanceof File)
     setNewFiles(realFiles)
 
-    if (fileTimeoutRef.current) clearTimeout(fileTimeoutRef.current)
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
 
-    fileTimeoutRef.current = setTimeout(() => {
-      if (!realFiles.length || isUploadingFiles) return
+    timeoutRef.current = setTimeout(() => {
+      if (!realFiles.length || uploadingRef.current) return
 
-      const current = uploadedFilesRef.current
+      const current  = uploadedRef.current
       const toUpload = realFiles.filter(f => {
-        const key = `${f.name}-${f.size}-${f.lastModified}`
-        if (fileQueueRef.current.has(key)) return false
+        const key = fileKey(f)
+        if (queueRef.current.has(key)) return false
         if (current.some(uf => uf.fileName === f.name)) return false
-        fileQueueRef.current.add(key)
+        queueRef.current.add(key)
         return true
       })
-
       if (!toUpload.length) return
 
-      setIsUploadingFiles(true)
+      uploadingRef.current = true
+      setIsUploading(true)
       ;(async () => {
         try {
           const results: FileUploadResponse[] = []
@@ -216,19 +227,12 @@ function CalibrationEdit() {
         } catch {
           toast.error(t('failed_to_upload_files'))
         } finally {
-          toUpload.forEach(f =>
-            fileQueueRef.current.delete(`${f.name}-${f.size}-${f.lastModified}`)
-          )
-          setIsUploadingFiles(false)
+          toUpload.forEach(f => queueRef.current.delete(fileKey(f)))
+          uploadingRef.current = false
+          setIsUploading(false)
         }
       })()
     }, 100)
-  }
-
-  const handleDownloadFile = (file: any) => {
-    const name = file?.fileName || file?.name
-    if (name) window.open(`${import.meta.env.VITE_API_URL}/api/files/download/${name}`, '_blank')
-    else toast.error(t('file_not_found'))
   }
 
   const handleDeleteFile = async (fileId: any) => {
@@ -243,8 +247,79 @@ function CalibrationEdit() {
     }
   }
 
+  const fieldFiles = uploadedFiles.map(f => ({
+    id:   f.fileName,
+    name: f.fileName,
+    size: f.fileSize,
+    url:  f.fileUrl,
+    type: f.fileType,
+  }))
+
+  return { newFiles, uploadedFiles, isUploading, reset, handleFilesChange, handleDeleteFile, fieldFiles }
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+function CalibrationEdit() {
+  const { role } = useAuth()
+  const isAdmin  = role === 'ADMIN'
+
+  const { id } = useSearch({ from: '/checklist/calibration/edit' })
+  const [formData, setFormData] = useState<CalibrationFormData>({ id: 0, machineCode: '' })
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const { t }  = useTranslation('checklist')
+  const router = useRouter()
+
+  const attachments = useFileUploads(t)
+  const referFiles  = useFileUploads(t)
+
+  // สถานะทันเวลา/เลยกำหนด คำนวณจาก due date + certificate date เสมอ
+  const computedStatus = useMemo(
+    () => computeCalibrationStatus(formData.dueDate, formData.certificateDate),
+    [formData.dueDate, formData.certificateDate]
+  )
+
+  const isStandardRefer   = formData.mpeRefer === MPE_REFER_STANDARD
+  const referFileMissing  = isStandardRefer && referFiles.uploadedFiles.length === 0
+  const isUploadingAny    = attachments.isUploading || referFiles.isUploading
+
+  // ค่าเก่าที่ไม่อยู่ในตัวเลือก (ข้อมูลก่อนเปลี่ยนเป็น dropdown) — แสดงไว้ไม่ให้หาย
+  const legacyMpeRefer = formData.mpeRefer && !MPE_REFER_OPTIONS.some(o => o.value === formData.mpeRefer)
+    ? formData.mpeRefer : null
+
+  // ─── Fetch detail ──────────────────────────────────────────────────────────
+  useEffect(() => { if (id) fetchCalibrationDetail() }, [id])
+
+  const fetchCalibrationDetail = async () => {
+    try {
+      setLoading(true)
+      const response = await api.get<any>(`/api/calibration/${id}`)
+      if (response) {
+        const data = response.data || response
+        attachments.reset(parseAttachments(data.attachment))
+        referFiles.reset(parseAttachments(data.referStandard))
+        setFormData(toFormData(data))
+      } else {
+        toast.error(t('failed_to_load_calibration'))
+      }
+    } catch (error) {
+      console.error('Fetch error:', error)
+      toast.error(t('failed_to_load_calibration'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDownloadFile = (file: any) => {
+    const name = file?.fileName || file?.name
+    if (name) window.open(`${import.meta.env.VITE_API_URL}/api/files/download/${name}`, '_blank')
+    else toast.error(t('file_not_found'))
+  }
+
   // ─── Form handlers ─────────────────────────────────────────────────────────
-  const handleInputChange = (field: keyof CalibrationFormData, value: any) => {
+  const handleInputChange = (field: keyof CalibrationFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
@@ -266,29 +341,55 @@ function CalibrationEdit() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setSubmitted(true)
 
     const dateError = validateDates(formData)
     if (dateError) {
       toast.error(t(dateError))
       return
     }
+    if (isUploadingAny) {
+      toast.warning(t('uploading'))
+      return
+    }
+    if (referFileMissing) {
+      toast.error(t('refer_standard_file_required'))
+      document.getElementById('referStandard')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
 
     try {
       setSaving(true)
+      // ส่งเฉพาะ field ที่ backend รับ (CalibrationDTO); string ว่าง = ล้างค่า, null = ไม่แก้
       const payload = {
-        ...formData,
-        dueDate:           formData.dueDate         || null,
-        startDate:         formData.startDate       || null,
-        certificateDate:   formData.certificateDate || null,
-        calibrationStatus: computedStatus ?? formData.calibrationStatus ?? null,
-        attachment: uploadedFiles.length > 0 ? JSON.stringify(uploadedFiles) : null
+        id:               formData.id,
+        dueDate:          formData.dueDate         || null,
+        startDate:        formData.startDate       || null,
+        certificateDate:  formData.certificateDate || null,
+        mpe:              formData.mpe              ?? null,
+        internalMpe:      formData.internalMpe      ?? null,
+        maxRepeatability: formData.maxRepeatability ?? null,
+        resolution:       formData.resolution       ?? null,
+        minCapacity:      formData.minCapacity      ?? null,
+        maxCapacity:      formData.maxCapacity      ?? null,
+        mpeRefer:         formData.mpeRefer         ?? null,
+        // ไฟล์อ้างอิงใช้เฉพาะเมื่อเลือก Standard — ตัวเลือกอื่นล้างเป็น "[]"
+        referStandard:    JSON.stringify(isStandardRefer ? referFiles.uploadedFiles : []),
+        calibrationBy:    formData.calibrationBy    ?? null,
+        result:           formData.result           || null,
+        correctionFactor: formData.correctionFactor ?? null,
+        measurementRange: formData.measurementRange ?? null,
+        remark:           formData.remark           ?? null,
+        // ส่ง "[]" เมื่อลบไฟล์หมด เพื่อให้ backend ล้างค่าได้ (null = ไม่แก้)
+        attachment:       JSON.stringify(attachments.uploadedFiles),
       }
-      const response = await api.put(`/api/calibration/update`, payload)
-      if (response) {
+      const response = await api.put<any>(`/api/calibration/update`, payload)
+      // backend ตอบ 200 แม้ validate ไม่ผ่าน — เช็ก flag ด้วย
+      if (response && response.success !== false && response.status !== false) {
         toast.success(t('calibration_updated'))
         router.navigate({ to: '/checklist/calibration/view', search: { id } })
       } else {
-        toast.error(t('failed_to_update_calibration'))
+        toast.error(response?.message ?? t('failed_to_update_calibration'))
       }
     } catch (error) {
       console.error('Update error:', error)
@@ -334,7 +435,7 @@ function CalibrationEdit() {
               <X className="h-4 w-4 mr-2" />
               {t('cancel')}
             </Button>
-            <Button onClick={handleSubmit} disabled={saving}>
+            <Button onClick={handleSubmit} disabled={saving || isUploadingAny}>
               <Save className="h-4 w-4 mr-2" />
               {saving ? t('saving') : t('save_changes')}
             </Button>
@@ -395,10 +496,10 @@ function CalibrationEdit() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
               <div className="space-y-2">
-                <Label>{t('results')}</Label>
-                <Select value={formData.results || ''} onValueChange={v => handleInputChange('results', v)}>
+                <Label>{t('result')}</Label>
+                <Select value={formData.result || ''} onValueChange={v => handleInputChange('result', v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={t('please_select')} />
                   </SelectTrigger>
@@ -423,103 +524,97 @@ function CalibrationEdit() {
                 </div>
               </div>
 
-              {([
-                { id: 'criteria',            labelKey: 'criteria' },
-                { id: 'accuracy',            labelKey: 'accuracy' },
-                { id: 'measuringRange',      labelKey: 'measuring_range' },
-                { id: 'calibrationRange',    labelKey: 'calibration_range' },
-                { id: 'resolution',          labelKey: 'resolution' },
-                { id: 'mpe',                 labelKey: 'mpe' },
-                { id: 'maxUncertainty',      labelKey: 'max_uncertainty' },
-                { id: 'permissibleCapacity', labelKey: 'permissible_capacity' },
-              ] as const).map(({ id: fid, labelKey }) => (
-                <div key={fid} className="space-y-2">
-                  <Label htmlFor={fid}>{t(labelKey)}</Label>
-                  <Input
-                    id={fid}
-                    value={(formData as any)[fid] || ''}
-                    onChange={e => handleInputChange(fid as keyof CalibrationFormData, e.target.value)}
-                  />
-                </div>
-              ))}
+              <div className="space-y-2">
+                <Label htmlFor="calibrationBy">{t('calibration_by')}</Label>
+                <Input
+                  id="calibrationBy"
+                  value={formData.calibrationBy || ''}
+                  onChange={e => handleInputChange('calibrationBy', e.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 pt-6">
-              {([
-                { id: 'note',          labelKey: 'note',          placeholderKey: 'note_placeholder' },
-                { id: 'comment',       labelKey: 'comment',       placeholderKey: 'comment_placeholder' },
-                { id: 'reasonNotPass', labelKey: 'reason_not_pass', placeholderKey: 'reason_not_pass_placeholder' },
-              ] as const).map(({ id: fid, labelKey, placeholderKey }) => (
-                <div key={fid} className="space-y-2">
-                  <Label htmlFor={fid}>{t(labelKey)}</Label>
-                  <Textarea
-                    id={fid} rows={4} placeholder={t(placeholderKey)}
-                    value={(formData as any)[fid] || ''}
-                    onChange={e => handleInputChange(fid as keyof CalibrationFormData, e.target.value)}
-                  />
-                </div>
-              ))}
+            <div className="space-y-2 pt-6">
+              <Label htmlFor="remark">{t('remark')}</Label>
+              <Textarea
+                id="remark" rows={4} placeholder={t('remark_placeholder')}
+                value={formData.remark || ''}
+                onChange={e => handleInputChange('remark', e.target.value)}
+              />
             </div>
           </CardContent>
         </Card>
 
-        {/* Check Results */}
+        {/* Specifications */}
         <Card className="bg-card border-border">
           <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-foreground font-semibold">
-              <CheckCircle2 className="h-5 w-5 text-success" />
-              {t('check_results')}
+              <Gauge className="h-5 w-5 text-primary" />
+              {t('calibration_specification')}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 pt-2">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {SPEC_FIELDS.map(({ id: fid, labelKey }) => (
+                <div key={fid} className="space-y-2">
+                  <Label htmlFor={fid}>{t(labelKey)}</Label>
+                  <Input
+                    id={fid}
+                    value={formData[fid] || ''}
+                    onChange={e => handleInputChange(fid, e.target.value)}
+                  />
+                </div>
+              ))}
 
+              {/* MPE Refer — dropdown */}
               <div className="space-y-2">
-                <Label>{t('check_mpe')}</Label>
-                <Select value={formData.checkMpe || ''} onValueChange={v => handleInputChange('checkMpe', v)}>
+                <Label>{t('mpe_refer')}</Label>
+                <Select value={formData.mpeRefer || ''} onValueChange={v => handleInputChange('mpeRefer', v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={t('please_select')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Pass">{t('status_pass')}</SelectItem>
-                    <SelectItem value="Not Pass">{t('check_failed')}</SelectItem>
+                    {MPE_REFER_OPTIONS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{t(o.labelKey)}</SelectItem>
+                    ))}
+                    {legacyMpeRefer && (
+                      <SelectItem value={legacyMpeRefer}>{legacyMpeRefer}</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>{t('check_resolution')}</Label>
-                <Select value={formData.checkResolution || ''} onValueChange={v => handleInputChange('checkResolution', v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t('please_select')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pass">{t('status_pass')}</SelectItem>
-                    <SelectItem value="Not Pass">{t('check_failed')}</SelectItem>
-                    <SelectItem value="Pass Only 3">{t('check_pass_only_3')}</SelectItem>
-                    <SelectItem value="Pass Only 5">{t('check_pass_only_5')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t('check_result')}</Label>
-                <Select value={formData.checkResult || ''} onValueChange={v => handleInputChange('checkResult', v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t('please_select')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="OPERATIONAL">{t('check_result_operational')}</SelectItem>
-                    <SelectItem value="DECOMMISSIONED">{t('check_result_decommissioned')}</SelectItem>
-                    <SelectItem value="LIMITED USE">{t('check_result_limited_use')}</SelectItem>
-                    <SelectItem value="CERTIFICATE MISMATCH">{t('check_result_cert_mismatch')}</SelectItem>
-                    <SelectItem value="DAMAGED">{t('check_result_damaged')}</SelectItem>
-                    <SelectItem value="UNDER REPAIR">{t('check_result_under_repair')}</SelectItem>
-                    <SelectItem value="N/A">{t('check_result_na')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
+              {/* Refer Standard — บังคับอัปโหลดเมื่อเลือก Standard */}
+              {isStandardRefer && (
+                <div id="referStandard" className="space-y-2 md:col-span-2">
+                  <Label>
+                    {t('refer_standard')} <span className="text-destructive">*</span>
+                  </Label>
+                  <div className={cn(
+                    'rounded-md',
+                    submitted && referFileMissing && 'ring-2 ring-destructive ring-offset-2'
+                  )}>
+                    <FileUploadField
+                      id="referStandardFiles"
+                      maxFiles={10}
+                      value={referFiles.newFiles}
+                      uploadedFiles={referFiles.fieldFiles}
+                      onChange={referFiles.handleFilesChange}
+                      onDownloadFile={handleDownloadFile}
+                      onDeleteUploadedFile={referFiles.handleDeleteFile}
+                      onFileReject={(file, message) =>
+                        toast.error(message, { description: `"${file.name}" ${t('could_not_be_uploaded')}` })
+                      }
+                    />
+                  </div>
+                  {referFiles.isUploading && (
+                    <p className="text-sm text-muted-foreground animate-pulse">{t('uploading')}</p>
+                  )}
+                  {submitted && referFileMissing && !referFiles.isUploading && (
+                    <p className="text-sm text-destructive">{t('refer_standard_file_required')}</p>
+                  )}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -538,22 +633,16 @@ function CalibrationEdit() {
               <FileUploadField
                 id="attachments"
                 maxFiles={10}
-                value={newFiles}
-                uploadedFiles={uploadedFiles.map(f => ({
-                  id:   f.fileName,
-                  name: f.fileName,
-                  size: f.fileSize,
-                  url:  f.fileUrl,
-                  type: f.fileType,
-                }))}
-                onChange={handleFilesChange}
+                value={attachments.newFiles}
+                uploadedFiles={attachments.fieldFiles}
+                onChange={attachments.handleFilesChange}
                 onDownloadFile={handleDownloadFile}
-                onDeleteUploadedFile={handleDeleteFile}
+                onDeleteUploadedFile={attachments.handleDeleteFile}
                 onFileReject={(file, message) =>
                   toast.error(message, { description: `"${file.name}" ${t('could_not_be_uploaded')}` })
                 }
               />
-              {isUploadingFiles && (
+              {attachments.isUploading && (
                 <p className="text-sm text-muted-foreground animate-pulse">{t('uploading')}</p>
               )}
             </div>
@@ -566,7 +655,7 @@ function CalibrationEdit() {
             <X className="h-4 w-4 mr-2" />
             {t('cancel')}
           </Button>
-          <Button type="submit" disabled={saving} className="flex-1">
+          <Button type="submit" disabled={saving || isUploadingAny} className="flex-1">
             <Save className="h-4 w-4 mr-2" />
             {saving ? t('saving') : t('save')}
           </Button>

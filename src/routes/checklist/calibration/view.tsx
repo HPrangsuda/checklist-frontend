@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, CheckCircle2, Download, Edit3, FileText, PencilRuler, X } from 'lucide-react'
+import { ArrowLeft, Download, Edit3, FileText, Gauge, PencilRuler, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
@@ -25,27 +25,28 @@ interface CalibrationRecord {
   id: number
   machineCode: string
   machineName: string
-  years: number
+  years: string
   dueDate?: string
   startDate?: string
   certificateDate?: string
-  results?: string
-  criteria?: string
-  measuringRange?: string
-  accuracy?: string
-  calibrationRange?: string
-  calibrationStatus?: string
-  attachment?: string
-  note?: string
-  permissibleCapacity?: string
-  comment?: string
-  resolution?: string
-  maxUncertainty?: string
   mpe?: string
-  checkMpe?: string
-  checkResolution?: string
-  checkResult?: string
-  reasonNotPass?: string
+  internalMpe?: string
+  maxRepeatability?: string
+  resolution?: string
+  minCapacity?: string
+  maxCapacity?: string
+  mpeRefer?: string
+  referStandard?: string
+  calibrationBy?: string
+  result?: string
+  correctionFactor?: string
+  measurementRange?: string
+  remark?: string
+  attachment?: string
+  isCanceled?: boolean
+  canceledAt?: string
+  /** คำนวณจาก backend: On Time / Overdue / Pending */
+  calibrationStatus?: string
 }
 
 interface AttachmentItem {
@@ -71,7 +72,18 @@ const toFileUrl = (fileUrl: string) => {
 const parseAttachments = (raw?: string | null): AttachmentItem[] => {
   if (!raw) return []
   if (Array.isArray(raw)) return raw
-  try { return JSON.parse(raw) } catch { return [] }
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+
+/** value ใน DB -> i18n key (ค่าเก่าที่ไม่อยู่ในรายการแสดงตามเดิม) */
+const MPE_REFER_LABEL_KEY: Record<string, string> = {
+  'Standard':          'mpe_refer_standard',
+  'Procedure':         'mpe_refer_procedure',
+  'Resolution (3-5x)': 'mpe_refer_resolution',
+  'Manual':            'mpe_refer_manual',
 }
 
 // ─── getStatusColor ───────────────────────────────────────────────────────────
@@ -285,6 +297,9 @@ function CalibrationView() {
   }
 
   const attachments = parseAttachments(record.attachment)
+  const referFiles  = parseAttachments(record.referStandard)
+  const referText   = referFiles.length === 0 && record.referStandard && record.referStandard.trim() !== '[]'
+    ? record.referStandard : null
 
   return (
     <div className="min-h-screen bg-background">
@@ -307,10 +322,12 @@ function CalibrationView() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" className="gap-2" onClick={handleEdit}>
-              <Edit3 className="h-4 w-4" />
-              {t('edit')}
-            </Button>
+            {!record.isCanceled && (
+              <Button variant="outline" size="sm" className="gap-2" onClick={handleEdit}>
+                <Edit3 className="h-4 w-4" />
+                {t('edit')}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -320,68 +337,80 @@ function CalibrationView() {
         {/* Calibration Details */}
         <Card className="bg-card border-border">
           <CardHeader className="border-b border-border">
-            <CardTitle className="flex items-center gap-2 text-foreground font-semibold">
+            <CardTitle className="flex items-center gap-2 text-foreground font-semibold flex-wrap">
               <PencilRuler className="h-5 w-5 text-primary" />
               {t('calibration_information')}
               {record.years ? ` - ${record.years}` : ''}
+              {record.isCanceled && (
+                <Badge className={getStatusColor('canceled')}>{t('canceled')}</Badge>
+              )}
               {record.calibrationStatus && (
                 <Badge className={getStatusColor(record.calibrationStatus)}>
                   {record.calibrationStatus}
                 </Badge>
               )}
-              {record.results && (
-                <Badge className={getStatusColor(record.results)}>
-                  {record.results}
+              {record.result && (
+                <Badge className={getStatusColor(record.result)}>
+                  {record.result}
                 </Badge>
               )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 pt-2">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <InfoRow label={t('due_date')}             value={record.dueDate} />
-              <InfoRow label={t('start_date')}           value={record.startDate} />
-              <InfoRow label={t('certificate_date')}     value={record.certificateDate} />
-              <InfoRow label={t('criteria')}             value={record.criteria} />
-              <InfoRow label={t('accuracy')}             value={record.accuracy} />
-              <InfoRow label={t('measuring_range')}      value={record.measuringRange} />
-              <InfoRow label={t('calibration_range')}    value={record.calibrationRange} />
-              <InfoRow label={t('resolution')}           value={record.resolution} />
-              <InfoRow label={t('mpe')}                  value={record.mpe} />
-              <InfoRow label={t('max_uncertainty')}      value={record.maxUncertainty} />
-              <InfoRow label={t('permissible_capacity')} value={record.permissibleCapacity} />
+              <InfoRow label={t('due_date')}         value={record.dueDate} />
+              <InfoRow label={t('start_date')}       value={record.startDate} />
+              <InfoRow label={t('certificate_date')} value={record.certificateDate} />
+              <InfoRow label={t('result')}           value={record.result} />
+              <InfoRow label={t('calibration_by')}   value={record.calibrationBy} />
+              {record.isCanceled && (
+                <InfoRow label={t('canceled_at')}    value={record.canceledAt} />
+              )}
             </div>
 
-            <div className="grid grid-cols-1 pt-6 gap-4">
+            <div className="pt-6">
               <div className="p-4 rounded-lg bg-secondary/50 border border-border/50">
-                <p className="text-sm font-medium text-muted-foreground mb-2">{t('note')}</p>
-                <p className="text-foreground">{record.note || '-'}</p>
-              </div>
-              <div className="p-4 rounded-lg bg-secondary/50 border border-border/50">
-                <p className="text-sm font-medium text-muted-foreground mb-2">{t('comment')}</p>
-                <p className="text-foreground">{record.comment || '-'}</p>
-              </div>
-              <div className="p-4 rounded-lg bg-secondary/50 border border-border/50">
-                <p className="text-sm font-medium text-muted-foreground mb-2">{t('reason_not_pass')}</p>
-                <p className="text-foreground">{record.reasonNotPass || '-'}</p>
+                <p className="text-sm font-medium text-muted-foreground mb-2">{t('remark')}</p>
+                <p className="text-foreground whitespace-pre-line">{record.remark || '-'}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Check Results */}
+        {/* Specifications */}
         <Card className="bg-card border-border">
           <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-foreground font-semibold">
-              <CheckCircle2 className="h-5 w-5 text-success" />
-              {t('check_results')}
+              <Gauge className="h-5 w-5 text-primary" />
+              {t('calibration_specification')}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6 pt-2 pb-2">
+          <CardContent className="p-6 pt-2 pb-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <InfoRow label={t('check_mpe')}        value={record.checkMpe} />
-              <InfoRow label={t('check_resolution')} value={record.checkResolution} />
-              <InfoRow label={t('check_result')}     value={record.checkResult} />
+              <InfoRow label={t('measurement_range')} value={record.measurementRange} />
+              <InfoRow label={t('resolution')}        value={record.resolution} />
+              <InfoRow label={t('min_capacity')}      value={record.minCapacity} />
+              <InfoRow label={t('max_capacity')}      value={record.maxCapacity} />
+              <InfoRow label={t('mpe')}               value={record.mpe} />
+              <InfoRow label={t('internal_mpe')}      value={record.internalMpe} />
+              <InfoRow label={t('mpe_refer')}         value={record.mpeRefer ? (MPE_REFER_LABEL_KEY[record.mpeRefer] ? t(MPE_REFER_LABEL_KEY[record.mpeRefer]) : record.mpeRefer) : null} />
+              <InfoRow label={t('max_repeatability')} value={record.maxRepeatability} />
+              <InfoRow label={t('correction_factor')} value={record.correctionFactor} />
             </div>
+
+            {/* Refer Standard — ไฟล์อ้างอิง (ข้อมูลเก่าที่เป็นข้อความแสดงเป็นข้อความ) */}
+            {(referFiles.length > 0 || referText) && (
+              <div className="pt-6 space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">{t('refer_standard')}</p>
+                {referFiles.length > 0 ? (
+                  <div className="flex flex-wrap gap-3">
+                    {referFiles.map((f, i) => <AttachmentFile key={`ref-${i}`} file={f} />)}
+                  </div>
+                ) : (
+                  <p className="text-base">{referText}</p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -421,10 +450,12 @@ function InfoRow({
   value?: string | number | null
   className?: string
 }) {
+  // แสดง 0 ได้ (เช่น mpe = 0) — ซ่อนเฉพาะ null / undefined / ''
+  const display = value === null || value === undefined || value === '' ? '-' : value
   return (
     <div className={className}>
       <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-base mt-1">{value || '-'}</p>
+      <p className="text-base mt-1">{display}</p>
     </div>
   )
 }

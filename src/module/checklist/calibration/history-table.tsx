@@ -40,11 +40,13 @@ interface CalibrationDTO {
   id:                number
   machineCode:       string
   machineName:       string
-  years:             number
+  years:             string
   dueDate:           string
   certificateDate:   string
-  results:           string
+  result:            string
+  /** backend คำนวณ: On Time / Overdue / Pending */
   calibrationStatus: string
+  isCanceled?:       boolean
 }
 
 interface ApiResponse<T> {
@@ -68,12 +70,12 @@ interface FilterOptionsResponse {
 interface CalibrationFilters {
   year:              string
   department:        string
-  results:           string
+  result:            string
   calibrationStatus: string
 }
 
 interface FilterOptions {
-  years:               number[]
+  years:               string[]
   departments:         DepartmentOption[]
   results:             string[]
   calibrationStatuses: string[]
@@ -83,6 +85,8 @@ interface Props {
   machineCode?: string
 }
 
+const EMPTY_FILTERS: CalibrationFilters = { year: '', department: '', result: '', calibrationStatus: '' }
+
 // ─── Status i18n map ──────────────────────────────────────────────────────────
 
 const STATUS_I18N_MAP: Record<string, string> = {
@@ -91,15 +95,23 @@ const STATUS_I18N_MAP: Record<string, string> = {
   'on time':  'status_on_time',
   'overdue':  'status_overdue',
   'pending':  'status_pending',
+  'canceled': 'canceled',
 }
 
-// ─── Format date ──────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const formatDate = (dateStr?: string): string => {
   if (!dateStr) return '-'
   const [year, month, day] = dateStr.split('T')[0].split('-')
   return `${day}-${month}-${year}`
 }
+
+const sameText = (a?: string, b?: string) =>
+  (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase()
+
+/** ปีใหม่สุดก่อน (years เป็น string จาก backend) */
+const sortYearsDesc = (years: string[]) =>
+  [...new Set(years.filter(Boolean))].sort((a, b) => Number(b) - Number(a))
 
 // ─── LazySearchSelect ─────────────────────────────────────────────────────────
 
@@ -132,9 +144,8 @@ function LazySearchSelect<T>({
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20) setPage(p => p + 1)
   }, [hasMore])
 
-  const selectedLabel = value
-    ? (items.find(i => getKey(i) === value) ? getLabel(items.find(i => getKey(i) === value)!) : value)
-    : ''
+  const selectedItem  = value ? items.find(i => getKey(i) === value) : undefined
+  const selectedLabel = value ? (selectedItem ? getLabel(selectedItem) : value) : ''
 
   return (
     <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) { setSearch(''); setPage(1) } }}>
@@ -191,12 +202,12 @@ function CalibrationFilterPanel({
   t:           (key: string) => string
 }) {
   const [open, setOpen] = useState(false)
-  const yearItems = options.years.map(y => String(y))
 
   const selectProps = {
     scrollHint: t('scroll_to_load_more'),
     remaining:  t('remaining'),
   }
+  const statusLabel = (s: string) => t(STATUS_I18N_MAP[s.toLowerCase()] ?? s) ?? s
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -235,7 +246,7 @@ function CalibrationFilterPanel({
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('years')}</label>
             <LazySearchSelect<string>
               value={filters.year} placeholder={t('all')} allLabel={t('all')}
-              items={yearItems} getKey={y => y} getLabel={y => y}
+              items={options.years} getKey={y => y} getLabel={y => y}
               onSelect={v => onChange('year', v)} {...selectProps}
             />
           </div>
@@ -250,12 +261,12 @@ function CalibrationFilterPanel({
           </div>
           <Separator />
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('results')}</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('result')}</label>
             <LazySearchSelect<string>
-              value={filters.results} placeholder={t('all')} allLabel={t('all')}
+              value={filters.result} placeholder={t('all')} allLabel={t('all')}
               items={options.results} getKey={s => s}
-              getLabel={s => t(STATUS_I18N_MAP[s.toLowerCase()] ?? s) ?? s}
-              onSelect={v => onChange('results', v)} {...selectProps}
+              getLabel={statusLabel}
+              onSelect={v => onChange('result', v)} {...selectProps}
             />
           </div>
           <Separator />
@@ -264,7 +275,7 @@ function CalibrationFilterPanel({
             <LazySearchSelect<string>
               value={filters.calibrationStatus} placeholder={t('all')} allLabel={t('all')}
               items={options.calibrationStatuses} getKey={s => s}
-              getLabel={s => t(STATUS_I18N_MAP[s.toLowerCase()] ?? s) ?? s}
+              getLabel={statusLabel}
               onSelect={v => onChange('calibrationStatus', v)} {...selectProps}
             />
           </div>
@@ -302,9 +313,7 @@ export function CalibrationTbl({ machineCode }: Props) {
   const [selectedRowId, setSelectedRowId] = useState<number | null>(null)
   const debouncedSearch                   = useDebounce(keyword, 500)
 
-  const [filters, setFilters] = useState<CalibrationFilters>({
-    year: '', department: '', results: '', calibrationStatus: '',
-  })
+  const [filters, setFilters] = useState<CalibrationFilters>(EMPTY_FILTERS)
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     years: [], departments: [], results: [], calibrationStatuses: [],
   })
@@ -321,7 +330,7 @@ export function CalibrationTbl({ machineCode }: Props) {
 
   const translateStatus = (status: string): string => {
     if (!status) return '-'
-    const key = STATUS_I18N_MAP[status.toLowerCase()]
+    const key = STATUS_I18N_MAP[status.trim().toLowerCase()]
     return key ? t(key) : status
   }
 
@@ -357,8 +366,8 @@ export function CalibrationTbl({ machineCode }: Props) {
         setAllData(all)
         setFilterOptions(prev => ({
           ...prev,
-          years:               [...new Set(all.map(d => d.years).filter(Boolean))].sort((a, b) => b - a),
-          results:             [...new Set(all.map(d => d.results).filter(Boolean))],
+          years:               sortYearsDesc(all.map(d => String(d.years ?? ''))),
+          results:             [...new Set(all.map(d => d.result?.trim()).filter(Boolean) as string[])],
           calibrationStatuses: [...new Set(all.map(d => d.calibrationStatus).filter(Boolean))],
         }))
         applyClientFilter(all, filtersRef.current, searchValueRef.current, paginationRef.current)
@@ -384,9 +393,9 @@ export function CalibrationTbl({ machineCode }: Props) {
     const q = sv.toLowerCase().trim()
     const filtered = source.filter(item => {
       if (q && !(item.machineCode?.toLowerCase().includes(q) || item.machineName?.toLowerCase().includes(q))) return false
-      if (currentFilters.year              && String(item.years) !== currentFilters.year) return false
-      if (currentFilters.results           && item.results?.toLowerCase()           !== currentFilters.results.toLowerCase())           return false
-      if (currentFilters.calibrationStatus && item.calibrationStatus?.toLowerCase() !== currentFilters.calibrationStatus.toLowerCase()) return false
+      if (currentFilters.year              && String(item.years) !== currentFilters.year)                          return false
+      if (currentFilters.result            && !sameText(item.result,            currentFilters.result))            return false
+      if (currentFilters.calibrationStatus && !sameText(item.calibrationStatus, currentFilters.calibrationStatus)) return false
       return true
     })
     const start = pg.pageIndex * pg.pageSize
@@ -406,7 +415,7 @@ export function CalibrationTbl({ machineCode }: Props) {
       if (sv.trim())                        params.set('keyword',           sv.trim())
       if (currentFilters.year)              params.set('year',              currentFilters.year)
       if (currentFilters.department)        params.set('department',        currentFilters.department)
-      if (currentFilters.results)           params.set('results',           currentFilters.results)
+      if (currentFilters.result)            params.set('result',            currentFilters.result)
       if (currentFilters.calibrationStatus) params.set('calibrationStatus', currentFilters.calibrationStatus)
 
       const response = await api.get<PageResponse<CalibrationDTO>>('/api/calibration/get/page', { params })
@@ -430,12 +439,15 @@ export function CalibrationTbl({ machineCode }: Props) {
     try {
       const response = await api.get<FilterOptionsResponse>('/api/calibration/filter-options')
       if (response) {
-        setFilterOptions({
-          years:               response.years               ?? [],
-          departments:         response.departments         ?? [],
-          results:             response.results             ?? [],
-          calibrationStatuses: response.calibrationStatuses ?? [],
-        })
+        setFilterOptions(prev => ({
+          // โหมดประวัติเครื่อง: ใช้ปี/ผล/สถานะจากข้อมูลของเครื่องนั้น (ตั้งใน fetchByMachineCode)
+          years:               machineCode && prev.years.length ? prev.years
+                               : sortYearsDesc((response.years ?? []).map(String)),
+          departments:         response.departments ?? [],
+          results:             machineCode && prev.results.length ? prev.results : (response.results ?? []),
+          calibrationStatuses: machineCode && prev.calibrationStatuses.length ? prev.calibrationStatuses
+                               : (response.calibrationStatuses ?? []),
+        }))
       }
     } catch {
       console.warn('[CalibrationTbl] /api/calibration/filter-options unavailable')
@@ -452,11 +464,10 @@ export function CalibrationTbl({ machineCode }: Props) {
   }, [machineCode, allData])
 
   const handleClearFilters = useCallback(() => {
-    const empty: CalibrationFilters = { year: '', department: '', results: '', calibrationStatus: '' }
-    setFilters(empty)
+    setFilters(EMPTY_FILTERS)
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-    if (machineCode) applyClientFilter(allData, empty, searchValueRef.current, { ...paginationRef.current, pageIndex: 0 })
-    else             onFetchData(empty)
+    if (machineCode) applyClientFilter(allData, EMPTY_FILTERS, searchValueRef.current, { ...paginationRef.current, pageIndex: 0 })
+    else             onFetchData(EMPTY_FILTERS)
   }, [machineCode, allData])
 
   const handleSearch = useCallback((value: string) => {
@@ -482,10 +493,10 @@ export function CalibrationTbl({ machineCode }: Props) {
       cell: ({ row }) => <div className="text-sm">{formatDate(row.original.certificateDate)}</div>,
     },
     {
-      accessorKey: 'results',
-      header: t('results'),
+      accessorKey: 'result',
+      header: t('result'),
       cell: ({ row }) => {
-        const s = row.original.results
+        const s = row.original.result
         return s ? <Badge className={getStatusColor(s)}>{translateStatus(s)}</Badge> : <span>-</span>
       },
     },
@@ -493,7 +504,8 @@ export function CalibrationTbl({ machineCode }: Props) {
       accessorKey: 'calibrationStatus',
       header: t('calibration_status'),
       cell: ({ row }) => {
-        const s = row.original.calibrationStatus
+        // รายการที่ถูกยกเลิก แสดง "ยกเลิก" แทนสถานะที่คำนวณ
+        const s = row.original.isCanceled ? 'canceled' : row.original.calibrationStatus
         return s ? <Badge className={getStatusColor(s)}>{translateStatus(s)}</Badge> : <span>-</span>
       },
     },

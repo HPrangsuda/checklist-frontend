@@ -38,10 +38,11 @@ interface CalibrationDTO {
   id: number
   machineCode: string
   machineName: string
-  years: number
-  results?: string
+  years: string
+  result?: string
   dueDate?: string
   certificateDate?: string
+  /** backend คำนวณจาก due date + certificate date: On Time / Overdue / Pending */
   calibrationStatus?: string
   machineDepartmentCode?: string
   machineDepartmentName?: string
@@ -58,7 +59,7 @@ interface FilterOptionsResponse {
 
 interface CalibrationFilters {
   department:        string
-  results:           string
+  result:            string
   calibrationStatus: string
 }
 
@@ -71,6 +72,8 @@ interface FilterOptions {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 10
+
+const EMPTY_FILTERS: CalibrationFilters = { department: '', result: '', calibrationStatus: '' }
 
 const fmtDate = (d?: string) => {
   if (!d) return '-'
@@ -176,10 +179,10 @@ function CalibrationDetailDrawer({
               </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-                  <PencilRuler className="w-3.5 h-3.5" />{t('results')}
+                  <PencilRuler className="w-3.5 h-3.5" />{t('result')}
                 </div>
-                {cal.results
-                  ? <Badge className={getStatusColor(cal.results)}>{cal.results}</Badge>
+                {cal.result
+                  ? <Badge className={getStatusColor(cal.result)}>{cal.result}</Badge>
                   : <span className="text-xs text-muted-foreground">-</span>}
               </div>
               <div className="flex items-center justify-between gap-2">
@@ -225,9 +228,8 @@ function LazySearchSelect<T>({
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20) setPage(p => p + 1)
   }, [hasMore])
 
-  const selectedLabel = value
-    ? (items.find(i => getKey(i) === value) ? getLabel(items.find(i => getKey(i) === value)!) : value)
-    : ''
+  const selectedItem  = value ? items.find(i => getKey(i) === value) : undefined
+  const selectedLabel = value ? (selectedItem ? getLabel(selectedItem) : value) : ''
 
   return (
     <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) { setSearch(''); setPage(1) } }}>
@@ -270,6 +272,11 @@ function LazySearchSelect<T>({
 
 // ─── CalibrationFilterPanel ───────────────────────────────────────────────────
 
+const STATUS_I18N_MAP: Record<string, string> = {
+  'pass': 'status_pass', 'not pass': 'status_not_pass',
+  'on time': 'status_on_time', 'overdue': 'status_overdue', 'pending': 'status_pending',
+}
+
 function CalibrationFilterPanel({
   filters, options, onChange, onClear, activeCount, t,
 }: {
@@ -279,10 +286,7 @@ function CalibrationFilterPanel({
 }) {
   const [open, setOpen] = useState(false)
 
-  const STATUS_I18N_MAP: Record<string, string> = {
-    'pass': 'status_pass', 'not pass': 'status_not_pass',
-    'on time': 'status_on_time', 'overdue': 'status_overdue', 'pending': 'status_pending',
-  }
+  const statusLabel = (s: string) => t(STATUS_I18N_MAP[s.toLowerCase()] ?? s) ?? s
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -325,12 +329,12 @@ function CalibrationFilterPanel({
           </div>
           <Separator />
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('results')}</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('result')}</label>
             <LazySearchSelect<string>
-              value={filters.results} placeholder={t('all')} allLabel={t('all')}
+              value={filters.result} placeholder={t('all')} allLabel={t('all')}
               items={options.results} getKey={s => s}
-              getLabel={s => t(STATUS_I18N_MAP[s.toLowerCase()] ?? s) ?? s}
-              onSelect={v => onChange('results', v)}
+              getLabel={statusLabel}
+              onSelect={v => onChange('result', v)}
             />
           </div>
           <Separator />
@@ -339,7 +343,7 @@ function CalibrationFilterPanel({
             <LazySearchSelect<string>
               value={filters.calibrationStatus} placeholder={t('all')} allLabel={t('all')}
               items={options.calibrationStatuses} getKey={s => s}
-              getLabel={s => t(STATUS_I18N_MAP[s.toLowerCase()] ?? s) ?? s}
+              getLabel={statusLabel}
               onSelect={v => onChange('calibrationStatus', v)}
             />
           </div>
@@ -363,6 +367,17 @@ function CalibrationFilterPanel({
 
 // ─── CalibrationTable ─────────────────────────────────────────────────────────
 
+const RESULT_BADGE_CLASS: Record<string, string> = {
+  'NOT PASS': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  'PASS':     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+}
+
+const STATUS_BADGE_CLASS: Record<string, string> = {
+  'ON TIME': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  'OVERDUE': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  'PENDING': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+}
+
 function CalibrationTable({
   year, selectedCal, onRowClick,
 }: {
@@ -380,7 +395,7 @@ function CalibrationTable({
   const [searchValue, setSearchValue] = useState('')
   const debouncedSearch               = useDebounce(keyword, 500)
 
-  const [filters, setFilters] = useState<CalibrationFilters>({ department: '', results: '', calibrationStatus: '' })
+  const [filters, setFilters] = useState<CalibrationFilters>(EMPTY_FILTERS)
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ departments: [], results: [], calibrationStatuses: [] })
 
   const filtersRef     = useRef(filters)
@@ -395,42 +410,26 @@ function CalibrationTable({
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length
 
-  const getResultBadge = (result?: string) => {
-    if (!result) return <>-</>
-    const cfg: Record<string, string> = {
-      'NOT PASS': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-      'PASS':     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    }
-    const cls   = cfg[result] ?? 'bg-zinc-100 text-zinc-600'
-    const key   = `status_${result.toLowerCase().replace(/\s+/g, '_')}`
-    const label = t(key) !== key ? t(key) : result
-    return <Badge className={cls}>{label}</Badge>
-  }
-
-  const getStatusBadge = (status?: string) => {
-    if (!status) return <>-</>
-    const cfg: Record<string, string> = {
-      'ON TIME': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-      'OVERDUE': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-      'PENDING': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    }
-    const cls   = cfg[status] ?? 'bg-zinc-100 text-zinc-600'
-    const key   = `status_${status.toLowerCase().replace(/\s+/g, '_')}`
-    const label = t(key) !== key ? t(key) : status
+  /** ค่าจาก backend เป็น "Pass" / "On Time" — เทียบแบบไม่สนตัวพิมพ์ */
+  const renderBadge = (value: string | undefined, classes: Record<string, string>) => {
+    if (!value) return <>-</>
+    const cls   = classes[value.trim().toUpperCase()] ?? 'bg-zinc-100 text-zinc-600'
+    const key   = `status_${value.trim().toLowerCase().replace(/\s+/g, '_')}`
+    const label = t(key) !== key ? t(key) : value
     return <Badge className={cls}>{label}</Badge>
   }
 
   const columns: ColumnDef<CalibrationDTO>[] = [
-    { accessorKey: 'machineCode', header: t('machine_code'),        cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div> },
-    { accessorKey: 'machineName', header: t('machine_name'),        cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
-    { accessorKey: 'years',       header: t('years'),               cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
+    { accessorKey: 'machineCode', header: t('machine_code'), cell: ({ row }) => <div className="text-sm">{row.original.machineCode}</div> },
+    { accessorKey: 'machineName', header: t('machine_name'), cell: ({ row }) => <div className="text-sm">{row.original.machineName}</div> },
+    { accessorKey: 'years',       header: t('years'),        cell: ({ row }) => <div className="text-sm">{row.original.years}</div> },
     {
       accessorKey: 'dueDate',
       header: t('calibration_due_date'),
       cell: ({ row }) => <div className="text-sm">{fmtDate(row.original.dueDate)}</div>,
     },
-    { accessorKey: 'results',           header: t('results'),            cell: ({ row }) => getResultBadge(row.original.results) },
-    { accessorKey: 'calibrationStatus', header: t('calibration_status'), cell: ({ row }) => getStatusBadge(row.original.calibrationStatus) },
+    { accessorKey: 'result',            header: t('result'),             cell: ({ row }) => renderBadge(row.original.result, RESULT_BADGE_CLASS) },
+    { accessorKey: 'calibrationStatus', header: t('calibration_status'), cell: ({ row }) => renderBadge(row.original.calibrationStatus, STATUS_BADGE_CLASS) },
   ]
 
   useEffect(() => { setSearchValue(debouncedSearch) }, [debouncedSearch])
@@ -450,7 +449,7 @@ function CalibrationTable({
       params.set('year',  String(yr))
       if (sv.trim())                        params.set('keyword',           sv.trim())
       if (currentFilters.department)        params.set('department',        currentFilters.department)
-      if (currentFilters.results)           params.set('results',           currentFilters.results)
+      if (currentFilters.result)            params.set('result',            currentFilters.result)
       if (currentFilters.calibrationStatus) params.set('calibrationStatus', currentFilters.calibrationStatus)
 
       const response = await api.get<PageResponse<CalibrationDTO>>('/api/calibration/get/page', { params })
@@ -492,10 +491,9 @@ function CalibrationTable({
   }, [])
 
   const handleClearFilters = useCallback(() => {
-    const reset: CalibrationFilters = { department: '', results: '', calibrationStatus: '' }
-    setFilters(reset)
+    setFilters(EMPTY_FILTERS)
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-    onFetchData(reset)
+    onFetchData(EMPTY_FILTERS)
   }, [])
 
   const handleSearch = useCallback((value: string) => {

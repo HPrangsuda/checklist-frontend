@@ -3,11 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, ListCheck, PenBox, Plus, ShieldCheck, X } from 'lucide-react'
+import { ArrowLeft, Ban, ChevronLeft, ChevronRight, Download, FileText, ListCheck, PenBox, Plus, ShieldCheck, X, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import { toast } from 'sonner'
+import { RejectRegisterSheet } from '@/module/checklist/register/reject-register-sheet'
 
 export const Route = createFileRoute('/checklist/register/view')({
   component: RegisterView,
@@ -84,6 +85,9 @@ interface RegisterRequest {
   warrantyExpireDate?: string | null
   warrantyFiles?: string | AttachmentItem[]
   isNew?: boolean | null
+  status?: 'PENDING' | 'REJECT'
+  rejectReason?: string | null
+  updatedAt?: string | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -98,6 +102,15 @@ const formatDate = (dateStr: string | null | undefined) => {
   try {
     return new Date(dateStr).toLocaleDateString('th-TH', {
       year: 'numeric', month: '2-digit', day: '2-digit'
+    })
+  } catch { return '-' }
+}
+
+const formatDateTime = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '-'
+  try {
+    return new Date(dateStr).toLocaleString('th-TH', {
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
     })
   } catch { return '-' }
 }
@@ -513,8 +526,9 @@ function RegisterView() {
   const { t }   = useTranslation('checklist')
   const router  = useRouter()
 
-  const [record,  setRecord]  = useState<RegisterRequest | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [record,     setRecord]     = useState<RegisterRequest | null>(null)
+  const [loading,    setLoading]    = useState(true)
+  const [rejectOpen, setRejectOpen] = useState(false)
 
   useEffect(() => { if (id) fetchData() }, [id])
 
@@ -572,6 +586,7 @@ function RegisterView() {
 
   const maintenanceItems  = Array.isArray(record.maintenance) ? record.maintenance : []
   const calibrationItems  = Array.isArray(record.calibration) ? record.calibration : []
+  const isRejected        = record.status === 'REJECT'
 
   return (
     <div className="min-h-screen bg-background">
@@ -592,15 +607,44 @@ function RegisterView() {
               <h1 className="text-2xl font-bold">{record.machineName}</h1>
             </div>
           </div>
-          <Button
-            onClick={() => router.navigate({ to: '/checklist/machine/add', search: { refId: id } })}
-            className="gap-2">
-            <Plus className="h-4 w-4" />{t('add_machine')}
-          </Button>
+
+          {isRejected ? (
+            <Badge variant="outline" className="gap-1.5 py-1.5 px-3 bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-300">
+              <XCircle className="h-4 w-4" />{t('status_reject')}
+            </Badge>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setRejectOpen(true)}
+                className="gap-2 text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive">
+                <Ban className="h-4 w-4" />{t('reject')}
+              </Button>
+              <Button
+                onClick={() => router.navigate({ to: '/checklist/machine/add', search: { refId: id } })}
+                className="gap-2">
+                <Plus className="h-4 w-4" />{t('add_machine')}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto p-6 space-y-8">
+
+        {/* Reject notice */}
+        {isRejected && (
+          <div role="alert" className="rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-900 p-5">
+            <div className="flex items-start gap-3">
+              <XCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+              <div className="min-w-0 space-y-2">
+                <p className="font-semibold text-red-800 dark:text-red-300">{t('register_rejected_notice')}</p>
+                <p className="text-sm text-foreground whitespace-pre-wrap">{record.rejectReason || '-'}</p>
+                <p className="text-xs text-muted-foreground">{t('rejected_at')}: {formatDateTime(record.updatedAt)}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Register Information */}
         <Card>
@@ -787,6 +831,14 @@ function RegisterView() {
         </Card>
 
       </div>
+
+      <RejectRegisterSheet
+        registerId={id}
+        machineName={record.machineName}
+        open={rejectOpen}
+        onOpenChange={setRejectOpen}
+        onRejected={fetchData}
+      />
     </div>
   )
 }

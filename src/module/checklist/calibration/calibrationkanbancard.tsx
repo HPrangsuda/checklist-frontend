@@ -22,12 +22,13 @@ interface CalibrationDTO {
   dueDate: string
   startDate: string
   certificateDate: string
-  results: string
+  result: string
   calibrationStatus: string
+  calibrationBy: string
   responsibleMaintenanceName: string
   machineDepartmentCode: string
   machineDepartmentName: string
-  note: string
+  remark: string
   attachment: string
 }
 
@@ -45,7 +46,7 @@ interface KanbanColumn {
 
 function parseDate(s: string | null | undefined): Date | null {
   if (!s) return null
-  const [y, m, d] = s.split('-').map(Number)
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number)
   return new Date(y, m - 1, d)
 }
 
@@ -63,6 +64,8 @@ function getColumnKey(row: CalibrationDTO): ColumnKey {
   if (row.startDate)       return 'inprogress'
   return 'todo'
 }
+
+const isPass = (result?: string) => result?.trim().toUpperCase() === 'PASS'
 
 function TimelinessTag({ row, t }: { row: CalibrationDTO; t: (k: string) => string }) {
   const due   = parseDate(row.dueDate)
@@ -202,10 +205,22 @@ function DetailDrawer({ row, onClose }: { row: CalibrationDTO | null; onClose: (
                 </div>
               </div>
             )}
-            {row.results && (
+            {row.calibrationBy && (
               <div className="space-y-1">
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t('results')}</p>
-                <p className={`text-sm font-semibold ${row.results === 'Pass' ? 'text-emerald-600' : 'text-red-600'}`}>{row.results}</p>
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t('calibration_by')}</p>
+                <p className="text-sm">{row.calibrationBy}</p>
+              </div>
+            )}
+            {row.result && (
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t('result')}</p>
+                <p className={`text-sm font-semibold ${isPass(row.result) ? 'text-emerald-600' : 'text-red-600'}`}>{row.result}</p>
+              </div>
+            )}
+            {row.remark && (
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t('remark')}</p>
+                <p className="text-xs text-foreground whitespace-pre-line">{row.remark}</p>
               </div>
             )}
           </div>
