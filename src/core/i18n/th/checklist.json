@@ -66,6 +66,7 @@
   "dec": "ธ.ค.",
   "calibration_stats": "สถิติการสอบเทียบ",
   "maintenance_stats": "สถิติการซ่อมบำรุง",
+  "calibration_status": "สถานะการสอบเทียบ",
   "on_time": "ทันเวลา",
   "no_data_available": "ไม่มีข้อมูล",
   "error_fetching_calibration_stats": "เกิดข้อผิดพลาดในการโหลดข้อมูลสถิติการสอบเทียบ",

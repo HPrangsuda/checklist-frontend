@@ -66,6 +66,7 @@
   "dec": "Dec",
   "calibration_stats": "Calibration Stats",
   "maintenance_stats": "Maintenance Stats",
+  "calibration_status": "Calibration Status",
   "on_time": "On Time",
   "no_data_available": "No data available",
   "error_fetching_calibration_stats": "Failed to fetch calibration stats.",
