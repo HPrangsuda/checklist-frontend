@@ -1,77 +1,46 @@
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createFileRoute, useRouter, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, Edit3, Info, PencilRuler, Wrench, Download, FileText, X, ClipboardList, ShieldCheck } from 'lucide-react'
+import {
+  ArrowLeft, CheckCircle2, ClipboardList, Download,
+  Edit3, FileText, ImageIcon, Wrench, X,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '@/core/interceptor/api.interceptor'
 import { useTranslation } from '@/core/contexts/language-context'
 import { toast } from 'sonner'
 import { MaintenanceTbl } from '@/module/checklist/maintenance/history-table'
-import { CalibrationTbl } from '@/module/checklist/calibration/history-table'
-import { ChecklistTab } from '@/module/checklist/machine/checklist-tab'
-import { MaintenanceChecklistTab } from '@/module/checklist/machine/maintenance-checklist-tab'
-import { useAuth } from '@/core/contexts/auth-context'
 
-export const Route = createFileRoute('/checklist/machine/view')({
-  component: MachineView,
+export const Route = createFileRoute('/checklist/maintenance/view')({
+  component: MaintenanceView,
   validateSearch: (search: Record<string, unknown>) => ({
-    id: Number(search.id) || 0
-  })
+    id: Number(search.id) || 0,
+  }),
 })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface MachineResponseDTO {
-  id:                   number
-  machineCode:          string
-  machineName:          string
-  machineGroupId?:      string
-  machineGroupName?:    string
-  machineTypeId?:       string
-  machineTypeName?:     string
-  machineStatus:        string
-  checkStatus:          string
-  model?:               string
-  brand?:               string
-  serialNumber?:        string
-  businessUnit?:        string
-  department?:          string
-  departmentName?:      string
-  registerId?:          string
-  registerDate?:        string
-  cancelDate?:          string
-  reasonCancel?:        string
-  isCalibration?:       boolean
-  certificatePeriod?:   string
-  maintenancePeriod?:   string
-  image?:               string
-  machineNumber?:       string
-  qrCode?:              string
-  resetPeriod?:         string
-  note?:                string
-  responsiblePersonId?:   number
-  responsiblePersonName?: string
-  supervisorId?:          number
-  supervisorName?:        string
-  managerId?:             number
-  managerName?:           string
-  workInstruction?:     string
-  lastReview?:          string
-  reviewBy?:            string
-  // ── warranty ────────────────────────────────────────────────────────────────
-  hasWarranty?:         string
-  warrantyNote?:        string
-  warrantyExpireDate?:  string | null
-  warrantyFiles?:       string
-  // ── new machine ─────────────────────────────────────────────────────────────
-  isNew?:               boolean | null
-  createdBy?:           { id: number; firstName: string; lastName: string }
-  updatedBy?:           { id: number; firstName: string; lastName: string }
-  calibrationRecords?:  any[]
-  maintenanceRecords?:  any[]
+interface MaintenanceRecord {
+  id:                          number
+  machineCode:                 string
+  machineName:                 string
+  years:                       string
+  round:                       number
+  dueDate?:                    string
+  planDate?:                   string
+  startDate?:                  string
+  actualDate?:                 string
+  status?:                     string
+  maintenanceBy?:              string
+  responsibleMaintenance?:     number | null
+  responsibleMaintenanceName?: string | null
+  note?:                       string
+  attachment?:                 string
+  checklistRecordId?:          number | null
+  machineDepartmentCode?:      string | null
+  machineDepartmentName?:      string | null
 }
 
 interface AttachmentItem {
@@ -82,31 +51,128 @@ interface AttachmentItem {
   uploadedBy: string | null
 }
 
+interface ChecklistItem {
+  id:             number
+  questionDetail: string
+  answerChoice:   string
+  checkStatus:    boolean
+}
+
+interface ChecklistRecord {
+  id:            number
+  machineCode:   string
+  machineName:   string
+  machineStatus: string
+  maintenanceBy: string
+  actualDate:    string | null
+  items:         ChecklistItem[]
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic']
 const API_BASE   = import.meta.env.VITE_API_URL ?? ''
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const formatDate = (date?: string | null) => {
+  if (!date) return '-'
+  try {
+    return new Date(date).toLocaleDateString('th-TH', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    })
+  } catch { return date }
+}
+
+const getStatusColor = (status?: string) => {
+  switch ((status || '').toLowerCase()) {
+    case 'operational': case 'completed':
+      return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
+    case 'under repair': case 'pending': case 'overdue':
+      return 'bg-red-100 text-red-600 dark:text-red-100'
+    case 'pending supervisor': case 'completed (late)':
+      return 'bg-orange-100 text-orange-600 dark:text-orange-100'
+    case 'in progress':
+      return 'bg-blue-100 text-blue-600 dark:text-blue-100'
+    default:
+      return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
+  }
+}
 
 const toFileUrl = (fileUrl: string) => {
   const filename = fileUrl.split('/').pop() ?? fileUrl
   return `${API_BASE}/api/files/download/${encodeURIComponent(filename)}`
 }
 
-const parseFiles = (raw?: string | null): AttachmentItem[] => {
-  if (!raw) return []
-  if (Array.isArray(raw)) return raw
-  try { return JSON.parse(raw) } catch { return [] }
+const isImageFile = (file: AttachmentItem) => {
+  const ext = file.fileName.split('.').pop()?.toLowerCase() ?? ''
+  return IMAGE_EXTS.includes(ext) || (file.fileType ?? '').startsWith('image/')
 }
 
-const formatDate = (dateStr?: string | null) => {
-  if (!dateStr) return '-'
-  try {
-    return new Date(dateStr).toLocaleDateString('th-TH', {
-      year: 'numeric', month: '2-digit', day: '2-digit'
-    })
-  } catch { return '-' }
+/** แปลงค่าแต่ละรายการ (string path หรือ object) ให้เป็น AttachmentItem */
+const toAttachmentItem = (v: any): AttachmentItem | null => {
+  if (!v) return null
+  if (typeof v === 'string') {
+    const url = v.trim()
+    if (!url) return null
+    return {
+      fileName: url.split('/').pop() ?? url,
+      fileUrl: url, fileType: '', fileSize: 0, uploadedBy: null,
+    }
+  }
+  const url: string | undefined = v.fileUrl ?? v.url ?? v.path ?? v.fileName
+  if (!url) return null
+  return {
+    fileName:   v.fileName ?? v.name ?? url.split('/').pop() ?? url,
+    fileUrl:    url,
+    fileType:   v.fileType ?? v.contentType ?? '',
+    fileSize:   v.fileSize ?? v.size ?? 0,
+    uploadedBy: v.uploadedBy ?? null,
+  }
+}
+
+/**
+ * รองรับ attachment หลายรูปแบบ:
+ *  - JSON array ของ object  '[{"fileName":..,"fileUrl":..}]'
+ *  - JSON array ของ string  '["a.png","b.pdf"]'
+ *  - JSON ที่ถูก encode ซ้อน 2 ชั้น
+ *  - string คั่นด้วย comma  'a.png,b.pdf'
+ *  - path เดี่ยว            '/uploads/a.png'
+ */
+const parseAttachments = (raw?: string | AttachmentItem[] | null): AttachmentItem[] => {
+  if (!raw) return []
+  let list: any[] = []
+
+  if (Array.isArray(raw)) {
+    list = raw
+  } else {
+    let value: any = raw.trim()
+    if (!value) return []
+    try {
+      value = JSON.parse(value)
+      if (typeof value === 'string') value = JSON.parse(value) // double-encoded
+      list = Array.isArray(value) ? value : [value]
+    } catch {
+      list = String(raw).split(',').map(s => s.trim()).filter(Boolean)
+    }
+  }
+
+  return list.map(toAttachmentItem).filter((f): f is AttachmentItem => f !== null)
+}
+
+// ─── InfoRow ──────────────────────────────────────────────────────────────────
+
+function InfoRow({
+  label, value, className = '',
+}: {
+  label: string; value?: string | number | null; className?: string
+}) {
+  return (
+    <div className={className}>
+      <p className="text-sm font-medium text-muted-foreground">{label}</p>
+      <p className="text-base mt-1">{value || '-'}</p>
+    </div>
+  )
 }
 
 // ─── AuthImage ────────────────────────────────────────────────────────────────
@@ -123,12 +189,16 @@ function AuthImage({ src, alt, className }: { src: string; alt: string; classNam
     return () => { if (url) URL.revokeObjectURL(url) }
   }, [src])
 
-  if (failed)   return null
+  if (failed) return (
+    <div className="w-full h-full flex items-center justify-center">
+      <ImageIcon className="h-6 w-6 text-muted-foreground" />
+    </div>
+  )
   if (!blobUrl) return <div className="w-full h-full animate-pulse bg-muted" />
   return <img src={blobUrl} alt={alt} className={className} />
 }
 
-// ─── ImageDialog ─────────────────────────────────────────────────────────────
+// ─── ImageDialog ──────────────────────────────────────────────────────────────
 
 function ImageDialog({ blobUrl, fileName, open, onClose }: {
   blobUrl: string; fileName: string; open: boolean; onClose: () => void
@@ -141,8 +211,10 @@ function ImageDialog({ blobUrl, fileName, open, onClose }: {
 
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm" onClick={onClose}>
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-black/60" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm"
+      onClick={onClose}>
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-black/60"
+        onClick={e => e.stopPropagation()}>
         <p className="text-white text-sm truncate max-w-[60%]">{fileName}</p>
         <div className="flex items-center gap-2">
           <a href={blobUrl} download={fileName}
@@ -166,13 +238,14 @@ function ImageDialog({ blobUrl, fileName, open, onClose }: {
 // ─── AttachmentFile ───────────────────────────────────────────────────────────
 
 function AttachmentFile({ file }: { file: AttachmentItem }) {
-  const ext     = file.fileName.split('.').pop()?.toLowerCase() ?? ''
-  const isImage = IMAGE_EXTS.includes(ext)
+  const isImage = isImageFile(file)
   const src     = toFileUrl(file.fileUrl)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [blobUrl,    setBlobUrl]    = useState<string | null>(null)
   const [loading,    setLoading]    = useState(false)
+
+  useEffect(() => () => { if (blobUrl) URL.revokeObjectURL(blobUrl) }, [blobUrl])
 
   const handleClick = async () => {
     if (isImage) {
@@ -217,102 +290,180 @@ function AttachmentFile({ file }: { file: AttachmentItem }) {
         )}
       </div>
       {isImage && blobUrl && (
-        <ImageDialog blobUrl={blobUrl} fileName={file.fileName} open={dialogOpen} onClose={() => setDialogOpen(false)} />
+        <ImageDialog blobUrl={blobUrl} fileName={file.fileName}
+          open={dialogOpen} onClose={() => setDialogOpen(false)} />
       )}
     </>
   )
 }
 
-// ─── AttachmentList ───────────────────────────────────────────────────────────
+// ─── AttachmentGrid ───────────────────────────────────────────────────────────
 
-function AttachmentList({ raw, label }: { raw?: string | null; label: string }) {
-  const files = parseFiles(raw)
-  if (files.length === 0) return null
+function AttachmentGrid({ files }: { files: AttachmentItem[] }) {
   return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground mb-3">{label}</p>
-      <div className="flex flex-wrap gap-3">
-        {files.map((f, i) => <AttachmentFile key={i} file={f} />)}
-      </div>
+    <div className="flex flex-wrap gap-3">
+      {files.map((f, i) => <AttachmentFile key={`${f.fileUrl}-${i}`} file={f} />)}
     </div>
   )
 }
 
-// ─── InfoRow ──────────────────────────────────────────────────────────────────
+// ─── ChecklistView ────────────────────────────────────────────────────────────
 
-function InfoRow({ label, value, className = '' }: {
-  label: string; value?: string | number | null; className?: string
-}) {
+function ChecklistView({ checklist }: { checklist: ChecklistRecord }) {
   return (
-    <div className={className}>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-base mt-1">{value || '-'}</p>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-xl border border-border">
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">สถานะเครื่องจักร</p>
+          <p className="text-sm font-medium">{checklist.machineStatus || '—'}</p>
+        </div>
+      </div>
+
+      {checklist.items.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-6">ไม่มีรายการตรวจสอบ</p>
+      ) : (
+        <div className="space-y-3">
+          {checklist.items.map((item, idx) => (
+            <div key={item.id ?? idx}
+              className="p-4 rounded-xl border border-border bg-background">
+              <p className="text-sm font-medium leading-snug">
+                {idx + 1}. {item.questionDetail || 'N/A'}
+              </p>
+              <div className="mt-3">
+                {item.answerChoice ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {item.answerChoice}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+                    —
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-function MachineView() {
-  const { id } = useSearch({ from: '/checklist/machine/view' })
-  const { t }  = useTranslation('checklist')
-  const router = useRouter()
+function MaintenanceView() {
+  const { id }  = useSearch({ from: '/checklist/maintenance/view' })
+  const { t }   = useTranslation('checklist')
+  const router  = useRouter()
 
-  const { role } = useAuth()
-  const isAdmin = role === 'ADMIN'
+  const [record,           setRecord]           = useState<MaintenanceRecord | null>(null)
+  const [loading,          setLoading]          = useState(true)
+  const [responsibleName,  setResponsibleName]  = useState<string>('')
+  const [checklist,        setChecklist]        = useState<ChecklistRecord | null>(null)
+  const [checklistLoading, setChecklistLoading] = useState(false)
 
-  const [machine,   setMachine]   = useState<MachineResponseDTO | null>(null)
-  const [loading,   setLoading]   = useState(true)
-  const [activeTab, setActiveTab] = useState('general')
+  useEffect(() => { if (id) fetchDetail() }, [id])
 
-  useEffect(() => { if (id) fetchMachineDetail() }, [id])
-
-  const getStatusColor = (status?: string) => {
-    switch ((status || '').toLowerCase()) {
-      case 'operational': case 'completed':
-        return 'bg-emerald-100 text-emerald-600 dark:text-emerald-100'
-      case 'under repair': case 'pending': case 'overdue':
-        return 'bg-red-100 text-red-600 dark:text-red-100'
-      case 'pending supervisor': case 'completed (late)':
-        return 'bg-orange-100 text-orange-600 dark:text-orange-100'
-      case 'in progress':
-        return 'bg-blue-100 text-blue-600 dark:text-blue-100'
-      default:
-        return 'bg-zinc-100 text-zinc-600 dark:text-zinc-100'
-    }
-  }
-
-  const getStatusLabel = (status?: string) => {
-    if (!status) return '-'
-    const key = `status_${status.toLowerCase().replace(/\s+/g, '_')}`
-    const translated = t(key)
-    return translated !== key ? translated : status
-  }
-
-  const getIsNewLabel = (isNew?: boolean | null) =>
-    isNew === true ? t('is_new_yes') : isNew === false ? t('is_new_no') : '-'
-
-  const fetchMachineDetail = async () => {
+  const fetchDetail = async () => {
     try {
       setLoading(true)
-      const response = await api.get<any>(`/api/machine/${id}`)
-      if (response?.data) setMachine(response.data)
-      else toast.error(t('failed_to_load_machine'))
+      const response = await api.get<any>(`/api/maintenance/${id}`)
+      if (!response?.data) {
+        toast.error('Failed to load maintenance details')
+        return
+      }
+
+      const data: MaintenanceRecord = response.data
+      setRecord(data)
+
+      // ใช้ชื่อจาก DTO ก่อน (responsibleMaintenanceName) ถ้าไม่มีค่อยไปดึงจาก /api/user
+      if (data.responsibleMaintenanceName) {
+        setResponsibleName(data.responsibleMaintenanceName)
+      } else if (data.responsibleMaintenance) {
+        try {
+          const memberRes = await api.get<any>(`/api/user/${data.responsibleMaintenance}`)
+          if (memberRes?.data) {
+            const d = memberRes.data
+            setResponsibleName([d.firstName, d.lastName].filter(Boolean).join(' '))
+          }
+        } catch {
+          setResponsibleName(String(data.responsibleMaintenance))
+        }
+      }
+
+      if (data.checklistRecordId) {
+        fetchChecklist(data.checklistRecordId, Number(id))
+      }
     } catch {
-      toast.error(t('failed_to_load_machine'))
+      toast.error('Failed to load maintenance details')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleDownloadQR = () => {
-    if (!machine?.qrCode) { toast.error(t('qr_not_available')); return }
-    const a = document.createElement('a')
-    a.href = machine.qrCode
-    a.download = `QR_${machine.machineCode}.png`
-    document.body.appendChild(a); a.click(); document.body.removeChild(a)
-    toast.success(t('qr_downloaded'))
+  const fetchChecklist = async (checklistRecordId: number, maintenanceId: number) => {
+    setChecklistLoading(true)
+    try {
+      const res  = await api.get<any>(`/api/checklist/${checklistRecordId}`)
+      const body = res?.data ?? res
+
+      let rawItems: any[] = []
+      if (body?.machineChecklist) {
+        try {
+          rawItems = typeof body.machineChecklist === 'string'
+            ? JSON.parse(body.machineChecklist)
+            : body.machineChecklist
+        } catch {
+          rawItems = []
+        }
+      }
+
+      const items: ChecklistItem[] = rawItems.map((item: any) => ({
+        id:             item.id,
+        questionDetail: item.questionDetail ?? '',
+        answerChoice:   item.answerChoice   ?? item.answer ?? '',
+        checkStatus:    item.checkStatus    ?? true,
+      }))
+
+      setChecklist({
+        id:            body?.id            ?? checklistRecordId,
+        machineCode:   body?.machineCode   ?? '',
+        machineName:   body?.machineName   ?? '',
+        machineStatus: body?.machineStatus ?? '',
+        maintenanceBy: body?.maintenanceBy ?? '',
+        actualDate:    body?.actualDate    ?? null,
+        items,
+      })
+    } catch (err) {
+      console.warn('[MaintenanceView] fetchChecklist failed:', err)
+      try {
+        const res  = await api.get<any>(`/api/maintenance-checklist/get/${maintenanceId}`)
+        const body = res?.data ?? res
+        const rawItems: any[] = body?.checklistItems ?? body?.items ?? []
+        const items: ChecklistItem[] = rawItems.map((item: any) => ({
+          id:             item.id,
+          questionDetail: item.questionDetail ?? item.question?.detail ?? '',
+          answerChoice:   item.answerChoice   ?? item.answer ?? '',
+          checkStatus:    item.checkStatus    ?? true,
+        }))
+        setChecklist({
+          id:            body?.id ?? checklistRecordId,
+          machineCode:   body?.machineCode   ?? '',
+          machineName:   body?.machineName   ?? '',
+          machineStatus: body?.machineStatus ?? body?.status ?? '',
+          maintenanceBy: body?.maintenanceBy ?? '',
+          actualDate:    body?.actualDate    ?? null,
+          items,
+        })
+      } catch {
+        // Leave checklist null
+      }
+    } finally {
+      setChecklistLoading(false)
+    }
   }
+
+  // ─── Loading / not-found guards ───────────────────────────────────────────
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -321,208 +472,161 @@ function MachineView() {
     </div>
   )
 
-  if (!machine) return (
+  if (!record) return (
     <div className="min-h-screen bg-gray-50 p-6">
       <Card>
         <CardContent className="p-6 text-center">
-          <p className="text-muted-foreground mb-4">{t('machine_not_found')}</p>
-          <Button onClick={() => router.navigate({ to: '/checklist/machine' })}>
-            <ArrowLeft className="mr-2 h-4 w-4" />{t('back_to_list')}
+          <p className="text-muted-foreground mb-4">Maintenance not found</p>
+          <Button onClick={() => router.navigate({ to: '/checklist/maintenance' })}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_list')}
           </Button>
         </CardContent>
       </Card>
     </div>
   )
 
-  const warrantyFiles = parseFiles(machine.warrantyFiles)
+  // ─── แยกรูปกับไฟล์เอกสาร (เหมือนหน้า Machine) ─────────────────────────────
+  const allFiles   = parseAttachments(record.attachment)
+  const imageFiles = allFiles.filter(isImageFile)
+  const docFiles   = allFiles.filter(f => !isImageFile(f))
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
+
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div className="bg-white border-b px-6 py-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-card border-b border-border px-6 py-4 shadow-sm">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => router.navigate({ to: '/checklist/machine' })}>
+            <Button variant="ghost" size="icon"
+              onClick={() => router.navigate({ to: '/checklist/maintenance' })}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div>
-              <h1 className="text-2xl font-bold">{machine.machineName}</h1>
-              <p className="text-sm text-muted-foreground">{machine.machineCode}</p>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-red-100">
+                <Wrench className="h-6 w-6 text-red-700" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">{record.machineName}</h1>
+                <p className="text-sm text-muted-foreground">{record.machineCode}</p>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge className={getStatusColor(machine.machineStatus)}>
-              {getStatusLabel(machine.machineStatus)}
-            </Badge>
-            <Badge className={getStatusColor(machine.checkStatus)}>
-              {getStatusLabel(machine.checkStatus)}
-            </Badge>
-            <Button variant="outline" size="sm"
-              onClick={() => router.navigate({ to: '/checklist/machine/edit', search: { id } })}>
-              <Edit3 className="h-4 w-4 mr-2" />{t('edit')}
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" className="gap-2"
+            onClick={() => router.navigate({ to: '/checklist/maintenance/edit', search: { id } })}>
+            <Edit3 className="h-4 w-4" />{t('edit')}
+          </Button>
         </div>
       </div>
 
       {/* ── Content ───────────────────────────────────────────────────────── */}
-      <div className="p-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid grid-cols-4 w-full max-w-xl">
-            <TabsTrigger value="general"     className="flex items-center gap-2">
-              <Info className="h-4 w-4" />{t('general') ?? 'General'}
-            </TabsTrigger>
-            <TabsTrigger value="checklist"   className="flex items-center gap-2">
-              <ClipboardList className="h-4 w-4" />Checklist
-            </TabsTrigger>
-            <TabsTrigger value="maintenance" className="flex items-center gap-2">
-              <Wrench className="h-4 w-4" />{t('maintenance')}
-            </TabsTrigger>
-            <TabsTrigger value="calibration" className="flex items-center gap-2">
-              <PencilRuler className="h-4 w-4" />{t('calibration')}
-            </TabsTrigger>
-          </TabsList>
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
 
-          {/* ── General ───────────────────────────────────────────────────── */}
-          <TabsContent value="general" className="mt-4 space-y-4">
+        {/* ── Maintenance Details ────────────────────────────────────────── */}
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-3 font-semibold">
+              <Wrench className="h-5 w-5 text-primary" />
+              {t('maintenance_records')} {record.years} — {t('round')} {record.round}
+              {record.status && (
+                <Badge className={getStatusColor(record.status)}>
+                  {record.status}
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <InfoRow label={t('due_date')}       value={formatDate(record.dueDate)} />
+              <InfoRow label={t('plan_date')}      value={formatDate(record.planDate)} />
+              <InfoRow label={t('start_date')}     value={formatDate(record.startDate)} />
+              <InfoRow label={t('actual_date')}    value={formatDate(record.actualDate)} />
+              <InfoRow label={t('department')}     value={record.machineDepartmentName || record.machineDepartmentCode} />
+              <InfoRow label={t('responsible_by')} value={record.maintenanceBy} />
+              <InfoRow label={t('responsible')}    value={responsibleName} />
+              <InfoRow label={t('note')}           value={record.note} className="md:col-span-2" />
+            </div>
+          </CardContent>
+        </Card>
 
-            {/* Basic Information */}
-            <Card>
-              <CardHeader className="border-b">
-                <CardTitle className="font-semibold">{t('basic_information')}</CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
-                <InfoRow label={t('machine_code')}       value={machine.machineCode} />
-                <InfoRow label={t('machine_name')}       value={machine.machineName} />
-                <InfoRow label={t('is_new')}             value={getIsNewLabel(machine.isNew)} />
-                <InfoRow label={t('brand')}              value={machine.brand} />
-                <InfoRow label={t('model')}              value={machine.model} />
-                <InfoRow label={t('serial_number')}      value={machine.serialNumber} />
-                <InfoRow label={t('department')}         value={machine.departmentName || machine.department} />
-                <InfoRow label={t('machine_group')}      value={machine.machineGroupName || machine.machineGroupId} />
-                <InfoRow label={t('machine_type')}       value={machine.machineTypeName  || machine.machineTypeId} />
-                <InfoRow label={t('responsible')}        value={machine.responsiblePersonName} />
-                <InfoRow label={t('supervisor')}         value={machine.supervisorName} />
-                <InfoRow label={t('manager')}            value={machine.managerName} />
-                <InfoRow label={t('reset_period')}       value={machine.resetPeriod} />
-                <InfoRow label={t('maintenance_period')} value={machine.maintenancePeriod} />
-                <InfoRow label={t('note')}               value={machine.note} />
-              </CardContent>
-            </Card>
+        {/* ── Checklist Record ───────────────────────────────────────────── */}
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-2 font-semibold">
+              <ClipboardList className="h-5 w-5 text-primary" />
+              {t('checklist_records')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            {checklistLoading ? (
+              <div className="space-y-3">
+                <Skeleton className="h-16 w-full rounded-xl" />
+                <Skeleton className="h-16 w-full rounded-xl" />
+                <Skeleton className="h-16 w-full rounded-xl" />
+              </div>
+            ) : checklist ? (
+              <ChecklistView checklist={checklist} />
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                {record.checklistRecordId
+                  ? 'ไม่สามารถโหลดข้อมูลการตรวจสอบได้'
+                  : 'ยังไม่มีการบันทึกผลการตรวจสอบ'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
-            {/* QR Code */}
-            {machine.qrCode && isAdmin && (
+        {/* ── Images & Attachments (แบบเดียวกับหน้า Machine) ───────────── */}
+        {allFiles.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {imageFiles.length > 0 && (
               <Card>
                 <CardHeader className="border-b">
-                  <CardTitle className="font-semibold">{t('qr_code')}</CardTitle>
+                  <CardTitle className="flex items-center gap-2 font-semibold">
+                    <ImageIcon className="h-5 w-5 text-primary" />
+                    {t('images')}
+                    <span className="text-sm font-normal text-muted-foreground">({imageFiles.length})</span>
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-col items-center gap-4 pt-4">
-                  <div className="border rounded-lg p-4 bg-white shadow-sm">
-                    <img src={machine.qrCode} alt={`QR ${machine.machineCode}`} className="w-[200px] h-auto" />
-                  </div>
-                  <Button variant="outline" size="sm" onClick={handleDownloadQR}>
-                    <Download className="h-4 w-4 mr-2" />{t('download')}
-                  </Button>
+                <CardContent className="pt-4">
+                  <AttachmentGrid files={imageFiles} />
                 </CardContent>
               </Card>
             )}
 
-            {/* Images & Work Instructions */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {parseFiles(machine.image).length > 0 && (
-                <Card>
-                  <CardHeader className="border-b">
-                    <CardTitle className="font-semibold">{t('images')}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-4">
-                    <AttachmentList raw={machine.image} label={t('images')} />
-                  </CardContent>
-                </Card>
-              )}
+            {docFiles.length > 0 && (
+              <Card>
+                <CardHeader className="border-b">
+                  <CardTitle className="flex items-center gap-2 font-semibold">
+                    <FileText className="h-5 w-5 text-primary" />
+                    {t('attachments')}
+                    <span className="text-sm font-normal text-muted-foreground">({docFiles.length})</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <AttachmentGrid files={docFiles} />
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        ) : (
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center gap-2 font-semibold">
+                <FileText className="h-5 w-5 text-primary" />
+                {t('attachments')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <p className="text-sm text-muted-foreground">-</p>
+            </CardContent>
+          </Card>
+        )}
 
-              {parseFiles(machine.workInstruction).length > 0 && (
-                <Card>
-                  <CardHeader className="border-b">
-                    <CardTitle className="font-semibold">{t('work_instructions')}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-4">
-                    <AttachmentList raw={machine.workInstruction} label={t('work_instructions')} />
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+        {/* ── Maintenance History ────────────────────────────────────────── */}
+        <MaintenanceTbl machineCode={record.machineCode} />
 
-            {/* ── Warranty ──────────────────────────────────────────────── */}
-            <Card>
-              <CardHeader className="border-b">
-                <CardTitle className="flex items-center gap-2 font-semibold">
-                  <ShieldCheck className="h-5 w-5 text-primary" />
-                  {t('warranty')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{t('has_warranty')}</p>
-                    <span className={[
-                      'inline-flex items-center mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium',
-                      machine.hasWarranty === 'YES'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                        : machine.hasWarranty === 'NO'
-                          ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
-                          : 'bg-gray-100 text-gray-600',
-                    ].join(' ')}>
-                      {machine.hasWarranty === 'YES'
-                        ? t('yes')
-                        : machine.hasWarranty === 'NO'
-                          ? t('no')
-                          : '-'}
-                    </span>
-                  </div>
-
-                  {machine.hasWarranty === 'YES' && (
-                    <>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">{t('warranty_note')}</p>
-                        <p className="text-base mt-1">{machine.warrantyNote || '-'}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">{t('warranty_expire_date')}</p>
-                        <p className="text-base mt-1">{formatDate(machine.warrantyExpireDate)}</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {machine.hasWarranty === 'YES' && warrantyFiles.length > 0 && (
-                  <div className="mt-6">
-                    <p className="text-sm font-medium text-muted-foreground mb-3">{t('warranty_documents')}</p>
-                    <div className="flex flex-wrap gap-3">
-                      {warrantyFiles.map((f, i) => <AttachmentFile key={i} file={f} />)}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-          </TabsContent>
-
-          {/* ── Checklist ─────────────────────────────────────────────────── */}
-          <TabsContent value="checklist" className="mt-4">
-            <ChecklistTab machineCode={machine.machineCode} />
-          </TabsContent>
-
-          {/* ── Maintenance ───────────────────────────────────────────────── */}
-          <TabsContent value="maintenance" className="mt-4 space-y-4">
-            <MaintenanceTbl machineCode={machine.machineCode} />
-            <MaintenanceChecklistTab machineCode={machine.machineCode} />
-          </TabsContent>
-
-          {/* ── Calibration ───────────────────────────────────────────────── */}
-          <TabsContent value="calibration" className="mt-4">
-            <CalibrationTbl machineCode={machine.machineCode} />
-          </TabsContent>
-        </Tabs>
       </div>
     </div>
   )
