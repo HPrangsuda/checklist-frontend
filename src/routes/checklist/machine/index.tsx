@@ -45,6 +45,16 @@ interface DepartmentSummary {
 type SortField = 'departmentName' | 'total' | 'readyRate'
 type SortOrder = 'asc' | 'desc'
 
+// ─── Role helpers ─────────────────────────────────────────────────────────────
+
+const EDITABLE_ROLES  = ['SUPERVISOR', 'MANAGER', 'ADMIN', 'DEPARTMENT_ADMIN'] as const
+const QR_EXPORT_ROLES = ['ADMIN'] as const
+
+function useCanExportQr(): boolean {
+  const { role } = useAuth()
+  return QR_EXPORT_ROLES.includes(role as typeof QR_EXPORT_ROLES[number])
+}
+
 // ─── Image helpers ────────────────────────────────────────────────────────────
 
 interface MachineImageFile { fileName: string; fileUrl: string; fileType: string; fileSize: number }
@@ -112,8 +122,6 @@ function MachineImageCarousel({ paths, alt }: { paths: string[]; alt: string }) 
     </div>
   )
 }
-
-const EDITABLE_ROLES = ['SUPERVISOR', 'MANAGER', 'ADMIN', 'DEPARTMENT_ADMIN'] as const
 
 // ─── Machine Detail Drawer ────────────────────────────────────────────────────
 
@@ -208,7 +216,8 @@ function MachineDetailDrawer({ machine, onClose }: { machine: MachineDTO | null;
 // ─── MachineDepartmentDashboard ───────────────────────────────────────────────
 
 function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrDialog: () => void; exportingQr: boolean }) {
-  const { t } = useTranslation('checklist')
+  const { t }       = useTranslation('checklist')
+  const canExportQr = useCanExportQr()
 
   const [departmentData, setDepartmentData] = useState<DepartmentSummary[]>([])
   const [filteredData,   setFilteredData]   = useState<DepartmentSummary[]>([])
@@ -326,12 +335,14 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
             <Download className="w-3.5 h-3.5 mr-1.5" />
             {t('export')}
           </Button>
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onOpenQrDialog} disabled={exportingQr}>
-            {exportingQr
-              ? <div className="w-3.5 h-3.5 mr-1.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              : <QrCode className="w-3.5 h-3.5 mr-1.5" />}
-            {exportingQr ? t('generating') : t('export_qr')}
-          </Button>
+          {canExportQr && (
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onOpenQrDialog} disabled={exportingQr}>
+              {exportingQr
+                ? <div className="w-3.5 h-3.5 mr-1.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                : <QrCode className="w-3.5 h-3.5 mr-1.5" />}
+              {exportingQr ? t('generating') : t('export_qr')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -417,7 +428,8 @@ function MachineDepartmentDashboard({ onOpenQrDialog, exportingQr }: { onOpenQrD
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function DataTbl() {
-  const { t } = useTranslation('checklist')
+  const { t }       = useTranslation('checklist')
+  const canExportQr = useCanExportQr()
 
   const [showQrDialog,    setShowQrDialog]    = useState(false)
   const [exportingQr,     setExportingQr]     = useState(false)
@@ -426,6 +438,7 @@ function DataTbl() {
   const [selectedMachine, setSelectedMachine] = useState<MachineDTO | null>(null)
 
   const handleExportQr = async (mode: 'all' | 'selected') => {
+    if (!canExportQr) return
     try {
       setShowQrDialog(false); setExportingQr(true)
       toast.info(t('preparing_qr_codes'))
@@ -453,33 +466,35 @@ function DataTbl() {
       <main className="container mx-auto px-4 py-8">
         <MachineDepartmentDashboard onOpenQrDialog={() => setShowQrDialog(true)} exportingQr={exportingQr} />
 
-        <ShadcnDialog open={showQrDialog} onOpenChange={setShowQrDialog}>
-          <ShadcnDialogContent className="max-w-sm">
-            <ShadcnDialogHeader>
-              <ShadcnDialogTitle className="flex items-center gap-2"><QrCode className="w-5 h-5" />{t('export_qr_code')}</ShadcnDialogTitle>
-              <ShadcnDialogDescription>{t('select_export_format')}</ShadcnDialogDescription>
-            </ShadcnDialogHeader>
-            <div className="flex flex-col gap-3 py-2">
-              <Button variant="outline" className="justify-start h-14 px-4" onClick={() => handleExportQr('selected')} disabled={selectedIds.length === 0}>
-                <div className="flex flex-col items-start gap-0.5 w-full">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">{t('export_selected')}</span>
-                    {selectedIds.length > 0 && <span className="text-xs bg-primary text-primary-foreground rounded-full px-2 py-0.5 leading-none">{selectedIds.length}</span>}
+        {canExportQr && (
+          <ShadcnDialog open={showQrDialog} onOpenChange={setShowQrDialog}>
+            <ShadcnDialogContent className="max-w-sm">
+              <ShadcnDialogHeader>
+                <ShadcnDialogTitle className="flex items-center gap-2"><QrCode className="w-5 h-5" />{t('export_qr_code')}</ShadcnDialogTitle>
+                <ShadcnDialogDescription>{t('select_export_format')}</ShadcnDialogDescription>
+              </ShadcnDialogHeader>
+              <div className="flex flex-col gap-3 py-2">
+                <Button variant="outline" className="justify-start h-14 px-4" onClick={() => handleExportQr('selected')} disabled={selectedIds.length === 0}>
+                  <div className="flex flex-col items-start gap-0.5 w-full">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{t('export_selected')}</span>
+                      {selectedIds.length > 0 && <span className="text-xs bg-primary text-primary-foreground rounded-full px-2 py-0.5 leading-none">{selectedIds.length}</span>}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {selectedIds.length === 0 ? t('please_select_at_least_one') : t('export_selected_desc').replace('{count}', String(selectedIds.length))}
+                    </span>
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    {selectedIds.length === 0 ? t('please_select_at_least_one') : t('export_selected_desc').replace('{count}', String(selectedIds.length))}
-                  </span>
-                </div>
-              </Button>
-              <Button variant="outline" className="justify-start h-14 px-4" onClick={() => handleExportQr('all')}>
-                <div className="flex flex-col items-start gap-0.5">
-                  <span className="font-semibold">{t('export_all')}</span>
-                  <span className="text-xs text-muted-foreground">{t('export_all_desc')}</span>
-                </div>
-              </Button>
-            </div>
-          </ShadcnDialogContent>
-        </ShadcnDialog>
+                </Button>
+                <Button variant="outline" className="justify-start h-14 px-4" onClick={() => handleExportQr('all')}>
+                  <div className="flex flex-col items-start gap-0.5">
+                    <span className="font-semibold">{t('export_all')}</span>
+                    <span className="text-xs text-muted-foreground">{t('export_all_desc')}</span>
+                  </div>
+                </Button>
+              </div>
+            </ShadcnDialogContent>
+          </ShadcnDialog>
+        )}
 
         <MachineTbl
           onRowClick={(machine: MachineDTO) => setSelectedMachine(prev => prev?.id === machine.id ? null : machine)}
