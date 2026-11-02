@@ -491,5 +491,6 @@
   "register_rejected_notice": "This registration was rejected and will not proceed",
   "rejected_at": "Rejected at",
   "status_pass_iso17025": "Pass ISO 17025",
-  "status_pass_iso9001": "Pass ISO 9001"
+  "status_pass_iso9001": "Pass ISO 9001",
+  "nav_reviews": "Reviews"
 }

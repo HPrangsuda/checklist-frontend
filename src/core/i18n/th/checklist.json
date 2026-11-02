@@ -487,5 +487,6 @@
   "register_rejected_notice": "การลงทะเบียนนี้ถูกปฏิเสธ ไม่ต้องดำเนินการต่อ",
   "rejected_at": "วันที่ปฏิเสธ",
   "status_pass_iso17025": "ผ่าน ISO 17025",
-  "status_pass_iso9001": "ผ่าน ISO 9001"
+  "status_pass_iso9001": "ผ่าน ISO 9001",
+  "nav_reviews": "การตรวจสอบ"
 }

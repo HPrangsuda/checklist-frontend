@@ -35,6 +35,7 @@ import { Route as CrmContactsIndexRouteImport } from './routes/crm/contacts/inde
 import { Route as CrmCalenderIndexRouteImport } from './routes/crm/calender/index'
 import { Route as CrmActivitiesIndexRouteImport } from './routes/crm/activities/index'
 import { Route as ChecklistTypeIndexRouteImport } from './routes/checklist/type/index'
+import { Route as ChecklistReviewsIndexRouteImport } from './routes/checklist/reviews/index'
 import { Route as ChecklistRegisterIndexRouteImport } from './routes/checklist/register/index'
 import { Route as ChecklistRecordsIndexRouteImport } from './routes/checklist/records/index'
 import { Route as ChecklistQuestionIndexRouteImport } from './routes/checklist/question/index'
@@ -62,6 +63,7 @@ import { Route as CrmOpportunitiesViewRouteImport } from './routes/crm/opportuni
 import { Route as CrmOpportunitiesAddRouteImport } from './routes/crm/opportunities/add'
 import { Route as ChecklistTypeEditRouteImport } from './routes/checklist/type/edit'
 import { Route as ChecklistTypeAddRouteImport } from './routes/checklist/type/add'
+import { Route as ChecklistReviewsEditRouteImport } from './routes/checklist/reviews/edit'
 import { Route as ChecklistRegisterViewRouteImport } from './routes/checklist/register/view'
 import { Route as ChecklistRegisterAddRouteImport } from './routes/checklist/register/add'
 import { Route as ChecklistQuestionEditRouteImport } from './routes/checklist/question/edit'
@@ -213,6 +215,11 @@ const ChecklistTypeIndexRoute = ChecklistTypeIndexRouteImport.update({
   path: '/type/',
   getParentRoute: () => ChecklistRoute,
 } as any)
+const ChecklistReviewsIndexRoute = ChecklistReviewsIndexRouteImport.update({
+  id: '/reviews/',
+  path: '/reviews/',
+  getParentRoute: () => ChecklistRoute,
+} as any)
 const ChecklistRegisterIndexRoute = ChecklistRegisterIndexRouteImport.update({
   id: '/register/',
   path: '/register/',
@@ -350,6 +357,11 @@ const ChecklistTypeEditRoute = ChecklistTypeEditRouteImport.update({
 const ChecklistTypeAddRoute = ChecklistTypeAddRouteImport.update({
   id: '/type/add',
   path: '/type/add',
+  getParentRoute: () => ChecklistRoute,
+} as any)
+const ChecklistReviewsEditRoute = ChecklistReviewsEditRouteImport.update({
+  id: '/reviews/edit',
+  path: '/reviews/edit',
   getParentRoute: () => ChecklistRoute,
 } as any)
 const ChecklistRegisterViewRoute = ChecklistRegisterViewRouteImport.update({
@@ -495,6 +507,7 @@ export interface FileRoutesByFullPath {
   '/checklist/question/edit': typeof ChecklistQuestionEditRoute
   '/checklist/register/add': typeof ChecklistRegisterAddRoute
   '/checklist/register/view': typeof ChecklistRegisterViewRoute
+  '/checklist/reviews/edit': typeof ChecklistReviewsEditRoute
   '/checklist/type/add': typeof ChecklistTypeAddRoute
   '/checklist/type/edit': typeof ChecklistTypeEditRoute
   '/crm/opportunities/add': typeof CrmOpportunitiesAddRoute
@@ -522,6 +535,7 @@ export interface FileRoutesByFullPath {
   '/checklist/question': typeof ChecklistQuestionIndexRoute
   '/checklist/records': typeof ChecklistRecordsIndexRoute
   '/checklist/register': typeof ChecklistRegisterIndexRoute
+  '/checklist/reviews': typeof ChecklistReviewsIndexRoute
   '/checklist/type': typeof ChecklistTypeIndexRoute
   '/crm/activities': typeof CrmActivitiesIndexRoute
   '/crm/calender': typeof CrmCalenderIndexRoute
@@ -565,6 +579,7 @@ export interface FileRoutesByTo {
   '/checklist/question/edit': typeof ChecklistQuestionEditRoute
   '/checklist/register/add': typeof ChecklistRegisterAddRoute
   '/checklist/register/view': typeof ChecklistRegisterViewRoute
+  '/checklist/reviews/edit': typeof ChecklistReviewsEditRoute
   '/checklist/type/add': typeof ChecklistTypeAddRoute
   '/checklist/type/edit': typeof ChecklistTypeEditRoute
   '/crm/opportunities/add': typeof CrmOpportunitiesAddRoute
@@ -592,6 +607,7 @@ export interface FileRoutesByTo {
   '/checklist/question': typeof ChecklistQuestionIndexRoute
   '/checklist/records': typeof ChecklistRecordsIndexRoute
   '/checklist/register': typeof ChecklistRegisterIndexRoute
+  '/checklist/reviews': typeof ChecklistReviewsIndexRoute
   '/checklist/type': typeof ChecklistTypeIndexRoute
   '/crm/activities': typeof CrmActivitiesIndexRoute
   '/crm/calender': typeof CrmCalenderIndexRoute
@@ -641,6 +657,7 @@ export interface FileRoutesById {
   '/checklist/question/edit': typeof ChecklistQuestionEditRoute
   '/checklist/register/add': typeof ChecklistRegisterAddRoute
   '/checklist/register/view': typeof ChecklistRegisterViewRoute
+  '/checklist/reviews/edit': typeof ChecklistReviewsEditRoute
   '/checklist/type/add': typeof ChecklistTypeAddRoute
   '/checklist/type/edit': typeof ChecklistTypeEditRoute
   '/crm/opportunities/add': typeof CrmOpportunitiesAddRoute
@@ -668,6 +685,7 @@ export interface FileRoutesById {
   '/checklist/question/': typeof ChecklistQuestionIndexRoute
   '/checklist/records/': typeof ChecklistRecordsIndexRoute
   '/checklist/register/': typeof ChecklistRegisterIndexRoute
+  '/checklist/reviews/': typeof ChecklistReviewsIndexRoute
   '/checklist/type/': typeof ChecklistTypeIndexRoute
   '/crm/activities/': typeof CrmActivitiesIndexRoute
   '/crm/calender/': typeof CrmCalenderIndexRoute
@@ -718,6 +736,7 @@ export interface FileRouteTypes {
     | '/checklist/question/edit'
     | '/checklist/register/add'
     | '/checklist/register/view'
+    | '/checklist/reviews/edit'
     | '/checklist/type/add'
     | '/checklist/type/edit'
     | '/crm/opportunities/add'
@@ -745,6 +764,7 @@ export interface FileRouteTypes {
     | '/checklist/question'
     | '/checklist/records'
     | '/checklist/register'
+    | '/checklist/reviews'
     | '/checklist/type'
     | '/crm/activities'
     | '/crm/calender'
@@ -788,6 +808,7 @@ export interface FileRouteTypes {
     | '/checklist/question/edit'
     | '/checklist/register/add'
     | '/checklist/register/view'
+    | '/checklist/reviews/edit'
     | '/checklist/type/add'
     | '/checklist/type/edit'
     | '/crm/opportunities/add'
@@ -815,6 +836,7 @@ export interface FileRouteTypes {
     | '/checklist/question'
     | '/checklist/records'
     | '/checklist/register'
+    | '/checklist/reviews'
     | '/checklist/type'
     | '/crm/activities'
     | '/crm/calender'
@@ -863,6 +885,7 @@ export interface FileRouteTypes {
     | '/checklist/question/edit'
     | '/checklist/register/add'
     | '/checklist/register/view'
+    | '/checklist/reviews/edit'
     | '/checklist/type/add'
     | '/checklist/type/edit'
     | '/crm/opportunities/add'
@@ -890,6 +913,7 @@ export interface FileRouteTypes {
     | '/checklist/question/'
     | '/checklist/records/'
     | '/checklist/register/'
+    | '/checklist/reviews/'
     | '/checklist/type/'
     | '/crm/activities/'
     | '/crm/calender/'
@@ -1100,6 +1124,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChecklistTypeIndexRouteImport
       parentRoute: typeof ChecklistRoute
     }
+    '/checklist/reviews/': {
+      id: '/checklist/reviews/'
+      path: '/reviews'
+      fullPath: '/checklist/reviews'
+      preLoaderRoute: typeof ChecklistReviewsIndexRouteImport
+      parentRoute: typeof ChecklistRoute
+    }
     '/checklist/register/': {
       id: '/checklist/register/'
       path: '/register'
@@ -1287,6 +1318,13 @@ declare module '@tanstack/react-router' {
       path: '/type/add'
       fullPath: '/checklist/type/add'
       preLoaderRoute: typeof ChecklistTypeAddRouteImport
+      parentRoute: typeof ChecklistRoute
+    }
+    '/checklist/reviews/edit': {
+      id: '/checklist/reviews/edit'
+      path: '/reviews/edit'
+      fullPath: '/checklist/reviews/edit'
+      preLoaderRoute: typeof ChecklistReviewsEditRouteImport
       parentRoute: typeof ChecklistRoute
     }
     '/checklist/register/view': {
@@ -1500,6 +1538,7 @@ interface ChecklistRouteChildren {
   ChecklistQuestionEditRoute: typeof ChecklistQuestionEditRoute
   ChecklistRegisterAddRoute: typeof ChecklistRegisterAddRoute
   ChecklistRegisterViewRoute: typeof ChecklistRegisterViewRoute
+  ChecklistReviewsEditRoute: typeof ChecklistReviewsEditRoute
   ChecklistTypeAddRoute: typeof ChecklistTypeAddRoute
   ChecklistTypeEditRoute: typeof ChecklistTypeEditRoute
   ChecklistCalibrationIndexRoute: typeof ChecklistCalibrationIndexRoute
@@ -1512,6 +1551,7 @@ interface ChecklistRouteChildren {
   ChecklistQuestionIndexRoute: typeof ChecklistQuestionIndexRoute
   ChecklistRecordsIndexRoute: typeof ChecklistRecordsIndexRoute
   ChecklistRegisterIndexRoute: typeof ChecklistRegisterIndexRoute
+  ChecklistReviewsIndexRoute: typeof ChecklistReviewsIndexRoute
   ChecklistTypeIndexRoute: typeof ChecklistTypeIndexRoute
 }
 
@@ -1536,6 +1576,7 @@ const ChecklistRouteChildren: ChecklistRouteChildren = {
   ChecklistQuestionEditRoute: ChecklistQuestionEditRoute,
   ChecklistRegisterAddRoute: ChecklistRegisterAddRoute,
   ChecklistRegisterViewRoute: ChecklistRegisterViewRoute,
+  ChecklistReviewsEditRoute: ChecklistReviewsEditRoute,
   ChecklistTypeAddRoute: ChecklistTypeAddRoute,
   ChecklistTypeEditRoute: ChecklistTypeEditRoute,
   ChecklistCalibrationIndexRoute: ChecklistCalibrationIndexRoute,
@@ -1548,6 +1589,7 @@ const ChecklistRouteChildren: ChecklistRouteChildren = {
   ChecklistQuestionIndexRoute: ChecklistQuestionIndexRoute,
   ChecklistRecordsIndexRoute: ChecklistRecordsIndexRoute,
   ChecklistRegisterIndexRoute: ChecklistRegisterIndexRoute,
+  ChecklistReviewsIndexRoute: ChecklistReviewsIndexRoute,
   ChecklistTypeIndexRoute: ChecklistTypeIndexRoute,
 }
 

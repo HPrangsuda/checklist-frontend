@@ -2,7 +2,7 @@ import Template from '@/components/layout/template'
 import { useTranslation } from '@/core/contexts/language-context';
 import { useAuth } from '@/core/contexts/auth-context';
 import { createFileRoute, Outlet, useRouter, useRouterState } from '@tanstack/react-router'
-import { Home, ClipboardCheckIcon, Wrench, Drill, PencilRuler, FileQuestion, PenBox, GroupIcon, User } from "lucide-react";
+import { Home, ClipboardCheckIcon, Wrench, Drill, PencilRuler, FileQuestion, PenBox, GroupIcon, User, BedDoubleIcon, CheckCircle2 } from "lucide-react";
 
 export const Route = createFileRoute('/checklist')({
   component: ChecklistLayout,
@@ -34,6 +34,7 @@ function ChecklistLayout() {
         { title: t("nav_type"),      url: "/checklist/type",     icon: GroupIcon,    soon: false },
         { title: t("nav_questions"), url: "/checklist/question", icon: FileQuestion, soon: false },
         { title: t("nav_members"),   url: "/checklist/members",  icon: User,         soon: false },
+        { title: t("nav_reviews"),  url: "/checklist/reviews", icon: CheckCircle2,       soon: false },
       ]
     }] : []),
   ];

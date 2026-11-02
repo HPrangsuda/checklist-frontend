@@ -13,7 +13,7 @@ import { useTranslation } from '@/core/contexts/language-context'
 import { toast } from 'sonner'
 import { MaintenanceTbl } from '@/module/checklist/maintenance/history-table'
 
-export const Route = createFileRoute('/checklist/maintenance/view')({
+export const Route = createFileRoute('/checklist/machine/view')({
   component: MaintenanceView,
   validateSearch: (search: Record<string, unknown>) => ({
     id: Number(search.id) || 0,
