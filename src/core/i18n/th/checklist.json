@@ -489,7 +489,6 @@
   "status_pass_iso17025": "ผ่าน ISO 17025",
   "status_pass_iso9001": "ผ่าน ISO 9001",
   "nav_reviews": "การตรวจสอบ",
-  {
   "refresh": "รีเฟรช",
   "reviewer": "ผู้ตรวจสอบ",
   "total_items": "ทั้งหมด {count} รายการ",
