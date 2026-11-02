@@ -1,4 +1,5 @@
 import { api } from '@/core/interceptor/api.interceptor'
+import { useTranslation } from '@/core/contexts/language-context'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
@@ -45,6 +46,15 @@ interface ChecklistRow {
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
 const API_BASE   = import.meta.env.VITE_API_URL ?? ''
+
+const MAINTENANCE_PERIOD_KEYS: Record<string, string> = {
+  '6 MONTH': 'maintenance_6_month',
+  '3 MONTH': 'maintenance_3_month',
+}
+
+/** แทนค่า {key} ในข้อความแปล */
+const fmt = (text: string, vars: Record<string, string | number>) =>
+  Object.entries(vars).reduce((s, [k, v]) => s.split(`{${k}}`).join(String(v)), text)
 
 function toDateString(val: unknown): string {
   if (!val) return ''
@@ -118,6 +128,8 @@ function AuthImage({ src, alt, className }: { src: string; alt: string; classNam
 }
 
 function FileList({ label, files }: { label: string; files: FileEntry[] }) {
+  const { t } = useTranslation('checklist')
+
   const open = async (f: FileEntry) => {
     try {
       const res = await api.getInstance().get(toFileUrl(f.fileUrl || f.fileName), { responseType: 'blob' })
@@ -125,7 +137,7 @@ function FileList({ label, files }: { label: string; files: FileEntry[] }) {
       window.open(url, '_blank')
       setTimeout(() => URL.revokeObjectURL(url), 10_000)
     } catch {
-      toast.error('โหลดไฟล์ไม่สำเร็จ')
+      toast.error(t('review_file_load_failed'))
     }
   }
 
@@ -190,19 +202,23 @@ function SectionCard({ icon, title, subtitle, children }: {
 }
 
 function ChecklistTable({ items, loading }: { items: ChecklistRow[]; loading: boolean }) {
-  if (loading) return <div className="text-sm text-muted-foreground py-6 text-center">กำลังโหลด...</div>
+  const { t } = useTranslation('checklist')
+
+  if (loading) return <div className="text-sm text-muted-foreground py-6 text-center">{t('loading')}</div>
   if (items.length === 0)
-    return <div className="text-sm text-muted-foreground py-6 text-center border border-dashed rounded-lg">ยังไม่มีคำถามในรายการ</div>
+    return <div className="text-sm text-muted-foreground py-6 text-center border border-dashed rounded-lg">{t('no_checklist_items')}</div>
+
+  const th = 'text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground'
 
   return (
     <div className="rounded-md border overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-muted/50 border-b">
           <tr>
-            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Detail</th>
-            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground w-[26%]">Description</th>
-            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground w-[14%]">Reset Time</th>
-            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground w-[10%]">Type</th>
+            <th className={th}>{t('question_detail')}</th>
+            <th className={`${th} w-[26%]`}>{t('question_description')}</th>
+            <th className={`${th} w-[14%] whitespace-nowrap`}>{t('review_reset_time')}</th>
+            <th className={`${th} w-[10%]`}>{t('review_type')}</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -215,7 +231,7 @@ function ChecklistTable({ items, loading }: { items: ChecklistRow[]; loading: bo
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                   item.isChoice ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'
                 }`}>
-                  {item.isChoice ? 'Choice' : 'Text'}
+                  {item.isChoice ? t('review_type_choice') : t('review_type_text')}
                 </span>
               </td>
             </tr>
@@ -229,9 +245,10 @@ function ChecklistTable({ items, loading }: { items: ChecklistRow[]; loading: bo
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 function ReviewEdit() {
-  const navigate         = useNavigate()
+  const { t }              = useTranslation('checklist')
+  const navigate           = useNavigate()
   const { machineData: m } = Route.useLoaderData()
-  const { id }           = Route.useSearch()
+  const { id }             = Route.useSearch()
 
   const [checklists,       setChecklists]       = useState<ChecklistRow[]>([])
   const [maintChecklists,  setMaintChecklists]  = useState<ChecklistRow[]>([])
@@ -247,9 +264,9 @@ function ReviewEdit() {
       api.getInstance().get<any>('/api/maintenance-checklist/by-machine', { params }),
     ]).then(([c, mc]) => {
       if (c.status === 'fulfilled') setChecklists((c.value.data?.data ?? []).map(toChecklistRow))
-      else toast.error('โหลด checklist ไม่สำเร็จ')
+      else toast.error(t('review_checklist_load_failed'))
       if (mc.status === 'fulfilled') setMaintChecklists((Array.isArray(mc.value.data) ? mc.value.data : []).map(toChecklistRow))
-      else toast.error('โหลด maintenance checklist ไม่สำเร็จ')
+      else toast.error(t('review_maint_checklist_load_failed'))
     }).finally(() => setChecklistLoading(false))
   }, [m?.machineCode])
 
@@ -257,9 +274,9 @@ function ReviewEdit() {
     return (
       <main className="container mx-auto px-4 py-8">
         <Card className="p-10 text-center space-y-4">
-          <p className="text-sm text-muted-foreground">ไม่พบข้อมูลเครื่องจักร</p>
+          <p className="text-sm text-muted-foreground">{t('machine_not_found')}</p>
           <Button variant="outline" size="sm" onClick={() => navigate({ to: '/checklist/reviews' })}>
-            กลับไปหน้ารายการสุ่มตรวจ
+            {t('back_to_list')}
           </Button>
         </Card>
       </main>
@@ -273,81 +290,91 @@ function ReviewEdit() {
   const cal          = calRecords.find((c: any) => !c.isCanceled) ?? calRecords[0] ?? null
   const reviewedThisYear = toDateString(m.lastReview).startsWith(String(new Date().getFullYear()))
 
+  const periodKey   = MAINTENANCE_PERIOD_KEYS[m.maintenancePeriod as string]
+  const periodLabel = periodKey ? t(periodKey) : m.maintenancePeriod
+
+  const lastReviewText = [
+    fmt(t('review_last_reviewed'), { date: formatDate(m.lastReview) }),
+    m.reviewByName ? fmt(t('review_by_name'), { name: m.reviewByName }) : '',
+  ].filter(Boolean).join(' ')
+
   const handleReview = async () => {
     setSubmitting(true)
     try {
       const res = await api.post<any>(`/api/machine/${id}/review`)
       if (res?.success === false) throw new Error(res?.message)
-      toast.success('บันทึกการตรวจสอบแล้ว')
+      toast.success(t('review_marked'))
       setTimeout(() => navigate({ to: '/checklist/reviews' }), 800)
     } catch (e: any) {
-      toast.error('บันทึกการตรวจสอบไม่สำเร็จ', { description: e?.response?.data?.message || e?.message })
+      toast.error(t('review_mark_failed'), { description: e?.response?.data?.message || e?.message })
       setSubmitting(false)
     }
   }
+
+  const maintHeaders = [
+    t('round'), t('years'), t('due_date'), t('plan_date'), t('actual_date'), t('review_status'), t('maintenance_by'),
+  ]
 
   return (
     <div className="min-h-screen bg-background">
       <main className="container mx-auto px-4 py-8 space-y-6 max-w-5xl">
 
         {/* ── Header ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-start gap-3 min-w-0">
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="กลับ"
-              onClick={() => navigate({ to: '/checklist/reviews' })}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold leading-tight">{m.machineCode}</h1>
-              <p className="text-sm text-muted-foreground truncate">{m.machineName}</p>
-              <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
-                {reviewedThisYear
-                  ? <Badge className="bg-emerald-100 text-emerald-700">ตรวจสอบแล้วปีนี้</Badge>
-                  : <Badge className="bg-amber-100 text-amber-700">ยังไม่ตรวจสอบปีนี้</Badge>}
-                <span className="text-muted-foreground">
-                  ล่าสุด {formatDate(m.lastReview)} {m.reviewByName ? `โดย ${m.reviewByName}` : ''}
-                </span>
-              </div>
+        <div className="flex items-start gap-3 min-w-0">
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={t('back_to_list')}
+            onClick={() => navigate({ to: '/checklist/reviews' })}>
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold leading-tight">{m.machineCode}</h1>
+            <p className="text-sm text-muted-foreground truncate">{m.machineName}</p>
+            <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+              {reviewedThisYear
+                ? <Badge className="bg-emerald-100 text-emerald-700">{t('review_reviewed_this_year')}</Badge>
+                : <Badge className="bg-amber-100 text-amber-700">{t('review_not_reviewed_this_year')}</Badge>}
+              <span className="text-muted-foreground">{lastReviewText}</span>
             </div>
           </div>
         </div>
 
         {/* ── Card 1: ข้อมูลทั่วไป ── */}
-        <SectionCard icon={<Info className="w-4 h-4 text-red-600" />} title="ข้อมูลทั่วไป">
+        <SectionCard icon={<Info className="w-4 h-4 text-red-600" />} title={t('basic_information')}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
-            <Field label="ชื่อเครื่อง">{m.machineName}</Field>
-            <Field label="รหัสเครื่อง">{m.machineCode}</Field>
-            <Field label="Serial number">{m.serialNumber}</Field>
-            <Field label="ยี่ห้อ">{m.brand}</Field>
-            <Field label="รุ่น">{m.model}</Field>
-            <Field label="เครื่องใหม่">{m.isNew === true ? 'ใช่' : m.isNew === false ? 'ไม่ใช่' : null}</Field>
-            <Field label="กลุ่มเครื่อง">{m.machineGroupName}</Field>
-            <Field label="ประเภทเครื่อง">{m.machineTypeName}</Field>
-            <Field label="แผนก">{m.departmentName || m.department}</Field>
-            <Field label="ผู้รับผิดชอบ">{m.responsiblePersonName}</Field>
-            <Field label="หัวหน้างาน">{m.supervisorName}</Field>
-            <Field label="ผู้จัดการ">{m.managerName}</Field>
-            <Field label="สถานะเครื่อง">
+            <Field label={t('name')}>{m.machineName}</Field>
+            <Field label={t('machine_code')}>{m.machineCode}</Field>
+            <Field label={t('serial_number')}>{m.serialNumber}</Field>
+            <Field label={t('brand')}>{m.brand}</Field>
+            <Field label={t('model')}>{m.model}</Field>
+            <Field label={t('is_new')}>
+              {m.isNew === true ? t('is_new_yes') : m.isNew === false ? t('is_new_no') : null}
+            </Field>
+            <Field label={t('machine_group')}>{m.machineGroupName}</Field>
+            <Field label={t('machine_type')}>{m.machineTypeName}</Field>
+            <Field label={t('department')}>{m.departmentName || m.department}</Field>
+            <Field label={t('responsible')}>{m.responsiblePersonName}</Field>
+            <Field label={t('supervisor')}>{m.supervisorName}</Field>
+            <Field label={t('manager')}>{m.managerName}</Field>
+            <Field label={t('machine_status')}>
               {m.machineStatus && <Badge className={getStatusColor(m.machineStatus)}>{m.machineStatus}</Badge>}
             </Field>
-            <Field label="สถานะการเช็ค">
+            <Field label={t('check_status')}>
               {m.checkStatus && <Badge className={getStatusColor(m.checkStatus)}>{m.checkStatus}</Badge>}
             </Field>
-            <Field label="Reset period">{m.resetPeriod}</Field>
-            {m.reasonCancel && <Field label="เหตุผลที่ยกเลิก" wide>{m.reasonCancel}</Field>}
-            <Field label="หมายเหตุ" wide>{m.note}</Field>
+            <Field label={t('reset_period')}>{m.resetPeriod}</Field>
+            {m.reasonCancel && <Field label={t('reason_cancel')} wide>{m.reasonCancel}</Field>}
+            <Field label={t('note')} wide>{m.note}</Field>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 pt-5 border-t">
-            <FileList label="รูปภาพ" files={images} />
-            <FileList label="Work instruction" files={instructions} />
+            <FileList label={t('images')} files={images} />
+            <FileList label={t('work_instructions')} files={instructions} />
           </div>
         </SectionCard>
 
         {/* ── Card 2: Checklist ── */}
         <SectionCard
           icon={<ClipboardList className="w-4 h-4 text-blue-600" />}
-          title="Checklist"
-          subtitle={checklistLoading ? undefined : `${checklists.length} คำถาม`}
+          title={t('review_checklist')}
+          subtitle={checklistLoading ? undefined : fmt(t('review_question_count'), { count: checklists.length })}
         >
           <ChecklistTable items={checklists} loading={checklistLoading} />
         </SectionCard>
@@ -355,18 +382,22 @@ function ReviewEdit() {
         {/* ── Card 3: Maintenance ── */}
         <SectionCard
           icon={<Wrench className="w-4 h-4 text-amber-600" />}
-          title="Maintenance"
-          subtitle={m.maintenancePeriod ? `รอบการบำรุงรักษา ${m.maintenancePeriod}` : 'ยังไม่ได้กำหนดรอบการบำรุงรักษา'}
+          title={t('maintenance')}
+          subtitle={periodLabel
+            ? fmt(t('review_maintenance_period'), { period: periodLabel })
+            : t('review_no_maintenance_period')}
         >
           <div className="space-y-5">
             {maintRecords.length === 0 ? (
-              <div className="text-sm text-muted-foreground py-6 text-center border border-dashed rounded-lg">ยังไม่มีแผนบำรุงรักษา</div>
+              <div className="text-sm text-muted-foreground py-6 text-center border border-dashed rounded-lg">
+                {t('review_no_maintenance_plan')}
+              </div>
             ) : (
               <div className="rounded-md border overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 border-b">
                     <tr>
-                      {['รอบ', 'ปี', 'กำหนด', 'วันที่วางแผน', 'วันที่ทำจริง', 'สถานะ', 'ผู้ดำเนินการ'].map(h => (
+                      {maintHeaders.map(h => (
                         <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -379,7 +410,7 @@ function ReviewEdit() {
                         <td className="px-4 py-2.5 whitespace-nowrap">{formatDate(r.dueDate)}</td>
                         <td className="px-4 py-2.5 whitespace-nowrap">{formatDate(r.planDate)}</td>
                         <td className="px-4 py-2.5 whitespace-nowrap">{formatDate(r.actualDate)}</td>
-                        <td className="px-4 py-2.5 whitespace-nowrap">{r.isCanceled ? 'ยกเลิก' : (r.status ?? '-')}</td>
+                        <td className="px-4 py-2.5 whitespace-nowrap">{r.isCanceled ? t('canceled') : (r.status ?? '-')}</td>
                         <td className="px-4 py-2.5">{r.maintenanceBy ?? '-'}</td>
                       </tr>
                     ))}
@@ -388,7 +419,7 @@ function ReviewEdit() {
               </div>
             )}
             <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Maintenance checklist</p>
+              <p className="text-xs font-medium text-muted-foreground">{t('review_maintenance_checklist')}</p>
               <ChecklistTable items={maintChecklists} loading={checklistLoading} />
             </div>
           </div>
@@ -397,26 +428,28 @@ function ReviewEdit() {
         {/* ── Card 4: Calibration ── */}
         <SectionCard
           icon={<Gauge className="w-4 h-4 text-violet-600" />}
-          title="Calibration"
-          subtitle={calRecords.length ? `ประวัติทั้งหมด ${calRecords.length} รายการ แสดงรายการล่าสุด` : undefined}
+          title={t('calibration')}
+          subtitle={calRecords.length ? fmt(t('review_calibration_history'), { count: calRecords.length }) : undefined}
         >
           {!cal ? (
-            <div className="text-sm text-muted-foreground py-6 text-center border border-dashed rounded-lg">ยังไม่มีข้อมูลสอบเทียบ</div>
+            <div className="text-sm text-muted-foreground py-6 text-center border border-dashed rounded-lg">
+              {t('review_no_calibration')}
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
-              <Field label="วันครบกำหนด">{formatDate(pick(cal, 'calibrationDueDate', 'dueDate'))}</Field>
-              <Field label="วันที่ออกใบรับรอง">{formatDate(cal.certificateDate)}</Field>
-              <Field label="ผลการสอบเทียบ">{pick(cal, 'result', 'results')}</Field>
-              <Field label="สถานะ">{pick(cal, 'calibrationStatus', 'status')}</Field>
-              <Field label="ผู้สอบเทียบ">{cal.calibrationBy}</Field>
-              <Field label="ช่วงการวัด">{pick(cal, 'measurementRange', 'measuringRange')}</Field>
-              <Field label="ช่วงสอบเทียบ">{cal.calibrationRange}</Field>
-              <Field label="MPE">{cal.mpe}</Field>
-              <Field label="Resolution">{cal.resolution}</Field>
-              <Field label="มาตรฐานอ้างอิง">{cal.referStandard}</Field>
-              <Field label="เกณฑ์">{cal.criteria}</Field>
-              <Field label="ความแม่นยำ">{cal.accuracy}</Field>
-              <Field label="หมายเหตุ" wide>{cal.remark}</Field>
+              <Field label={t('calibration_due_date')}>{formatDate(pick(cal, 'calibrationDueDate', 'dueDate'))}</Field>
+              <Field label={t('certificate_date')}>{formatDate(cal.certificateDate)}</Field>
+              <Field label={t('result')}>{pick(cal, 'result', 'results')}</Field>
+              <Field label={t('calibration_status')}>{pick(cal, 'calibrationStatus', 'status')}</Field>
+              <Field label={t('calibration_by')}>{cal.calibrationBy}</Field>
+              <Field label={t('measurement_range')}>{pick(cal, 'measurementRange', 'measuringRange')}</Field>
+              <Field label={t('calibration_range')}>{cal.calibrationRange}</Field>
+              <Field label={t('mpe')}>{cal.mpe}</Field>
+              <Field label={t('resolution')}>{cal.resolution}</Field>
+              <Field label={t('refer_standard')}>{cal.referStandard}</Field>
+              <Field label={t('criteria')}>{cal.criteria}</Field>
+              <Field label={t('accuracy')}>{cal.accuracy}</Field>
+              <Field label={t('remark')} wide>{cal.remark}</Field>
             </div>
           )}
         </SectionCard>
@@ -428,7 +461,7 @@ function ReviewEdit() {
               {submitting
                 ? <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
                 : <CheckCircle2 className="w-4 h-4 mr-2" />}
-              ตรวจสอบแล้ว
+              {t('review_mark_reviewed')}
             </Button>
           </div>
         )}

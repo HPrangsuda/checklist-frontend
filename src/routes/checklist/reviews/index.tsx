@@ -1,4 +1,5 @@
 import { api } from '@/core/interceptor/api.interceptor'
+import { useTranslation } from '@/core/contexts/language-context'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -47,10 +48,14 @@ interface ReviewPage {
 
 const PAGE_SIZES = [10, 20, 50, 100]
 
-const THAI_MONTHS = [
-  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
+const MONTH_KEYS = [
+  'january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december',
 ]
+
+/** แทนค่า {key} ในข้อความแปล */
+const fmt = (text: string, vars: Record<string, string | number>) =>
+  Object.entries(vars).reduce((s, [k, v]) => s.split(`{${k}}`).join(String(v)), text)
 
 function formatDate(val: unknown): string {
   if (!val) return '-'
@@ -65,6 +70,7 @@ function formatDate(val: unknown): string {
 // ─── Paged data hook ──────────────────────────────────────────────────────────
 
 function usePagedReview(url: string) {
+  const { t } = useTranslation('checklist')
   const [index,   setIndex]   = useState(0)
   const [size,    setSizeRaw] = useState(10)
   const [page,    setPage]    = useState<ReviewPage | null>(null)
@@ -76,14 +82,14 @@ function usePagedReview(url: string) {
       const res = await api.get<any>(url, { params: { index, size } })
       if (res?.success === false) throw new Error(res?.message)
       const data: ReviewPage | null = res?.data ?? null
-      // หน้าปัจจุบันหายไปหลังมีการตรวจ (เช่น อยู่หน้าสุดท้ายแล้วรายการลดลง) → ถอยกลับหน้าสุดท้ายที่มีข้อมูล
+      // หน้าปัจจุบันหายไปหลังมีการตรวจ → ถอยกลับหน้าสุดท้ายที่มีข้อมูล
       if (data && data.totalPages > 0 && index >= data.totalPages) {
         setIndex(data.totalPages - 1)
         return
       }
       setPage(data)
     } catch {
-      toast.error('โหลดรายการไม่สำเร็จ')
+      toast.error(t('review_list_load_failed'))
     } finally {
       setLoading(false)
     }
@@ -122,6 +128,7 @@ function Pagination({
   onIndexChange: (index: number) => void
   onSizeChange:  (size: number) => void
 }) {
+  const { t } = useTranslation('checklist')
   const totalPages = Math.max(1, Math.ceil(total / size))
   const [goTo, setGoTo] = useState(String(index + 1))
 
@@ -144,32 +151,32 @@ function Pagination({
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2 pt-4">
-      <span className="text-xs text-muted-foreground mr-auto">ทั้งหมด {total} รายการ</span>
+      <span className="text-xs text-muted-foreground mr-auto">{fmt(t('total_items'), { count: total })}</span>
 
-      <button type="button" className={navBtn} onClick={() => go(0)} disabled={isFirst} aria-label="หน้าแรก">
+      <button type="button" className={navBtn} onClick={() => go(0)} disabled={isFirst} aria-label={t('page_first')}>
         <ChevronsLeft className="h-4 w-4" />
       </button>
-      <button type="button" className={navBtn} onClick={() => go(index - 1)} disabled={isFirst} aria-label="หน้าก่อนหน้า">
+      <button type="button" className={navBtn} onClick={() => go(index - 1)} disabled={isFirst} aria-label={t('page_prev')}>
         <ChevronLeft className="h-4 w-4" />
       </button>
-      <button type="button" className={navBtn} onClick={() => go(index + 1)} disabled={isLast} aria-label="หน้าถัดไป">
+      <button type="button" className={navBtn} onClick={() => go(index + 1)} disabled={isLast} aria-label={t('page_next')}>
         <ChevronRight className="h-4 w-4" />
       </button>
-      <button type="button" className={navBtn} onClick={() => go(totalPages - 1)} disabled={isLast} aria-label="หน้าสุดท้าย">
+      <button type="button" className={navBtn} onClick={() => go(totalPages - 1)} disabled={isLast} aria-label={t('page_last')}>
         <ChevronsRight className="h-4 w-4" />
       </button>
 
       <select
         value={size}
         onChange={e => onSizeChange(Number(e.target.value))}
-        aria-label="จำนวนต่อหน้า"
+        aria-label={t('page_size')}
         className="h-9 rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
-        {PAGE_SIZES.map(s => <option key={s} value={s}>{s} / page</option>)}
+        {PAGE_SIZES.map(s => <option key={s} value={s}>{s} {t('page_size_suffix')}</option>)}
       </select>
 
       <label className="flex items-center gap-2 text-sm">
-        Go to
+        {t('go_to')}
         <input
           type="number"
           min={1}
@@ -194,6 +201,8 @@ function ReviewTable({
   startNo:   number
   onOpen:    (id: number) => void
 }) {
+  const { t } = useTranslation('checklist')
+
   if (!loading && items.length === 0)
     return (
       <div className="text-sm text-muted-foreground py-10 text-center border border-dashed rounded-lg">
@@ -201,22 +210,24 @@ function ReviewTable({
       </div>
     )
 
+  const th = 'text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap'
+
   return (
     <div className={`rounded-md border overflow-x-auto transition-opacity ${loading ? 'opacity-50' : ''}`}>
       <table className="w-full text-sm">
         <thead className="bg-muted/50 border-b">
           <tr>
-            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground w-12">#</th>
-            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">รหัสเครื่อง</th>
-            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">ชื่อเครื่อง</th>
-            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">ตรวจสอบล่าสุด</th>
-            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">ผู้ตรวจสอบ</th>
+            <th className={`${th} w-12`}>#</th>
+            <th className={th}>{t('machine_code')}</th>
+            <th className={th}>{t('machine_name')}</th>
+            <th className={th}>{t('last_review')}</th>
+            <th className={th}>{t('reviewer')}</th>
             <th className="w-8" />
           </tr>
         </thead>
         <tbody className="divide-y">
           {items.length === 0 && loading ? (
-            <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">กำลังโหลด...</td></tr>
+            <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">{t('loading')}</td></tr>
           ) : items.map((item, i) => (
             <tr
               key={item.id}
@@ -242,6 +253,7 @@ function ReviewTable({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 function ReviewIndex() {
+  const { t }    = useTranslation('checklist')
   const navigate = useNavigate()
 
   const [summary,        setSummary]        = useState<ReviewSummary | null>(null)
@@ -257,7 +269,7 @@ function ReviewIndex() {
       if (res?.success === false) throw new Error(res?.message)
       setSummary(res?.data ?? null)
     } catch {
-      toast.error('โหลดข้อมูลสรุปไม่สำเร็จ')
+      toast.error(t('review_summary_load_failed'))
     } finally {
       setSummaryLoading(false)
     }
@@ -265,26 +277,23 @@ function ReviewIndex() {
 
   useEffect(() => { fetchSummary() }, [])
 
-  const refreshAll = () => { fetchSummary(); pending.reload(); reviewed.reload() }
-
+  const refreshAll  = () => { fetchSummary(); pending.reload(); reviewed.reload() }
   const openMachine = (id: number) => navigate({ to: '/checklist/reviews/edit', search: { id } })
 
   const anyLoading = summaryLoading || pending.loading || reviewed.loading
-  const monthLabel = summary ? `${THAI_MONTHS[summary.month - 1]} ${summary.year}` : ''
+  const monthLabel = summary ? `${t(MONTH_KEYS[summary.month - 1])} ${summary.year}` : ''
 
   return (
     <div className="min-h-screen bg-background">
       <main className="container mx-auto px-4 py-8 space-y-6">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-lg font-bold">สุ่มตรวจสอบเครื่องจักร</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              ทุกเครื่องที่ใช้งานอยู่ต้องถูกตรวจสอบอย่างน้อยปีละครั้ง ระบบแบ่งงานให้เท่า ๆ กันในแต่ละเดือน
-            </p>
+            <h1 className="text-lg font-bold">{t('review_title')}</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">{t('review_subtitle')}</p>
           </div>
           <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={refreshAll} disabled={anyLoading}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${anyLoading ? 'animate-spin' : ''}`} />
-            รีเฟรช
+            {t('refresh')}
           </Button>
         </div>
 
@@ -296,11 +305,11 @@ function ReviewIndex() {
                 <Shuffle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold">รอตรวจสอบเดือน{monthLabel}</h2>
+                <h2 className="text-sm font-semibold">{fmt(t('review_pending_title'), { month: monthLabel })}</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {summary
-                    ? `เป้าหมายเดือนนี้ ${summary.quota} เครื่อง เหลือ ${summary.pendingCount} เครื่อง`
-                    : 'กำลังโหลด...'}
+                    ? fmt(t('review_pending_desc'), { quota: summary.quota, pending: summary.pendingCount })
+                    : t('loading')}
                 </p>
               </div>
             </div>
@@ -310,7 +319,7 @@ function ReviewIndex() {
             <ReviewTable
               items={pending.page?.items ?? []}
               loading={pending.loading}
-              emptyText="ตรวจครบตามเป้าหมายของเดือนนี้แล้ว"
+              emptyText={t('review_pending_empty')}
               startNo={pending.index * pending.size + 1}
               onOpen={openMachine}
             />
@@ -323,7 +332,7 @@ function ReviewIndex() {
             />
             {summary && (
               <p className="text-xs text-muted-foreground mt-3">
-                เป้าหมาย = เครื่องที่ยังไม่ถูกตรวจในปีนี้ ณ ต้นเดือน ({summary.poolAtMonthStart}) ÷ เดือนที่เหลือ ({summary.remainingMonths}) ปัดขึ้น
+                {fmt(t('review_quota_formula'), { pool: summary.poolAtMonthStart, months: summary.remainingMonths })}
               </p>
             )}
           </div>
@@ -337,11 +346,13 @@ function ReviewIndex() {
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold">ตรวจสอบแล้วปี {summary?.year ?? new Date().getFullYear()}</h2>
+                <h2 className="text-sm font-semibold">
+                  {fmt(t('review_reviewed_title'), { year: summary?.year ?? new Date().getFullYear() })}
+                </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {summary
-                    ? `ตรวจแล้ว ${summary.reviewedThisYear} จาก ${summary.totalActive} เครื่อง`
-                    : 'กำลังโหลด...'}
+                    ? fmt(t('review_reviewed_desc'), { reviewed: summary.reviewedThisYear, total: summary.totalActive })
+                    : t('loading')}
                 </p>
               </div>
             </div>
@@ -351,7 +362,7 @@ function ReviewIndex() {
             <ReviewTable
               items={reviewed.page?.items ?? []}
               loading={reviewed.loading}
-              emptyText="ยังไม่มีเครื่องที่ตรวจสอบในปีนี้"
+              emptyText={t('review_reviewed_empty')}
               startNo={reviewed.index * reviewed.size + 1}
               onOpen={openMachine}
             />
