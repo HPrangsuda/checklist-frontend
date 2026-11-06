@@ -109,6 +109,16 @@ const formatDate = (date?: string | null) => {
   return d.toLocaleDateString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
+/** สี badge หมวดอุปกรณ์ — โทนเดียวกับ getStatusColor */
+const getEquipmentCategoryColor = (category?: string | null): string => {
+  switch ((category ?? '').toUpperCase()) {
+    case 'MEASURING_INSTRUMENT': return 'bg-indigo-100 text-indigo-600 dark:text-indigo-100'
+    case 'MACHINE':              return 'bg-sky-100 text-sky-600 dark:text-sky-100'
+    case 'TOOL':                 return 'bg-amber-100 text-amber-600 dark:text-amber-100'
+    default:                     return 'bg-cyan-100 text-cyan-600 dark:text-cyan-100'
+  }
+}
+
 const memberName = (m?: AuditMember | null) =>
   m ? [m.firstName, m.lastName].filter(Boolean).join(' ') || '-' : '-'
 
@@ -391,7 +401,9 @@ function MachineView() {
                 <InfoRow label={tt('machine_type', 'ประเภทเครื่องจักร')} value={machine.machineTypeName} />
                 <InfoRow label={tt('equipment_category', 'หมวดอุปกรณ์')}
                   value={machine.equipmentCategory
-                    ? <Badge variant="outline">{tt(`equipment_category_${machine.equipmentCategory}`, machine.equipmentCategory)}</Badge>
+                    ? <Badge className={getEquipmentCategoryColor(machine.equipmentCategory)}>
+                        {tt(`equipment_category_${machine.equipmentCategory}`, machine.equipmentCategory.replace(/_/g, ' '))}
+                      </Badge>
                     : null} />
                 <InfoRow label={tt('machine_number', 'หมายเลขเครื่อง')}  value={machine.machineNumber} />
                 <InfoRow label={tt('serial_number', 'หมายเลขซีเรียล')}   value={machine.serialNumber} />
