@@ -8,7 +8,7 @@ import { ServerSingleSelect } from '@/components/select/server-single-select'
 import { useTranslation } from '@/core/contexts/language-context'
 import { api } from '@/core/interceptor/api.interceptor'
 import type { ListResponse, MemberListDTO } from '@/core/types/common'
-import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, Download, FileText, InfoIcon, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -40,11 +40,27 @@ interface ApiResponse<T = unknown> {
 }
 interface CreateMachineResult { id: number; machineCode: string }
 
+interface MachineTypeOption {
+  label:              string
+  value:              string
+  id:                 string
+  groupId:            string
+  isMaintenance:      boolean
+  isCalibration:      boolean
+  equipmentCategory:  string | null
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const IMAGE_EXTS    = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
 const API_BASE      = import.meta.env.VITE_API_URL ?? ''
 const SUCCESS_CODES = new Set(['MS001', 'MS003', 'MS017', 'MS031', 'MS040'])
+
+const GENERAL_FIELDS = ['name', 'machineStatus', 'department', 'machineType', 'machineGroup', 'machineCode', 'resetPeriod', 'responsible', 'hasWarranty', 'warrantyNote', 'isNew']
+const MAINT_FIELDS   = ['maintenancePeriod', 'maintenance1', 'maintenance2', 'maintenance3', 'maintenance4']
+const CAL_FIELDS     = ['calibrationDueDate']
+
+const maintenanceRounds = (p: string) => p === '3 MONTH' ? 4 : p === '6 MONTH' ? 2 : 0
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,6 +71,14 @@ function ReadOnlyField({ label, value }: { label: string; value?: string | null 
       <div className="w-full border border-border rounded-lg px-3 py-2.5 bg-muted/40 text-sm text-muted-foreground min-h-[40px]">
         {value || '-'}
       </div>
+    </div>
+  )
+}
+
+function RequiredBanner({ text }: { text: string }) {
+  return (
+    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
+      <InfoIcon className="inline w-4 h-4 mr-2" />{text}
     </div>
   )
 }
@@ -319,8 +343,11 @@ function FilePreviewGrid({ files, onDelete }: { files: FileEntry[]; onDelete: (f
 
 function RouteComponent({ data }: any) {
   const navigate  = useNavigate()
-  const { refId } = useSearch({ from: '/checklist/machine/add' })
+  const { refId } = Route.useSearch()
   const { t }     = useTranslation('checklist')
+
+  // ใช้ข้อความสำรองถ้ายังไม่มี key แปลภาษา
+  const tt = (key: string, fallback: string) => { const v = t(key); return v && v !== key ? v : fallback }
 
   const [isSubmitting,     setIsSubmitting]     = useState(false)
   const [currentStep,      setCurrentStep]      = useState('general')
@@ -328,7 +355,7 @@ function RouteComponent({ data }: any) {
   const [isLoadingRefData, setIsLoadingRefData] = useState(false)
 
   const [cachedMachineGroups, setCachedMachineGroups] = useState<any[]>([])
-  const [cachedMachineTypes,  setCachedMachineTypes]  = useState<any[]>([])
+  const [cachedMachineTypes,  setCachedMachineTypes]  = useState<MachineTypeOption[]>([])
   const [cachedResponsible,   setCachedResponsible]   = useState<any[]>([])
   const [cachedSupervisor,    setCachedSupervisor]    = useState<any[]>([])
   const [cachedManager,       setCachedManager]       = useState<any[]>([])
@@ -354,12 +381,6 @@ function RouteComponent({ data }: any) {
   useEffect(() => { imageFilesRef.current    = imageFiles    }, [imageFiles])
   useEffect(() => { instrFilesRef.current    = instrFiles    }, [instrFiles])
   useEffect(() => { warrantyFilesRef.current = warrantyFiles }, [warrantyFiles])
-
-  const formSteps: FormStep[] = [
-    { id: 'general',     title: t('general'),     description: t('basic_information'),        required: true  },
-    { id: 'maintenance', title: t('maintenance'), description: t('maintenance_information'),  required: false },
-    { id: 'calibration', title: t('calibration'), description: t('calibration_information'), required: false },
-  ]
 
   const machineStatusOptions = [
     { value: 'OPERATIONAL',       label: t('status_operational') },
@@ -399,7 +420,18 @@ function RouteComponent({ data }: any) {
     measuringRange: '', accuracy: '', calibrationRange: '', calibrationStatus: '',
     hasWarranty: '', warrantyNote: '', warrantyExpireDate: '',
     isNew: '',
+    // ── ได้จาก machine_type ที่เลือก ──
+    requireMaintenance: false,
+    requireCalibration: false,
+    equipmentCategory:  '',
   })
+
+  // ต้องประกาศหลัง formData เพราะ required ขึ้นกับประเภทเครื่องที่เลือก
+  const formSteps: FormStep[] = [
+    { id: 'general',     title: t('general'),     description: t('basic_information'),       required: true },
+    { id: 'maintenance', title: t('maintenance'), description: t('maintenance_information'), required: formData.requireMaintenance },
+    { id: 'calibration', title: t('calibration'), description: t('calibration_information'), required: formData.requireCalibration },
+  ]
 
   useEffect(() => { window.scrollTo(0, 0) }, [])
   useEffect(() => { if (refId) fetchRegisterData(refId) }, [refId])
@@ -620,7 +652,7 @@ function RouteComponent({ data }: any) {
 
   // ─── Validation ────────────────────────────────────────────────────────────
 
-  const validateRequiredFields = () => {
+  const getGeneralErrors = (): Record<string, string> => {
     const e: Record<string, string> = {}
     if (!formData.name.trim())             e.name          = t('machine_name_required')
     if (!formData.machineGroupId.trim())   e.machineGroup  = t('machine_group_required')
@@ -633,26 +665,73 @@ function RouteComponent({ data }: any) {
     if (!String(formData.hasWarranty ?? '').trim()) e.hasWarranty = t('has_warranty_required')
     if (formData.hasWarranty === 'YES' && !String(formData.warrantyNote ?? '').trim()) e.warrantyNote = t('warranty_note_required')
     if (!String(formData.isNew ?? '').trim()) e.isNew = t('is_new_required')
-    setErrors(e)
-    return Object.keys(e).length === 0
+    return e
   }
 
-  const isFormValid = () => {
-    const base = !!(formData.name.trim() && formData.machineGroupId.trim() && formData.machineTypeId.trim() &&
-      getDeptCode(formData.department) && formData.machineStatus.trim() && formData.resetPeriod.trim() &&
-      String(formData.responsible ?? '').trim() && String(formData.hasWarranty ?? '').trim() &&
-      String(formData.isNew ?? '').trim())
-    if (formData.hasWarranty === 'YES') return base && !!String(formData.warrantyNote ?? '').trim()
-    return base
+  /** บังคับเมื่อ machine_type.is_maintenance = true */
+  const getMaintenanceErrors = (): Record<string, string> => {
+    const e: Record<string, string> = {}
+    if (!formData.requireMaintenance) return e
+    if (!formData.maintenancePeriod) {
+      e.maintenancePeriod = tt('maintenance_period_required', 'กรุณาเลือกรอบบำรุงรักษา')
+      return e
+    }
+    for (let i = 1; i <= maintenanceRounds(formData.maintenancePeriod); i++) {
+      if (!(formData as any)[`maintenance${i}`])
+        e[`maintenance${i}`] = tt('maintenance_date_required', 'กรุณาระบุวันที่บำรุงรักษา')
+    }
+    return e
   }
+
+  /** บังคับเมื่อ machine_type.is_calibration = true */
+  const getCalibrationErrors = (): Record<string, string> => {
+    const e: Record<string, string> = {}
+    if (!formData.requireCalibration) return e
+    if (!formData.calibrationDueDate)
+      e.calibrationDueDate = tt('calibration_due_date_required', 'กรุณาระบุวันครบกำหนดสอบเทียบ')
+    return e
+  }
+
+  /** คืน id ของ step แรกที่มี error หรือ null ถ้าผ่านทั้งหมด */
+  const validateRequiredFields = (): string | null => {
+    const genErr   = getGeneralErrors()
+    const maintErr = getMaintenanceErrors()
+    const calErr   = getCalibrationErrors()
+    setErrors({ ...genErr, ...maintErr, ...calErr })
+    if (Object.keys(genErr).length)   return 'general'
+    if (Object.keys(maintErr).length) return 'maintenance'
+    if (Object.keys(calErr).length)   return 'calibration'
+    return null
+  }
+
+  const isGeneralValid = () => Object.keys(getGeneralErrors()).length === 0
+
+  const isFormValid = () =>
+    isGeneralValid()
+    && Object.keys(getMaintenanceErrors()).length === 0
+    && Object.keys(getCalibrationErrors()).length === 0
 
   const getStepStatus = (stepId: string): 'complete' | 'error' | 'incomplete' | 'empty' => {
-    if (stepId !== 'general') return 'empty'
-    const hasErrors = Object.keys(errors).some(k =>
-      ['name','machineStatus','department','machineType','machineGroup','machineCode','resetPeriod','responsible','hasWarranty','warrantyNote','isNew'].includes(k))
-    if (hasErrors) return 'error'
-    return isFormValid() ? 'complete' : 'incomplete'
+    const hasErr = (fields: string[]) => Object.keys(errors).some(k => fields.includes(k))
+    if (stepId === 'general') {
+      if (hasErr(GENERAL_FIELDS)) return 'error'
+      return isGeneralValid() ? 'complete' : 'incomplete'
+    }
+    if (stepId === 'maintenance') {
+      if (!formData.requireMaintenance) return 'empty'
+      if (hasErr(MAINT_FIELDS)) return 'error'
+      return Object.keys(getMaintenanceErrors()).length ? 'incomplete' : 'complete'
+    }
+    if (stepId === 'calibration') {
+      if (!formData.requireCalibration) return 'empty'
+      if (hasErr(CAL_FIELDS)) return 'error'
+      return Object.keys(getCalibrationErrors()).length ? 'incomplete' : 'complete'
+    }
+    return 'empty'
   }
+
+  const FieldError = ({ name }: { name: string }) =>
+    errors[name] ? <p className="text-sm text-destructive mt-1">{errors[name]}</p> : null
 
   // ─── Build DTO ─────────────────────────────────────────────────────────────
 
@@ -672,7 +751,7 @@ function RouteComponent({ data }: any) {
       measuringRange: formData.measuringRange || null, accuracy: formData.accuracy || null,
       calibrationRange: formData.calibrationRange || null, calibrationStatus: formData.calibrationStatus || null,
     } : null
-    const rounds = formData.maintenancePeriod === '3 MONTH' ? 4 : formData.maintenancePeriod === '6 MONTH' ? 2 : 0
+    const rounds = maintenanceRounds(formData.maintenancePeriod)
     const maintenanceList: any[] = []
     for (let i = 1; i <= rounds; i++) {
       const dateValue = (formData as any)[`maintenance${i}`]
@@ -719,7 +798,8 @@ function RouteComponent({ data }: any) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
-    if (!validateRequiredFields()) { setCurrentStep('general'); toast.error(t('fill_required_fields')); return }
+    const errorStep = validateRequiredFields()
+    if (errorStep) { setCurrentStep(errorStep); toast.error(t('fill_required_fields')); return }
     setIsSubmitting(true)
     try {
       const filesToDeleteFromDisk = [
@@ -783,13 +863,21 @@ function RouteComponent({ data }: any) {
     } catch { toast.error(t('data_fetch_failed')); return { data: [], hasMore: false } }
   }
 
-  const fetchMachineTypeByGroup = async (groupId: string) => {
+  const fetchMachineTypeByGroup = async (groupId: string): Promise<{ data: MachineTypeOption[]; hasMore: boolean }> => {
     if (!groupId) return { data: [], hasMore: false }
     try {
       const response = await api.get<any>('/api/type/types/by-group', { params: { machineGroupId: groupId, index: 0, size: 100 } })
       const arr: any[] = Array.isArray(response?.data) ? response.data : []
-      const data = arr.filter(i => i?.machineTypeId && i?.machineTypeName?.trim())
-        .map(i => ({ label: i.machineTypeName, value: String(i.machineTypeId), id: String(i.machineTypeId), groupId: String(i.machineGroupId) }))
+      const data: MachineTypeOption[] = arr.filter(i => i?.machineTypeId && i?.machineTypeName?.trim())
+        .map(i => ({
+          label:             i.machineTypeName,
+          value:             String(i.machineTypeId),
+          id:                String(i.machineTypeId),
+          groupId:           String(i.machineGroupId),
+          isMaintenance:     i.isMaintenance === true,
+          isCalibration:     i.isCalibration === true,
+          equipmentCategory: i.equipmentCategory ?? null,
+        }))
         .sort((a, b) => a.id.localeCompare(b.id))
       setCachedMachineTypes(data)
       return { data, hasMore: false }
@@ -804,21 +892,55 @@ function RouteComponent({ data }: any) {
 
   const changeMachineGroup = async (val: any) => {
     const value = toStr(val)
-    if (!value) { setFormData(prev => ({ ...prev, machineGroup: '', machineGroupId: '', machineType: '', machineTypeId: '', machineCode: '' })); setCachedMachineTypes([]); return }
+    const resetType = {
+      machineType: '', machineTypeId: '', machineCode: '',
+      requireMaintenance: false, requireCalibration: false, equipmentCategory: '',
+    }
+    if (!value) {
+      setFormData(prev => ({ ...prev, machineGroup: '', machineGroupId: '', ...resetType }))
+      setCachedMachineTypes([]); return
+    }
     let groups = cachedMachineGroups
     if (!groups.length) { const r = await fetchMachineGroup(''); groups = r.data }
     const group = groups.find(g => g.value === value)
-    if (group) { setFormData(prev => ({ ...prev, machineGroup: group.label, machineGroupId: group.value, machineType: '', machineTypeId: '', machineCode: '' })); setCachedMachineTypes([]); await fetchMachineTypeByGroup(group.value) }
+    if (group) {
+      setFormData(prev => ({ ...prev, machineGroup: group.label, machineGroupId: group.value, ...resetType }))
+      setCachedMachineTypes([])
+      await fetchMachineTypeByGroup(group.value)
+    }
   }
 
   const changeMachineType = async (val: any) => {
     const id = toStr(val)
-    if (!id) { setFormData(prev => ({ ...prev, machineType: '', machineTypeId: '', machineCode: '' })); return }
-    let types = cachedMachineTypes.filter(t => t.groupId === formData.machineGroupId)
+    const noFlags = { requireMaintenance: false, requireCalibration: false, equipmentCategory: '' }
+    if (!id) { setFormData(prev => ({ ...prev, machineType: '', machineTypeId: '', machineCode: '', ...noFlags })); return }
+    let types = cachedMachineTypes.filter(ty => ty.groupId === formData.machineGroupId)
     if (!types.length) { const r = await fetchMachineTypeByGroup(formData.machineGroupId); types = r.data }
-    const found = types.find(t => t.value === id)
-    if (found) setFormData(prev => ({ ...prev, machineType: found.label, machineTypeId: id }))
-    else setFormData(prev => ({ ...prev, machineType: '', machineTypeId: '' }))
+    const found = types.find(ty => ty.value === id)
+    if (!found) { setFormData(prev => ({ ...prev, machineType: '', machineTypeId: '', ...noFlags })); return }
+
+    setFormData(prev => ({
+      ...prev,
+      machineType:        found.label,
+      machineTypeId:      id,
+      requireMaintenance: found.isMaintenance,
+      requireCalibration: found.isCalibration,
+      equipmentCategory:  found.equipmentCategory ?? '',
+    }))
+
+    // เปลี่ยน type แล้วไม่บังคับอีกต่อไป → ล้าง error ค้างของ step นั้น
+    setErrors(prev => {
+      const next = { ...prev }
+      if (!found.isMaintenance) MAINT_FIELDS.forEach(k => delete next[k])
+      if (!found.isCalibration) CAL_FIELDS.forEach(k => delete next[k])
+      return next
+    })
+
+    const notices = [
+      found.isMaintenance && tt('maintenance_required_for_type', 'ประเภทนี้ต้องกรอกข้อมูลบำรุงรักษา'),
+      found.isCalibration && tt('calibration_required_for_type', 'ประเภทนี้ต้องกรอกข้อมูลสอบเทียบ'),
+    ].filter(Boolean)
+    if (notices.length) toast.info(notices.join(' / '))
   }
 
   const fetchDepartments = async (keyword: string, index: number) => {
@@ -967,6 +1089,17 @@ function RouteComponent({ data }: any) {
                 <div className="p-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-500 text-sm">{t('please_select_machine_group')}</div>
               </div>
             )}
+            {formData.machineTypeId && (
+              <ReadOnlyField label={tt('equipment_category', 'หมวดอุปกรณ์')} value={formData.equipmentCategory} />
+            )}
+            {formData.machineTypeId && (formData.requireMaintenance || formData.requireCalibration) && (
+              <div className="md:col-span-2">
+                <RequiredBanner text={[
+                  formData.requireMaintenance && tt('maintenance_required_for_type', 'ประเภทนี้ต้องกรอกข้อมูลบำรุงรักษา'),
+                  formData.requireCalibration && tt('calibration_required_for_type', 'ประเภทนี้ต้องกรอกข้อมูลสอบเทียบ'),
+                ].filter(Boolean).join(' / ')} />
+              </div>
+            )}
             <ServerSingleSelect id="department-select" title="department" label={t('select_department')} placeholder={t('select_department')} value={formData.department}
               onChange={handleDepartmentChange}
               fetchOptions={fetchDepartments} error={errors.department} required />
@@ -1029,16 +1162,32 @@ function RouteComponent({ data }: any) {
 
       case 'maintenance': return (
         <div className="px-2 pt-2 space-y-4">
+          {formData.requireMaintenance && (
+            <RequiredBanner text={tt('maintenance_required_banner', 'ประเภทเครื่องจักรนี้ต้องกำหนดรอบและวันที่บำรุงรักษาก่อนบันทึก')} />
+          )}
           <SingleSelectField id="maintenancePeriod" label={t('maintenance_period')} value={[formData.maintenancePeriod]}
-            onChange={v => handleInputChange('maintenancePeriod', v[0] || '')} options={maintenanceOptions} />
+            onChange={v => handleInputChange('maintenancePeriod', v[0] || '')} options={maintenanceOptions}
+            error={errors.maintenancePeriod} required={formData.requireMaintenance} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <DatePickerField id="maintenance1" label={t('round_1')} value={formData.maintenance1} onChange={d => handleInputChange('maintenance1', d)} />
-            <DatePickerField id="maintenance2" label={t('round_2')} value={formData.maintenance2} onChange={d => handleInputChange('maintenance2', d)} />
+            <div>
+              <DatePickerField id="maintenance1" label={t('round_1')} value={formData.maintenance1} onChange={d => handleInputChange('maintenance1', d)} />
+              <FieldError name="maintenance1" />
+            </div>
+            <div>
+              <DatePickerField id="maintenance2" label={t('round_2')} value={formData.maintenance2} onChange={d => handleInputChange('maintenance2', d)} />
+              <FieldError name="maintenance2" />
+            </div>
           </div>
           {formData.maintenancePeriod === '3 MONTH' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <DatePickerField id="maintenance3" label={t('round_3')} value={formData.maintenance3} onChange={d => handleInputChange('maintenance3', d)} />
-              <DatePickerField id="maintenance4" label={t('round_4')} value={formData.maintenance4} onChange={d => handleInputChange('maintenance4', d)} />
+              <div>
+                <DatePickerField id="maintenance3" label={t('round_3')} value={formData.maintenance3} onChange={d => handleInputChange('maintenance3', d)} />
+                <FieldError name="maintenance3" />
+              </div>
+              <div>
+                <DatePickerField id="maintenance4" label={t('round_4')} value={formData.maintenance4} onChange={d => handleInputChange('maintenance4', d)} />
+                <FieldError name="maintenance4" />
+              </div>
             </div>
           )}
         </div>
@@ -1046,9 +1195,15 @@ function RouteComponent({ data }: any) {
 
       case 'calibration': return (
         <div className="px-2 pt-2 space-y-4">
+          {formData.requireCalibration && (
+            <RequiredBanner text={tt('calibration_required_banner', 'ประเภทเครื่องจักรนี้ต้องระบุวันครบกำหนดสอบเทียบก่อนบันทึก')} />
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <DatePickerField id="calibrationDueDate" label={t('calibration_due_date')} value={formData.calibrationDueDate} onChange={d => handleInputChange('calibrationDueDate', d)} />
-            <DatePickerField id="certificateDate"    label={t('certificate_date')}     value={formData.certificateDate}    onChange={d => handleInputChange('certificateDate', d)} />
+            <div>
+              <DatePickerField id="calibrationDueDate" label={t('calibration_due_date')} value={formData.calibrationDueDate} onChange={d => handleInputChange('calibrationDueDate', d)} />
+              <FieldError name="calibrationDueDate" />
+            </div>
+            <DatePickerField id="certificateDate" label={t('certificate_date')} value={formData.certificateDate} onChange={d => handleInputChange('certificateDate', d)} />
             <SingleSelectField id="result" label={t('results')} value={[formData.result]}
               onChange={v => handleInputChange('result', v[0] || '')} options={resultOptions} />
             <TextField id="criteria"         label={t('criteria')}          value={formData.criteria}         onChange={v => handleInputChange('criteria', v)} />

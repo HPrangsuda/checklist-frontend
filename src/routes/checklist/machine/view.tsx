@@ -61,6 +61,7 @@ interface MachineDetail {
   businessUnit?:          string | null
   machineGroupName?:      string | null
   machineTypeName?:       string | null
+  equipmentCategory?:     string | null
   machineStatus?:         string | null
   checkStatus?:           string | null
   responsiblePersonName?: string | null
@@ -388,6 +389,10 @@ function MachineView() {
                 <InfoRow label={tt('business_unit', 'หน่วยธุรกิจ')}    value={machine.businessUnit} />
                 <InfoRow label={tt('machine_group', 'กลุ่มเครื่องจักร')} value={machine.machineGroupName} />
                 <InfoRow label={tt('machine_type', 'ประเภทเครื่องจักร')} value={machine.machineTypeName} />
+                <InfoRow label={tt('equipment_category', 'หมวดอุปกรณ์')}
+                  value={machine.equipmentCategory
+                    ? <Badge variant="outline">{tt(`equipment_category_${machine.equipmentCategory}`, machine.equipmentCategory)}</Badge>
+                    : null} />
                 <InfoRow label={tt('machine_number', 'หมายเลขเครื่อง')}  value={machine.machineNumber} />
                 <InfoRow label={tt('serial_number', 'หมายเลขซีเรียล')}   value={machine.serialNumber} />
                 <InfoRow label={tt('brand', 'แบรนด์')} value={machine.brand} />
